@@ -148,6 +148,6 @@ Flags banner, DRS / Manual Override indicator, Track Map, Podium / Results, Lap 
 - [x] Phase 0 — Bootstrap (2026-09-20). Repo: github.com/toyamarodrigo/react-boxbox (private). Site: react-boxbox.vercel.app. CI green.
 - [x] Phase 1 — Foundation (2026-09-20). Registry items: boxbox-types, boxbox-theme, boxbox-fonts, boxbox-font-mono. Verified end-to-end in a scratch app.
 - [x] Phase 2 — Docs shell (2026-09-20). Layout, content manifest, defineControls playground, component page template, docs pages, full prerender. Hidden `example` content proves the template.
-- [ ] Phase 3 — Components (0/6)
+- [x] Phase 3 — Components (2026-09-20, 6/6). Tyre Badge, Sector Times, Driver Name Plate, Start Lights, Timing Tower, Replay Bumper as `registry:ui` items with docs pages and tests (64 total). Deployed; all six installed from the production registry into a scratch Vite app with imports rewritten correctly. `doctor.config.json` turns off `only-export-components` and `use-lazy-motion` (both conflict with the registry API decisions).
 - [ ] Phase 4 — Home + polish
 - [ ] Phase 5 — Release v1
