@@ -34,13 +34,13 @@ react-boxbox/
 ├── registry.json                 # shadcn registry manifest
 ├── registry/boxbox/
 │   ├── lib/types.ts              # @boxbox/boxbox-types
-│   ├── theme/boxbox.css          # @boxbox/boxbox-theme (cssVars in registry.json)
-│   ├── tyre-badge/tyre-badge.tsx
-│   ├── sector-times/sector-times.tsx
-│   ├── driver-name-plate/driver-name-plate.tsx
-│   ├── start-lights/start-lights.tsx
-│   ├── timing-tower/timing-tower.tsx
-│   └── replay-bumper/replay-bumper.tsx
+│   └── ui/                       # registry:ui items, one file each (+ colocated .test.tsx)
+│       ├── tyre-badge.tsx
+│       ├── sector-times.tsx
+│       ├── driver-name-plate.tsx
+│       ├── start-lights.tsx
+│       ├── timing-tower.tsx
+│       └── replay-bumper.tsx
 ├── src/
 │   ├── routes/                   # TanStack Start file routes
 │   │   ├── __root.tsx
@@ -96,6 +96,11 @@ react-boxbox/
 
 Each step delivers: component + `registry.json` entry + `controls.ts` + `demo.tsx` + `meta.ts` + tests (pure logic + render smoke) + rebuilt `public/r/`. Simplest first, Timing Tower after its dependencies.
 
+**Registry file conventions** (the shadcn CLI only rewrites imports that match `@/registry/<x>/{ui,lib,components,hooks}`):
+- Component file: `registry/boxbox/ui/<name>.tsx`, item type `registry:ui`, `dependencies: ["motion"]`, `registryDependencies: ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"]` (+ other `@boxbox/*` items it imports).
+- Imports inside registry files: `@/registry/boxbox/lib/types`, `@/registry/boxbox/ui/<other>`, `@/lib/utils` for `cn`. Nothing from `src/`.
+- `tsconfig` maps `@/registry/*` → `./registry/*` so the site resolves the same paths locally.
+
 14. **Tyre Badge** — `compound`, `age`, `isNew`, `size`. Rotate on compound change. Exercises tyre tokens and the template.
 15. **Sector Times** — `sectors[3]`, `lapTime`, `lapStatus`, `miniSectors`, `layout`. Fill + colour flash per sector, optional lap-time count-up. Exercises sector tokens.
 16. **Driver Name Plate** — `driver`, `position`, `variant` (`compact | full`), `status`, `visible`, `align`. Wipe in/out with `AnimatePresence`, staggered children.
@@ -127,8 +132,8 @@ Flags banner, DRS / Manual Override indicator, Track Map, Podium / Results, Lap 
 ## Execution model
 
 - Claude (Fable) orchestrates: scopes each step, delegates, reviews output, keeps this file current.
-- Implementation of each step goes to Codex `gpt-5.6-sol` (medium effort) through the `codex-implementation` skill. Components and site UI need taste, so never below sol.
-- Each step gets a `codex review` (`gpt-5.6-sol`, high) before commit.
+- Implementation of each step goes to a Claude subagent (Opus 5, or Sonnet 5 for mechanical steps). Decided 2026-09-20 after the Codex path stalled in Orca.
+- Fable reviews each step's diff before commit (typecheck, lint, format, tests, API vs. this plan, motion + a11y).
 - Parallel component work uses separate worktrees.
 - After React work, run `/react-doctor`.
 
