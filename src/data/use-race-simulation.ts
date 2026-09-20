@@ -12,7 +12,9 @@ export function useRaceSimulation({
   autoPlay?: boolean;
 } = {}) {
   const [state, setState] = useState(() => createInitialRace(grid, createSeededRng(seed)));
-  const [isPlaying, setIsPlaying] = useState(autoPlay);
+  const [wantsPlay, setWantsPlay] = useState(autoPlay);
+  const finished = state.lap >= state.totalLaps;
+  const isPlaying = wantsPlay && !finished;
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -24,13 +26,14 @@ export function useRaceSimulation({
 
   const reset = () => {
     setState(createInitialRace(grid, createSeededRng(seed)));
-    setIsPlaying(autoPlay);
+    setWantsPlay(autoPlay);
   };
   return {
     state,
-    play: () => setIsPlaying(true),
-    pause: () => setIsPlaying(false),
+    play: () => setWantsPlay(true),
+    pause: () => setWantsPlay(false),
     reset,
     isPlaying,
+    finished,
   };
 }

@@ -21,3 +21,19 @@ it('ticks, pauses, resets, and clears its timer', () => {
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('stops its timer at the chequered flag and resumes after reset', () => {
+  vi.useFakeTimers();
+  const { result } = renderHook(() => useRaceSimulation({ intervalMs: 10, seed: 9 }));
+  const total = result.current.state.totalLaps;
+  act(() => vi.advanceTimersByTime(total * 10 + 50));
+  expect(result.current.state.lap).toBe(total);
+  expect(result.current.finished).toBe(true);
+  expect(result.current.isPlaying).toBe(false);
+  expect(vi.getTimerCount()).toBe(0);
+  act(() => result.current.reset());
+  expect(result.current.state.lap).toBe(0);
+  expect(result.current.isPlaying).toBe(true);
+  act(() => vi.advanceTimersByTime(10));
+  expect(result.current.state.lap).toBe(1);
+});

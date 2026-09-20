@@ -31,6 +31,20 @@ describe('race simulation', () => {
     }
   });
 
+  it('grants DRS from the interval to the car ahead, never from the leader gap', () => {
+    let drsCount = 0;
+    for (let tick = 1; tick <= 40; tick++) {
+      const rows = run(3, tick).rows;
+      expect(rows[0]!.drs).toBe(false);
+      for (const row of rows.slice(1)) {
+        const eligible = row.interval! < 1 && !row.inPit;
+        expect(row.drs).toBe(eligible);
+        if (row.drs) drsCount++;
+      }
+    }
+    expect(drsCount).toBeGreaterThan(0);
+  });
+
   it('uses valid sector statuses and resets tyre age on pit stops', () => {
     let pitCount = 0;
     for (let tick = 1; tick <= 60; tick++) {

@@ -148,11 +148,14 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
       gapToLeader: gap,
       interval: index === 0 ? null : 0,
       lapped: gap > leaderLap,
-      drs: index > 0 && gap < 1 && !row.inPit,
+      drs: false,
     };
   });
   for (let index = 1; index < ranked.length; index++) {
-    ranked[index]!.interval = round(ranked[index]!.gapToLeader! - ranked[index - 1]!.gapToLeader!);
+    const current = ranked[index]!;
+    current.interval = round(current.gapToLeader! - ranked[index - 1]!.gapToLeader!);
+    // DRS depends on the car directly ahead, not on the cumulative gap to the leader.
+    current.drs = current.interval < 1 && !current.inPit;
   }
   const roll = rng();
   const trackStatus: TrackStatus =
