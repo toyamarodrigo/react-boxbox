@@ -1,7 +1,8 @@
 import type { ComponentMeta } from './types';
 import example from './example/meta';
+import startLights from './start-lights/meta';
 
-export const manifest: readonly ComponentMeta[] = [example];
+export const manifest: readonly ComponentMeta[] = [example, startLights];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
   timing: 'Timing',
@@ -25,6 +26,11 @@ export const contentModules = {
     controls: () => import('./example/controls'),
     demo: () => import('./example/demo'),
     source: () => import('./example/demo.tsx?raw'),
+  },
+  'start-lights': {
+    controls: () => import('./start-lights/controls'),
+    demo: () => import('./start-lights/demo'),
+    source: () => import('./start-lights/demo.tsx?raw'),
   },
 } satisfies Record<
   string,
