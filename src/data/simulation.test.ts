@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { grid } from './grid';
+import { advanceRace, createInitialRace, createSeededRng } from './simulation';
+
+const run = (seed: number, ticks: number) => {
+  const rng = createSeededRng(seed);
+  let state = createInitialRace(grid, rng);
+  for (let index = 0; index < ticks; index++) state = advanceRace(state, rng);
+  return state;
+};
+
+describe('race simulation', () => {
+  it('is deterministic for a seed', () => expect(run(42, 30)).toEqual(run(42, 30)));
+
+  it('keeps ranked positions and gaps consistent', () => {
+    for (let tick = 0; tick < 30; tick++) {
+      const rows = run(17, tick).rows;
+      expect(rows.map((row) => row.position)).toEqual(
+        Array.from({ length: 20 }, (_, index) => index + 1),
+      );
+      expect(new Set(rows.map((row) => row.driverId)).size).toBe(20);
+      expect(rows[0]!.gapToLeader).toBe(0);
+      expect(rows[0]!.interval).toBeNull();
+      for (let index = 1; index < rows.length; index++) {
+        expect(rows[index]!.interval).toBeCloseTo(
+          rows[index]!.gapToLeader! - rows[index - 1]!.gapToLeader!,
+          3,
+        );
+        expect(rows[index]!.gapToLeader!).toBeGreaterThan(rows[index - 1]!.gapToLeader!);
+      }
+    }
+  });
+
+  it('uses valid sector statuses and resets tyre age on pit stops', () => {
+    let pitCount = 0;
+    for (let tick = 1; tick <= 60; tick++) {
+      for (const row of run(7, tick).rows) {
+        for (const sector of row.sectors) {
+          expect(['fastest', 'personal', 'slower', 'unset']).toContain(sector.status);
+          expect(sector.time).toBeGreaterThan(0);
+        }
+        if (row.inPit) {
+          pitCount++;
+          expect(row.tyre.age).toBe(0);
+        }
+      }
+    }
+    expect(pitCount).toBeGreaterThan(0);
+  });
+});

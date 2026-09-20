@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "boxbox-font-mono",
+  "title": "boxbox Mono Font",
+  "description": "JetBrains Mono for timing data.",
+  "css": {
+    "@import \"@fontsource/jetbrains-mono/700.css\"": {}
+  },
+  "type": "registry:font",
+  "font": {
+    "family": "'JetBrains Mono', ui-monospace, monospace",
+    "provider": "google",
+    "import": "JetBrains Mono",
+    "variable": "--font-mono",
+    "weight": [
+      "400",
+      "700"
+    ],
+    "subsets": [
+      "latin"
+    ],
+    "dependency": "@fontsource/jetbrains-mono"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "boxbox-fonts",
+  "title": "boxbox Fonts",
+  "description": "Optional Titillium Web display font and JetBrains Mono timing font.",
+  "registryDependencies": [
+    "@boxbox/boxbox-font-mono"
+  ],
+  "css": {
+    "@import \"@fontsource/titillium-web/600.css\"": {},
+    "@import \"@fontsource/titillium-web/700.css\"": {},
+    "@import \"@fontsource/titillium-web/900.css\"": {}
+  },
+  "type": "registry:font",
+  "font": {
+    "family": "'Titillium Web', ui-sans-serif, system-ui, sans-serif",
+    "provider": "google",
+    "import": "Titillium Web",
+    "variable": "--font-display",
+    "weight": [
+      "400",
+      "600",
+      "700",
+      "900"
+    ],
+    "subsets": [
+      "latin"
+    ],
+    "dependency": "@fontsource/titillium-web"
+  }
+}
