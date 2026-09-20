@@ -1,7 +1,8 @@
 import type { ComponentMeta } from './types';
 import example from './example/meta';
+import replayBumper from './replay-bumper/meta';
 
-export const manifest: readonly ComponentMeta[] = [example];
+export const manifest: readonly ComponentMeta[] = [example, replayBumper];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
   timing: 'Timing',
@@ -25,6 +26,11 @@ export const contentModules = {
     controls: () => import('./example/controls'),
     demo: () => import('./example/demo'),
     source: () => import('./example/demo.tsx?raw'),
+  },
+  'replay-bumper': {
+    controls: () => import('./replay-bumper/controls'),
+    demo: () => import('./replay-bumper/demo'),
+    source: () => import('./replay-bumper/demo.tsx?raw'),
   },
 } satisfies Record<
   string,
