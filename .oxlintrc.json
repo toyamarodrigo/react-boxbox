@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "jsx-a11y", "react-hooks"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "error"
+  },
+  "ignorePatterns": [
+    "public/r/**",
+    ".output/**",
+    "dist/**",
+    "**/routeTree.gen.ts",
+    "node_modules/**"
+  ]
+}
