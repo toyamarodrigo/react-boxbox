@@ -141,7 +141,7 @@ Flags banner, DRS / Manual Override indicator, Track Map, Podium / Results, Lap 
 ## Progress
 
 - [x] Phase 0 — Bootstrap (2026-09-20). Repo: github.com/toyamarodrigo/react-boxbox (private). Site: react-boxbox.vercel.app. CI green.
-- [ ] Phase 1 — Foundation
+- [x] Phase 1 — Foundation (2026-09-20). Registry items: boxbox-types, boxbox-theme, boxbox-fonts, boxbox-font-mono. Verified end-to-end in a scratch app.
 - [ ] Phase 2 — Docs shell
 - [ ] Phase 3 — Components (0/6)
 - [ ] Phase 4 — Home + polish
