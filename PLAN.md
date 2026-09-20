@@ -132,9 +132,15 @@ Flags banner, DRS / Manual Override indicator, Track Map, Podium / Results, Lap 
 - Parallel component work uses separate worktrees.
 - After React work, run `/react-doctor`.
 
+## Known issues
+
+- **Vercel deep-link 404.** With SPA mode on Vercel, a route that was not prerendered returns Vercel's static 404 instead of `_shell.html` (open issue vercel/vercel#17627). Mitigation: every docs route is prerendered at build time via `crawlLinks`, so only unknown URLs 404. Revisit when the issue closes or when moving to SSR.
+- **Vercel Git integration not connected.** `vercel git connect` fails from a git worktree and the Vercel GitHub App has no access to the private repo yet. Production deploys currently run from the CLI (`vercel deploy --prod`). Connect it from the Vercel dashboard (Project → Settings → Git) to get deploys on push.
+- **Branch flow.** Work happens on `prowfish` (Orca worktree) and is pushed to both `prowfish` and `main` (`git push origin prowfish:main`). `main` is the GitHub default branch and the production branch.
+
 ## Progress
 
-- [ ] Phase 0 — Bootstrap
+- [x] Phase 0 — Bootstrap (2026-09-20). Repo: github.com/toyamarodrigo/react-boxbox (private). Site: react-boxbox.vercel.app. CI green.
 - [ ] Phase 1 — Foundation
 - [ ] Phase 2 — Docs shell
 - [ ] Phase 3 — Components (0/6)
