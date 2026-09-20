@@ -1,4 +1,3 @@
-/* oxlint-disable jsx-a11y/prefer-tag-over-role -- rows are animated motion.div elements, so the list semantics come from roles */
 import { Fragment } from 'react';
 import { type HTMLMotionProps, motion } from 'motion/react';
 import type { Driver, GapMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
@@ -136,12 +135,11 @@ export function TimingTowerRow({
   highlighted?: boolean;
   showTyre?: boolean;
   showDrs?: boolean;
-} & HTMLMotionProps<'div'>) {
+} & HTMLMotionProps<'li'>) {
   const gained = row.positionChange > 0;
   return (
-    <motion.div
+    <motion.li
       layout
-      role="listitem"
       data-slot="timing-tower-row"
       data-position={row.position}
       data-driver={row.driverId}
@@ -185,7 +183,7 @@ export function TimingTowerRow({
         </span>
       )}
       <TimingTowerValue value={rowValue(row, mode, isLeader)} tone={valueTone(row, isFastestLap)} />
-    </motion.div>
+    </motion.li>
   );
 }
 
@@ -216,18 +214,17 @@ export function TimingTower({
     row: TimingRow,
     ctx: { driver: Driver; team: Team | undefined; index: number },
   ) => React.ReactNode;
-} & React.ComponentProps<'div'>) {
+} & React.ComponentProps<'ol'>) {
   const ordered = sortRows(rows);
   const shown = maxRows === undefined ? ordered : ordered.slice(0, Math.max(0, maxRows));
 
   return (
-    <div
+    <ol
       data-slot="timing-tower"
       data-mode={mode}
-      role="list"
       aria-label="Timing tower"
       className={cn(
-        'flex w-56 flex-col border border-border bg-card/90 font-display text-card-foreground',
+        'flex w-56 list-none flex-col border border-border bg-card/90 font-display text-card-foreground',
         className,
       )}
       {...props}
@@ -254,6 +251,6 @@ export function TimingTower({
           />
         );
       })}
-    </div>
+    </ol>
   );
 }

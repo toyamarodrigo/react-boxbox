@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "react-doctor/only-export-components": "off",
+    "react-doctor/use-lazy-motion": "off"
+  }
+}

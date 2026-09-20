@@ -130,22 +130,25 @@ export function SectorTimesLap({
   className,
   ...props
 }: SectorTimesLapProps) {
-  const [shown, setShown] = React.useState<number | null>(lapTime);
+  // `animated` only holds in-flight count-up values; otherwise the prop is shown directly.
+  const [animated, setAnimated] = React.useState<number | null>(null);
   const previous = React.useRef<number | null>(lapTime);
+  const shown = countUp && animated != null ? animated : lapTime;
 
   React.useEffect(() => {
     const from = previous.current;
     previous.current = lapTime;
-    if (!countUp || from == null || lapTime == null || from === lapTime) {
-      setShown(lapTime);
-      return;
-    }
+    if (!countUp || from == null || lapTime == null || from === lapTime) return;
     const controls = animate(from, lapTime, {
       duration: 0.6,
       ease: 'easeOut',
-      onUpdate: setShown,
+      onUpdate: setAnimated,
+      onComplete: () => setAnimated(null),
     });
-    return () => controls.stop();
+    return () => {
+      controls.stop();
+      setAnimated(null);
+    };
   }, [countUp, lapTime]);
 
   return (
