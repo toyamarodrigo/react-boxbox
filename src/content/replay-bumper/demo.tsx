@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ReplayBumper } from '../../../registry/boxbox/ui/replay-bumper';
+import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import type { ControlValues } from '../types';
 import type controls from './controls';
 

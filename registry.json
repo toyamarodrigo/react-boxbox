@@ -254,6 +254,20 @@
       ]
     },
     {
+      "name": "sector-times",
+      "type": "registry:ui",
+      "title": "Sector Times",
+      "description": "Broadcast sector bars with colour-coded statuses, mini sectors, and an animated lap time.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/sector-times.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "driver-name-plate",
       "type": "registry:ui",
       "title": "Driver Name Plate",
@@ -263,6 +277,20 @@
       "files": [
         {
           "path": "registry/boxbox/ui/driver-name-plate.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "start-lights",
+      "type": "registry:ui",
+      "title": "Start Lights",
+      "description": "A race-start gantry: five columns arm one by one, hold, then go out, with a yellow flash for an aborted start.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/start-lights.tsx",
           "type": "registry:ui"
         }
       ]
@@ -286,20 +314,6 @@
       ]
     },
     {
-      "name": "sector-times",
-      "type": "registry:ui",
-      "title": "Sector Times",
-      "description": "Broadcast sector bars with colour-coded statuses, mini sectors, and an animated lap time.",
-      "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
-      "files": [
-        {
-          "path": "registry/boxbox/ui/sector-times.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
       "name": "replay-bumper",
       "type": "registry:ui",
       "title": "Replay Bumper",
@@ -309,20 +323,6 @@
       "files": [
         {
           "path": "registry/boxbox/ui/replay-bumper.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "start-lights",
-      "type": "registry:ui",
-      "title": "Start Lights",
-      "description": "A race-start gantry: five columns arm one by one, hold, then go out, with a yellow flash for an aborted start.",
-      "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-theme"],
-      "files": [
-        {
-          "path": "registry/boxbox/ui/start-lights.tsx",
           "type": "registry:ui"
         }
       ]

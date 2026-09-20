@@ -1,6 +1,6 @@
 import type { SectorTime } from '@/registry/boxbox/lib/types';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
-import { useRaceSimulation } from '../../data/use-race-simulation';
+import { useRaceSimulation } from '@/data/use-race-simulation';
 import type { ControlValues } from '../types';
 import type controls from './controls';
 

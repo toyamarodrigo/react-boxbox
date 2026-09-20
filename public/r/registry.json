@@ -210,11 +210,20 @@
         "provider": "google",
         "import": "Titillium Web",
         "variable": "--font-display",
-        "weight": ["400", "600", "700", "900"],
-        "subsets": ["latin"],
+        "weight": [
+          "400",
+          "600",
+          "700",
+          "900"
+        ],
+        "subsets": [
+          "latin"
+        ],
         "dependency": "@fontsource/titillium-web"
       },
-      "registryDependencies": ["@boxbox/boxbox-font-mono"],
+      "registryDependencies": [
+        "@boxbox/boxbox-font-mono"
+      ],
       "css": {
         "@import \"@fontsource/titillium-web/600.css\"": {},
         "@import \"@fontsource/titillium-web/700.css\"": {},
@@ -231,8 +240,13 @@
         "provider": "google",
         "import": "JetBrains Mono",
         "variable": "--font-mono",
-        "weight": ["400", "700"],
-        "subsets": ["latin"],
+        "weight": [
+          "400",
+          "700"
+        ],
+        "subsets": [
+          "latin"
+        ],
         "dependency": "@fontsource/jetbrains-mono"
       },
       "css": {
@@ -244,11 +258,35 @@
       "type": "registry:ui",
       "title": "Tyre Badge",
       "description": "Broadcast tyre marker showing the compound and the laps on the current set.",
-      "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "dependencies": [
+        "motion"
+      ],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme"
+      ],
       "files": [
         {
           "path": "registry/boxbox/ui/tyre-badge.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "sector-times",
+      "type": "registry:ui",
+      "title": "Sector Times",
+      "description": "Broadcast sector bars with colour-coded statuses, mini sectors, and an animated lap time.",
+      "dependencies": [
+        "motion"
+      ],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/sector-times.tsx",
           "type": "registry:ui"
         }
       ]
@@ -258,11 +296,72 @@
       "type": "registry:ui",
       "title": "Driver Name Plate",
       "description": "Broadcast lower third that wipes in with the driver position, team colour, name, car number, and race status.",
-      "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "dependencies": [
+        "motion"
+      ],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme"
+      ],
       "files": [
         {
           "path": "registry/boxbox/ui/driver-name-plate.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "start-lights",
+      "type": "registry:ui",
+      "title": "Start Lights",
+      "description": "A race-start gantry: five columns arm one by one, hold, then go out, with a yellow flash for an aborted start.",
+      "dependencies": [
+        "motion"
+      ],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/start-lights.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "timing-tower",
+      "type": "registry:ui",
+      "title": "Timing Tower",
+      "description": "Live running order tower with animated re-sorting, gap or interval or lap time values, tyres, pit and lapped states.",
+      "dependencies": [
+        "motion"
+      ],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/tyre-badge"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/timing-tower.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "replay-bumper",
+      "type": "registry:ui",
+      "title": "Replay Bumper",
+      "description": "A broadcast transition that sweeps over a panel so its content can change behind it.",
+      "dependencies": [
+        "motion"
+      ],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/replay-bumper.tsx",
           "type": "registry:ui"
         }
       ]
