@@ -3,8 +3,8 @@ import {
   StartLights,
   startLightsInitialState,
   startLightsReducer,
-} from '../../../registry/boxbox/ui/start-lights';
-import type { StartLightsAction, StartLightsState } from '../../../registry/boxbox/ui/start-lights';
+} from '@/registry/boxbox/ui/start-lights';
+import type { StartLightsAction, StartLightsState } from '@/registry/boxbox/ui/start-lights';
 import type { ControlValues } from '../types';
 import controls from './controls';
 

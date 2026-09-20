@@ -1,4 +1,5 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';
+import { MotionConfig } from 'motion/react';
 
 import { SiteLayout } from '../components/site/layout';
 
@@ -42,7 +43,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         />
       </head>
       <body>
-        {children}
+        <MotionConfig reducedMotion="user">{children}</MotionConfig>
 
         <Scripts />
       </body>

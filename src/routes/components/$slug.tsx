@@ -4,7 +4,7 @@ import type { ComponentType } from 'react';
 import { getBySlug, getModules, manifest } from '../../content';
 import { ComponentPageBody } from '../../components/site/component-page';
 
-const registrySources = import.meta.glob('/registry/boxbox/*/*.tsx', {
+const registrySources = import.meta.glob(['/registry/boxbox/ui/*.tsx', '!**/*.test.tsx'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -20,8 +20,7 @@ function createContentPage(slug: string) {
     const meta = getBySlug(slug);
     if (!meta) throw notFound();
     const source =
-      registrySources[`/registry/boxbox/${meta.registryName}/${meta.registryName}.tsx`] ??
-      fallback.default;
+      registrySources[`/registry/boxbox/ui/${meta.registryName}.tsx`] ?? fallback.default;
     return {
       default: () => (
         <ComponentPageBody

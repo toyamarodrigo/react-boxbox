@@ -1,7 +1,5 @@
-'use client';
-
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- the gantry is a live region, not a form output */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ComponentProps } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
@@ -192,7 +190,7 @@ export function StartLightsColumn({
   lit?: boolean;
   aborted?: boolean;
   size?: StartLightsSize;
-} & ComponentProps<'div'>) {
+} & React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="start-lights-column"
@@ -208,7 +206,7 @@ export function StartLightsColumn({
 
 export type StartLightsProps = UseStartLightsOptions & {
   size?: StartLightsSize;
-} & ComponentProps<'output'>;
+} & React.ComponentProps<'div'>;
 
 export function StartLights({
   autoStart = false,
@@ -237,8 +235,8 @@ export function StartLights({
   });
   const aborted = state.phase === 'aborted';
   return (
-    // `output` carries the implicit `status` role.
-    <output
+    <div
+      role="status"
       aria-live="polite"
       data-slot="start-lights"
       data-phase={state.phase}
@@ -259,6 +257,6 @@ export function StartLights({
           size={size}
         />
       ))}
-    </output>
+    </div>
   );
 }

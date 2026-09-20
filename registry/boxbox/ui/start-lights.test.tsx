@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import {
   StartLights,
   startLightsInitialState,
@@ -12,8 +12,6 @@ import type { StartLightsState } from './start-lights';
 const idle: StartLightsState = startLightsInitialState;
 const arming = (lit: StartLightsState['lit']): StartLightsState => ({ phase: 'arming', lit });
 const lit: StartLightsState = { phase: 'lit', lit: 5 };
-
-afterEach(cleanup);
 
 describe('startLightsReducer', () => {
   it('arms from idle, out, and aborted but never mid-sequence', () => {
