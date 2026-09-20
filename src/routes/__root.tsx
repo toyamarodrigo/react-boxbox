@@ -1,5 +1,7 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';
 
+import { SiteLayout } from '../components/site/layout';
+
 import appCss from '../styles.css?url';
 
 export const Route = createRootRoute({
@@ -24,13 +26,20 @@ export const Route = createRootRoute({
     ],
   }),
   shellComponent: RootDocument,
+  component: SiteLayout,
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(localStorage.getItem('boxbox-theme')==='light')document.documentElement.classList.remove('dark')}catch{}",
+          }}
+        />
       </head>
       <body>
         {children}

@@ -10,33 +10,89 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ComponentsIndexRouteImport } from './routes/components/index'
+import { Route as ComponentsSlugRouteImport } from './routes/components/$slug'
+import { Route as DocsInstallationRouteImport } from './routes/docs/installation'
+import { Route as DocsThemingRouteImport } from './routes/docs/theming'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
+  id: '/components/',
+  path: '/components/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsSlugRoute = ComponentsSlugRouteImport.update({
+  id: '/components/$slug',
+  path: '/components/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsInstallationRoute = DocsInstallationRouteImport.update({
+  id: '/docs/installation',
+  path: '/docs/installation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsThemingRoute = DocsThemingRouteImport.update({
+  id: '/docs/theming',
+  path: '/docs/theming',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/components/$slug': typeof ComponentsSlugRoute
+  '/docs/installation': typeof DocsInstallationRoute
+  '/docs/theming': typeof DocsThemingRoute
+  '/components/': typeof ComponentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/components/$slug': typeof ComponentsSlugRoute
+  '/docs/installation': typeof DocsInstallationRoute
+  '/docs/theming': typeof DocsThemingRoute
+  '/components': typeof ComponentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/components/$slug': typeof ComponentsSlugRoute
+  '/docs/installation': typeof DocsInstallationRoute
+  '/docs/theming': typeof DocsThemingRoute
+  '/components/': typeof ComponentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/components/$slug'
+    | '/docs/installation'
+    | '/docs/theming'
+    | '/components/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/components/$slug'
+    | '/docs/installation'
+    | '/docs/theming'
+    | '/components'
+  id:
+    | '__root__'
+    | '/'
+    | '/components/$slug'
+    | '/docs/installation'
+    | '/docs/theming'
+    | '/components/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComponentsSlugRoute: typeof ComponentsSlugRoute
+  DocsInstallationRoute: typeof DocsInstallationRoute
+  DocsThemingRoute: typeof DocsThemingRoute
+  ComponentsIndexRoute: typeof ComponentsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +104,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/components/': {
+      id: '/components/'
+      path: '/components'
+      fullPath: '/components/'
+      preLoaderRoute: typeof ComponentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/components/$slug': {
+      id: '/components/$slug'
+      path: '/components/$slug'
+      fullPath: '/components/$slug'
+      preLoaderRoute: typeof ComponentsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/installation': {
+      id: '/docs/installation'
+      path: '/docs/installation'
+      fullPath: '/docs/installation'
+      preLoaderRoute: typeof DocsInstallationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/theming': {
+      id: '/docs/theming'
+      path: '/docs/theming'
+      fullPath: '/docs/theming'
+      preLoaderRoute: typeof DocsThemingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComponentsSlugRoute: ComponentsSlugRoute,
+  DocsInstallationRoute: DocsInstallationRoute,
+  DocsThemingRoute: DocsThemingRoute,
+  ComponentsIndexRoute: ComponentsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

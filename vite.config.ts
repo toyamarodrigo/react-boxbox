@@ -5,6 +5,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import viteReact from '@vitejs/plugin-react';
 import { nitro } from 'nitro/vite';
 import tailwindcss from '@tailwindcss/vite';
+import { contentSlugs } from './src/content/slugs.ts';
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
@@ -13,7 +14,15 @@ const config = defineConfig({
       // A distinct shell request lets Nitro write both /index.html and /_shell.html.
       spa: { enabled: true, maskPath: '/?shell' },
       prerender: { enabled: true, crawlLinks: true },
-      pages: [{ path: '/', prerender: { enabled: true, outputPath: '/index.html' } }],
+      pages: [
+        { path: '/', prerender: { enabled: true, outputPath: '/index.html' } },
+        ...[
+          '/docs/installation',
+          '/docs/theming',
+          '/components',
+          ...contentSlugs.map((slug) => `/components/${slug}`),
+        ].map((path) => ({ path, prerender: { enabled: true } })),
+      ],
     }),
     nitro(),
     viteReact(),
