@@ -312,6 +312,20 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "start-lights",
+      "type": "registry:ui",
+      "title": "Start Lights",
+      "description": "A race-start gantry: five columns arm one by one, hold, then go out, with a yellow flash for an aborted start.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/start-lights.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

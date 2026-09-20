@@ -3,6 +3,7 @@ import example from './example/meta';
 import tyreBadge from './tyre-badge/meta';
 import sectorTimes from './sector-times/meta';
 import driverNamePlate from './driver-name-plate/meta';
+import startLights from './start-lights/meta';
 import timingTower from './timing-tower/meta';
 import replayBumper from './replay-bumper/meta';
 
@@ -11,6 +12,7 @@ export const manifest: readonly ComponentMeta[] = [
   tyreBadge,
   sectorTimes,
   driverNamePlate,
+  startLights,
   timingTower,
   replayBumper,
 ];
@@ -52,6 +54,11 @@ export const contentModules = {
     controls: () => import('./driver-name-plate/controls'),
     demo: () => import('./driver-name-plate/demo'),
     source: () => import('./driver-name-plate/demo.tsx?raw'),
+  },
+  'start-lights': {
+    controls: () => import('./start-lights/controls'),
+    demo: () => import('./start-lights/demo'),
+    source: () => import('./start-lights/demo.tsx?raw'),
   },
   'timing-tower': {
     controls: () => import('./timing-tower/controls'),

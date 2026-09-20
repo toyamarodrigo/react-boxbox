@@ -4,6 +4,7 @@ export const contentSlugs = [
   'tyre-badge',
   'sector-times',
   'driver-name-plate',
+  'start-lights',
   'timing-tower',
   'replay-bumper',
 ] as const;
