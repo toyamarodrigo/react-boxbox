@@ -1,7 +1,8 @@
 import type { ComponentMeta } from './types';
 import example from './example/meta';
+import sectorTimes from './sector-times/meta';
 
-export const manifest: readonly ComponentMeta[] = [example];
+export const manifest: readonly ComponentMeta[] = [example, sectorTimes];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
   timing: 'Timing',
@@ -25,6 +26,11 @@ export const contentModules = {
     controls: () => import('./example/controls'),
     demo: () => import('./example/demo'),
     source: () => import('./example/demo.tsx?raw'),
+  },
+  'sector-times': {
+    controls: () => import('./sector-times/controls'),
+    demo: () => import('./sector-times/demo'),
+    source: () => import('./sector-times/demo.tsx?raw'),
   },
 } satisfies Record<
   string,
