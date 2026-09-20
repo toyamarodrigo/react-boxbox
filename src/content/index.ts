@@ -1,8 +1,9 @@
 import type { ComponentMeta } from './types';
 import example from './example/meta';
 import tyreBadge from './tyre-badge/meta';
+import driverNamePlate from './driver-name-plate/meta';
 
-export const manifest: readonly ComponentMeta[] = [example, tyreBadge];
+export const manifest: readonly ComponentMeta[] = [example, tyreBadge, driverNamePlate];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
   timing: 'Timing',
@@ -31,6 +32,11 @@ export const contentModules = {
     controls: () => import('./tyre-badge/controls'),
     demo: () => import('./tyre-badge/demo'),
     source: () => import('./tyre-badge/demo.tsx?raw'),
+  },
+  'driver-name-plate': {
+    controls: () => import('./driver-name-plate/controls'),
+    demo: () => import('./driver-name-plate/demo'),
+    source: () => import('./driver-name-plate/demo.tsx?raw'),
   },
 } satisfies Record<
   string,

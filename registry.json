@@ -252,6 +252,20 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "driver-name-plate",
+      "type": "registry:ui",
+      "title": "Driver Name Plate",
+      "description": "Broadcast lower third that wipes in with the driver position, team colour, name, car number, and race status.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/driver-name-plate.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
