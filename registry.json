@@ -266,6 +266,24 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "timing-tower",
+      "type": "registry:ui",
+      "title": "Timing Tower",
+      "description": "Live running order tower with animated re-sorting, gap or interval or lap time values, tyres, pit and lapped states.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/tyre-badge"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/timing-tower.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

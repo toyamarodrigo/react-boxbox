@@ -1,9 +1,15 @@
 import type { ComponentMeta } from './types';
 import example from './example/meta';
+import timingTower from './timing-tower/meta';
 import tyreBadge from './tyre-badge/meta';
 import driverNamePlate from './driver-name-plate/meta';
 
-export const manifest: readonly ComponentMeta[] = [example, tyreBadge, driverNamePlate];
+export const manifest: readonly ComponentMeta[] = [
+  example,
+  tyreBadge,
+  driverNamePlate,
+  timingTower,
+];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
   timing: 'Timing',
@@ -27,6 +33,11 @@ export const contentModules = {
     controls: () => import('./example/controls'),
     demo: () => import('./example/demo'),
     source: () => import('./example/demo.tsx?raw'),
+  },
+  'timing-tower': {
+    controls: () => import('./timing-tower/controls'),
+    demo: () => import('./timing-tower/demo'),
+    source: () => import('./timing-tower/demo.tsx?raw'),
   },
   'tyre-badge': {
     controls: () => import('./tyre-badge/controls'),
