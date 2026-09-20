@@ -5,4 +5,5 @@ export const contentSlugs = [
   'sector-times',
   'driver-name-plate',
   'timing-tower',
+  'replay-bumper',
 ] as const;

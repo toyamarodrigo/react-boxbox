@@ -298,6 +298,20 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "replay-bumper",
+      "type": "registry:ui",
+      "title": "Replay Bumper",
+      "description": "A broadcast transition that sweeps over a panel so its content can change behind it.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/replay-bumper.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
