@@ -284,6 +284,20 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "sector-times",
+      "type": "registry:ui",
+      "title": "Sector Times",
+      "description": "Broadcast sector bars with colour-coded statuses, mini sectors, and an animated lap time.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/sector-times.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
