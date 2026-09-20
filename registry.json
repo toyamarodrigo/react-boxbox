@@ -238,6 +238,20 @@
       "css": {
         "@import \"@fontsource/jetbrains-mono/700.css\"": {}
       }
+    },
+    {
+      "name": "tyre-badge",
+      "type": "registry:ui",
+      "title": "Tyre Badge",
+      "description": "Broadcast tyre marker showing the compound and the laps on the current set.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/tyre-badge.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
