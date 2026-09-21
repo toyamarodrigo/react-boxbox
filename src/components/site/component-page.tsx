@@ -10,6 +10,9 @@ import { Switch } from '../ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { CodeBlock } from './code-block';
+import { ManualInstall } from './manual-install';
+import type { PackageManager } from './manual-install';
+import type { ManualBundle } from '../../lib/registry-items';
 import { categoryNames } from '../../content';
 
 type Value = boolean | number | string;
@@ -106,16 +109,28 @@ export function ComponentPageBody({
   meta,
   definition,
   Demo,
-  source,
+  bundle,
 }: {
   meta: ComponentMeta;
   definition: Definition;
   Demo: ComponentType<Record<string, Value>>;
-  source: string;
+  bundle: ManualBundle;
 }) {
   const [values, setValues] = useState<Record<string, Value>>(definition.defaults);
-  const [manager, setManager] = useState<'bun' | 'pnpm' | 'npm'>('bun');
+  const [manager, setManager] = useState<PackageManager>('bun');
   const command = `${manager === 'bun' ? 'bunx' : manager === 'pnpm' ? 'pnpm dlx' : 'npx'} shadcn@latest add @boxbox/${meta.registryName}`;
+  const managerSelect = (
+    <Select value={manager} onValueChange={(value) => setManager(value as PackageManager)}>
+      <SelectTrigger className="w-32" aria-label="Package manager">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="bun">bun</SelectItem>
+        <SelectItem value="pnpm">pnpm</SelectItem>
+        <SelectItem value="npm">npm</SelectItem>
+      </SelectContent>
+    </Select>
+  );
   function change(name: string, value: Value) {
     const next = { ...values, [name]: value };
     if (definition.schema.safeParse(next).success) setValues(next);
@@ -169,27 +184,12 @@ export function ComponentPageBody({
           <TabsContent value="cli" className="space-y-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>Package manager</span>
-              <Select
-                value={manager}
-                onValueChange={(value) => setManager(value as 'bun' | 'pnpm' | 'npm')}
-              >
-                <SelectTrigger className="w-32" aria-label="Package manager">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bun">bun</SelectItem>
-                  <SelectItem value="pnpm">pnpm</SelectItem>
-                  <SelectItem value="npm">npm</SelectItem>
-                </SelectContent>
-              </Select>
+              {managerSelect}
             </div>
             <CodeBlock code={command} language="bash" />
           </TabsContent>
           <TabsContent value="manual">
-            <p className="mb-3 text-sm text-muted-foreground">
-              Copy the source into your project, then install its dependencies.
-            </p>
-            <CodeBlock code={source} language="tsx" />
+            <ManualInstall bundle={bundle} manager={manager} managerSelect={managerSelect} />
           </TabsContent>
         </Tabs>
       </section>
