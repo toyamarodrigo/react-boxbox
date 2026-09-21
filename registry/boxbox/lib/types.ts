@@ -2,7 +2,7 @@ export const TYRE_COMPOUNDS = ['S', 'M', 'H', 'I', 'W'] as const;
 
 export type TyreCompound = (typeof TYRE_COMPOUNDS)[number];
 export type SectorStatus = 'fastest' | 'personal' | 'slower' | 'unset';
-export type TrackStatus = 'green' | 'yellow' | 'red' | 'sc' | 'vsc' | 'chequered';
+export type TrackStatus = 'green' | 'yellow' | 'red' | 'sc' | 'vsc' | 'chequered' | 'double-yellow';
 export type GapMode = 'leader' | 'interval' | 'lapTime';
 
 export type Team = { id: string; name: string; color: string };

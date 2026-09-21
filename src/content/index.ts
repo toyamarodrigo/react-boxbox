@@ -6,6 +6,7 @@ import driverNamePlate from './driver-name-plate/meta';
 import startLights from './start-lights/meta';
 import timingTower from './timing-tower/meta';
 import replayBumper from './replay-bumper/meta';
+import flagBanner from './flag-banner/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -15,6 +16,7 @@ export const manifest: readonly ComponentMeta[] = [
   startLights,
   timingTower,
   replayBumper,
+  flagBanner,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -69,6 +71,11 @@ export const contentModules = {
     controls: () => import('./replay-bumper/controls'),
     demo: () => import('./replay-bumper/demo'),
     source: () => import('./replay-bumper/demo.tsx?raw'),
+  },
+  'flag-banner': {
+    controls: () => import('./flag-banner/controls'),
+    demo: () => import('./flag-banner/demo'),
+    source: () => import('./flag-banner/demo.tsx?raw'),
   },
 } satisfies Record<
   string,
