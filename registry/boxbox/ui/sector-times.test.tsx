@@ -65,6 +65,13 @@ describe('SectorTimes', () => {
     expect(view.getByText('1:25.400')).toBeInTheDocument();
   });
 
+  it('marks the lap value for a flash only when the lap is the session fastest', () => {
+    const { container, rerender } = render(<SectorTimes sectors={sectors} lapTime={91.512} />);
+    expect(container.querySelector('[data-flash]')).toBeNull();
+    rerender(<SectorTimes sectors={sectors} lapTime={91.512} lapStatus="fastest" />);
+    expect(container.querySelector('[data-flash="fastest"]')).toHaveTextContent('1:31.512');
+  });
+
   it('splits every sector bar into mini sectors', () => {
     const { container } = render(<SectorTimes sectors={sectors} miniSectors={4} />);
     expect(
