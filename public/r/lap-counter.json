@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "lap-counter",
+  "title": "Lap Counter",
+  "description": "Broadcast lap counter that rolls the lap and calls the last lap the final lap.",
+  "dependencies": [
+    "motion"
+  ],
+  "registryDependencies": [
+    "@boxbox/boxbox-theme",
+    "@boxbox/boxbox-motion",
+    "@boxbox/rolling-number"
+  ],
+  "files": [
+    {
+      "path": "registry/boxbox/ui/lap-counter.tsx",
+      "content": "/* oxlint-disable jsx-a11y/prefer-tag-over-role -- the counter is a live region on a div, not a form output */\nimport { AnimatePresence, motion } from 'motion/react';\nimport { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';\nimport { RollingNumber } from '@/registry/boxbox/ui/rolling-number';\nimport { cn } from '@/lib/utils';\n\nexport type LapCounterSize = 'sm' | 'md' | 'lg';\n\nconst ROOT_SIZES: Record<LapCounterSize, string> = {\n  sm: 'gap-2 px-2 py-1',\n  md: 'gap-3 px-3 py-1.5',\n  lg: 'gap-4 px-4 py-2',\n};\n\nconst LABEL_SIZES: Record<LapCounterSize, string> = {\n  sm: 'text-[0.625rem]',\n  md: 'text-xs',\n  lg: 'text-sm',\n};\n\nconst VALUE_SIZES: Record<LapCounterSize, string> = {\n  sm: 'gap-1 text-sm',\n  md: 'gap-1.5 text-lg',\n  lg: 'gap-2 text-2xl',\n};\n\n/** The word left of the numbers. It swaps to `FINAL LAP` on the last lap, so the swap is motion. */\nexport function LapCounterLabel({\n  label,\n  size = 'md',\n  className,\n  ...props\n}: { label: string; size?: LapCounterSize } & React.ComponentProps<'span'>) {\n  return (\n    <span\n      data-slot=\"lap-counter-label\"\n      className={cn(\n        'relative inline-grid overflow-hidden font-display font-bold uppercase leading-none tracking-widest',\n        LABEL_SIZES[size],\n        className,\n      )}\n      {...props}\n    >\n      {/* Both words share one grid cell, so the swap never moves the numbers beside it. */}\n      <AnimatePresence initial={false}>\n        <motion.span\n          key={label}\n          className=\"block whitespace-nowrap [grid-area:1/1]\"\n          initial={{ opacity: 0, transform: 'translateY(4px)' }}\n          animate={{ opacity: 1, transform: 'translateY(0px)' }}\n          exit={{\n            opacity: 0,\n            transform: 'translateY(-4px)',\n            transition: { duration: DURATION.fast, ease: EASE_OUT },\n          }}\n          transition={{ duration: DURATION.base, ease: EASE_OUT }}\n        >\n          {label}\n        </motion.span>\n      </AnimatePresence>\n    </span>\n  );\n}\n\nexport function LapCounterValue({\n  lap,\n  totalLaps,\n  size = 'md',\n  className,\n  ...props\n}: { lap: number; totalLaps: number; size?: LapCounterSize } & React.ComponentProps<'span'>) {\n  return (\n    <span\n      data-slot=\"lap-counter-value\"\n      className={cn(\n        'inline-flex items-baseline font-mono font-bold leading-none tabular-nums',\n        VALUE_SIZES[size],\n        className,\n      )}\n      {...props}\n    >\n      {/* Two characters are reserved so lap 9 → 10 does not widen the counter. */}\n      <RollingNumber className=\"min-w-[2ch] justify-items-end\" value={lap} direction=\"up\" />\n      <span className=\"opacity-50\">/</span>\n      <span>{totalLaps}</span>\n    </span>\n  );\n}\n\n/**\n * The broadcast lap counter: `LAP 12 / 57`, with the lap rolling up as the race runs.\n * The parent owns the lap; the counter only shows it.\n */\nexport function LapCounter({\n  lap,\n  totalLaps,\n  label = 'LAP',\n  size = 'md',\n  className,\n  ...props\n}: {\n  lap: number;\n  totalLaps: number;\n  label?: string;\n  size?: LapCounterSize;\n} & React.ComponentProps<'div'>) {\n  const isFinal = totalLaps > 0 && lap >= totalLaps;\n  return (\n    <div\n      data-slot=\"lap-counter\"\n      data-final={isFinal ? 'true' : 'false'}\n      role=\"status\"\n      aria-live=\"polite\"\n      className={cn(\n        'inline-flex items-center border border-border bg-card text-card-foreground',\n        ROOT_SIZES[size],\n        className,\n      )}\n      {...props}\n    >\n      <span className=\"sr-only\">{isFinal ? 'Final lap' : `Lap ${lap} of ${totalLaps}`}</span>\n      <LapCounterLabel aria-hidden label={isFinal ? 'FINAL LAP' : label} size={size} />\n      <LapCounterValue aria-hidden lap={lap} totalLaps={totalLaps} size={size} />\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

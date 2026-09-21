@@ -8,8 +8,13 @@ it('ticks, pauses, resets, and clears its timer', () => {
   vi.useFakeTimers();
   const { result, unmount } = renderHook(() => useRaceSimulation({ intervalMs: 100, seed: 5 }));
   expect(result.current.state.lap).toBe(0);
-  act(() => vi.advanceTimersByTime(200));
+  expect(result.current.state.elapsedMs).toBe(0);
+  act(() => vi.advanceTimersByTime(100));
+  const firstLapMs = result.current.state.elapsedMs;
+  expect(firstLapMs).toBeGreaterThan(0);
+  act(() => vi.advanceTimersByTime(100));
   expect(result.current.state.lap).toBe(2);
+  expect(result.current.state.elapsedMs).toBeGreaterThan(firstLapMs);
   act(() => result.current.pause());
   act(() => vi.advanceTimersByTime(200));
   expect(result.current.state.lap).toBe(2);
@@ -18,6 +23,7 @@ it('ticks, pauses, resets, and clears its timer', () => {
   expect(result.current.state.lap).toBe(3);
   act(() => result.current.reset());
   expect(result.current.state.lap).toBe(0);
+  expect(result.current.state.elapsedMs).toBe(0);
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });
