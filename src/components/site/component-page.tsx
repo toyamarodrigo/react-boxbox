@@ -135,7 +135,12 @@ export function ComponentPageBody({
           Preview
         </h2>
         <div className="grid border border-border xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="flex min-h-80 items-center justify-center bg-[oklch(0.1_0_0)] p-8">
+          {/*
+            The stage stands in for a broadcast feed, so it stays dark in both
+            themes. Scoping it with `dark` makes the tokens inside match the
+            stage; without it the light theme paints a white component on black.
+          */}
+          <div className="dark flex min-h-80 items-center justify-center bg-background p-8 text-foreground">
             <Demo {...values} />
           </div>
           <div className="border-t border-border bg-card p-5 xl:border-l xl:border-t-0">

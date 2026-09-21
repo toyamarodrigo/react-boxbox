@@ -54,10 +54,12 @@ export function CodeBlock({ code, language }: { code: string; language: Language
         aria-label={copied ? 'Copied' : 'Copy code'}
       >
         {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-        {copied ? 'Copied' : 'Copy'}
+        {/* The word costs half the width of a 375px code block; the button
+            keeps its accessible name from `aria-label`. */}
+        <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
       </Button>
       <div
-        className="max-h-[460px] overflow-auto p-4 pr-24 font-mono text-xs leading-6"
+        className="max-h-[460px] overflow-auto p-4 pr-16 font-mono text-xs leading-6 sm:pr-24"
         {...(html
           ? { dangerouslySetInnerHTML: { __html: html } }
           : { children: <pre className="whitespace-pre-wrap">{code}</pre> })}
