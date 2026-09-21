@@ -203,10 +203,17 @@ export function TimingTowerRow({
       data-pit={String(row.inPit)}
       data-lapped={String(row.lapped)}
       data-drs={String(row.drs)}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: { duration: DURATION.fast, ease: EASE_OUT } }}
-      transition={{ layout: SPRING_ROW, opacity: { duration: DURATION.base, ease: EASE_OUT } }}
+      // `y` rather than a transform string: Motion composes it with the layout
+      // projection, so a row leaving past `maxRows` drops out of the bottom
+      // instead of vanishing, and one climbing into view rises into its place.
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 12, transition: { duration: DURATION.fast, ease: EASE_OUT } }}
+      transition={{
+        layout: SPRING_ROW,
+        opacity: { duration: DURATION.base, ease: EASE_OUT },
+        y: { duration: DURATION.base, ease: EASE_OUT },
+      }}
       className={cn(
         'flex items-center gap-2 border-b border-border bg-card/90 py-1 pr-2 text-card-foreground last:border-b-0',
         highlighted && 'bg-primary/10',

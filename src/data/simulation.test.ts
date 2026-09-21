@@ -45,6 +45,25 @@ describe('race simulation', () => {
     expect(drsCount).toBeGreaterThan(0);
   });
 
+  it('moves drivers several places at once, so the tower has something to animate', () => {
+    const rng = createSeededRng(1);
+    let state = createInitialRace(grid, rng);
+    let biggestMove = 0;
+    let biggestPitDrop = 0;
+    for (let lap = 0; lap < 70; lap++) {
+      state = advanceRace(state, rng);
+      // Every place one driver gains, another loses.
+      expect(state.rows.reduce((sum, row) => sum + row.positionChange, 0)).toBe(0);
+      for (const row of state.rows) {
+        biggestMove = Math.max(biggestMove, Math.abs(row.positionChange));
+        if (row.inPit) biggestPitDrop = Math.min(biggestPitDrop, row.positionChange);
+      }
+    }
+    // A model that only swapped neighbours could never produce either of these.
+    expect(biggestMove).toBeGreaterThan(1);
+    expect(biggestPitDrop).toBeLessThan(-1);
+  });
+
   it('uses valid sector statuses and resets tyre age on pit stops', () => {
     let pitCount = 0;
     for (let tick = 1; tick <= 60; tick++) {

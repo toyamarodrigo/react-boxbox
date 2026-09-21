@@ -76,7 +76,8 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
   const previousPositions = new Map(state.rows.map((row) => [row.driverId, row.position]));
   const rows = state.rows.map((row) => {
     const inPit = rng() < 0.025;
-    const pace = 85 + rng() * 10 + (inPit ? 20 : 0);
+    // Worn tyres cost time, so a fresh set after a stop is what wins places back.
+    const pace = 85 + rng() * 10 + row.tyre.age * 0.06 + (inPit ? 20 : 0);
     const previousBest = personalBestSectors[row.driverId] ?? [null, null, null];
     const personal = [...previousBest] as [number | null, number | null, number | null];
     const sectors = [0, 1, 2].map((index): SectorTime => {
@@ -125,29 +126,34 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
     })) as [SectorTime, SectorTime, SectorTime];
   }
 
-  if (rows.length > 1 && rng() < 0.45) {
-    const index = Math.floor(rng() * (rows.length - 1));
-    [rows[index], rows[index + 1]] = [rows[index + 1]!, rows[index]!];
-  }
-  let gap = 0;
+  // The order falls out of the gaps rather than a swap of neighbours: each driver
+  // runs their own race, so a stop costs real track position and drops them past
+  // however many cars fit in those seconds, and fresh tyres climb back over the
+  // laps that follow. Adjacent swaps could only ever move a driver one place.
   const leaderLap = rows[0]!.lastLapTime!;
-  const ranked = rows.map((row, index) => {
-    if (index > 0) {
-      const oldGap = row.gapToLeader ?? 0;
-      const oldAhead = rows[index - 1]!.gapToLeader ?? 0;
-      const oldInterval = Math.max(0.2, oldGap - oldAhead);
-      gap = round(
-        gap +
-          Math.max(0.2, oldInterval + (row.lastLapTime! - leaderLap) * 0.15 + (row.inPit ? 8 : 0)),
-      );
-    }
+  const projected = rows
+    .map((row) => ({
+      row,
+      gap: Math.max(
+        0,
+        (row.gapToLeader ?? 0) + (row.lastLapTime! - leaderLap) * 0.15 + (row.inPit ? 8 : 0),
+      ),
+    }))
+    .sort((a, b) => a.gap - b.gap);
+
+  const leaderGap = projected[0]!.gap;
+  let previousGap = 0;
+  const ranked = projected.map(({ row, gap }, index) => {
+    // Keep the field ordered and never let two cars share a gap.
+    const gapToLeader = index === 0 ? 0 : round(Math.max(previousGap + 0.2, gap - leaderGap));
+    previousGap = gapToLeader;
     return {
       ...row,
       position: index + 1,
       positionChange: previousPositions.get(row.driverId)! - (index + 1),
-      gapToLeader: gap,
+      gapToLeader,
       interval: index === 0 ? null : 0,
-      lapped: gap > leaderLap,
+      lapped: gapToLeader > leaderLap,
       drs: false,
     };
   });
