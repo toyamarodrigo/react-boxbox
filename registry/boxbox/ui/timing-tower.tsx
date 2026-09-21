@@ -1,13 +1,19 @@
-import { Fragment } from 'react';
-import { type HTMLMotionProps, motion } from 'motion/react';
+import { Fragment, useState } from 'react';
+import { AnimatePresence, type HTMLMotionProps, LayoutGroup, motion } from 'motion/react';
 import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
 import type { Driver, GapMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
+import { RollingNumber } from '@/registry/boxbox/ui/rolling-number';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
 import { cn } from '@/lib/utils';
 
 const EMPTY = '—';
+/**
+ * Flash colours are literal rgba so Motion can interpolate them to transparent.
+ * They mirror the `--flag-green`, `--primary` and `--sector-fastest` theme tokens.
+ */
 const FLASH_GAIN = 'rgba(45, 180, 110, 0.45)';
 const FLASH_LOSS = 'rgba(220, 60, 60, 0.45)';
+const FLASH_FASTEST = 'rgba(150, 70, 225, 0.45)';
 const FLASH_IDLE = 'rgba(0, 0, 0, 0)';
 
 /** Orders rows by position, lowest first. Stable for rows that share a position. */
@@ -59,27 +65,49 @@ function valueTone(row: TimingRow, isFastestLap: boolean): TimingTowerValueTone 
   return 'default';
 }
 
+export type TimingTowerPositionChange = 'gain' | 'loss' | 'none';
+
+/** `gain` when the driver moved up the order, `loss` when down, `none` when the row held station. */
+export function positionChangeState(positionChange: number): TimingTowerPositionChange {
+  if (positionChange > 0) return 'gain';
+  if (positionChange < 0) return 'loss';
+  return 'none';
+}
+
 export function TimingTowerPosition({
   position,
   positionChange = 0,
   className,
   ...props
 }: { position: number; positionChange?: number } & HTMLMotionProps<'div'>) {
-  const flash = positionChange > 0 ? FLASH_GAIN : positionChange < 0 ? FLASH_LOSS : undefined;
+  const change = positionChangeState(positionChange);
+  const flash = change === 'gain' ? FLASH_GAIN : change === 'loss' ? FLASH_LOSS : null;
   return (
     <motion.div
-      key={`${position}:${positionChange}`}
       data-slot="timing-tower-position"
-      initial={false}
-      animate={{ backgroundColor: flash ? [flash, FLASH_IDLE] : FLASH_IDLE }}
-      transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+      data-change={change}
       className={cn(
-        'grid w-7 shrink-0 place-items-center self-stretch font-display text-sm font-black leading-none tabular-nums',
+        'relative grid w-7 shrink-0 place-items-center self-stretch font-display text-sm font-black leading-none tabular-nums',
         className,
       )}
       {...props}
     >
-      {position}
+      {flash && (
+        // The key remounts the layer so a second consecutive change flashes again.
+        <motion.span
+          key={`${position}:${positionChange}`}
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          initial={{ backgroundColor: flash }}
+          animate={{ backgroundColor: FLASH_IDLE }}
+          transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+        />
+      )}
+      <RollingNumber
+        className="relative"
+        value={position}
+        direction={change === 'loss' ? 'down' : 'up'}
+      />
     </motion.div>
   );
 }
@@ -87,32 +115,67 @@ export function TimingTowerPosition({
 export function TimingTowerValue({
   value,
   tone = 'default',
+  flashKey,
   className,
   ...props
-}: { value: string; tone?: TimingTowerValueTone } & React.ComponentProps<'div'>) {
+}: {
+  value: string;
+  tone?: TimingTowerValueTone;
+  /** Change this to replay the fastest-lap flash. Nothing flashes while it stays the same. */
+  flashKey?: number;
+} & React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="timing-tower-value"
       data-tone={tone}
       className={cn(
-        'ml-auto overflow-hidden text-right font-mono text-xs font-bold leading-none tabular-nums',
+        'relative ml-auto overflow-hidden text-right font-mono text-xs font-bold leading-none tabular-nums',
         VALUE_TONES[tone],
         className,
       )}
       {...props}
     >
+      {flashKey !== undefined && flashKey > 0 && (
+        <motion.span
+          key={flashKey}
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          initial={{ backgroundColor: FLASH_FASTEST }}
+          animate={{ backgroundColor: FLASH_IDLE }}
+          transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+        />
+      )}
       <motion.span
         key={value}
-        initial={{ opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: DURATION.fast, ease: EASE_OUT }}
-        className="block"
+        initial={{ opacity: 0, transform: 'translateY(-3px)' }}
+        animate={{ opacity: 1, transform: 'translateY(0px)' }}
+        transition={{ duration: DURATION.tick, ease: EASE_OUT }}
+        className="relative block"
       >
         {value}
       </motion.span>
     </div>
   );
 }
+
+/** Counts the false → true flips of `active`, so a `key` can replay a one-shot flash. */
+function useFlipCount(active: boolean): number {
+  const [state, setState] = useState({ count: 0, active });
+  if (state.active !== active) {
+    const next = { count: active ? state.count + 1 : state.count, active };
+    setState(next);
+    return next.count;
+  }
+  return state.count;
+}
+
+const TAG_CLASS = 'shrink-0 px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest';
+const TAG_MOTION = {
+  initial: { opacity: 0, transform: 'translateX(-4px)' },
+  animate: { opacity: 1, transform: 'translateX(0px)' },
+  exit: { opacity: 0, transition: { duration: DURATION.tick, ease: EASE_OUT } },
+  transition: { duration: DURATION.fast, ease: EASE_OUT },
+} as const;
 
 export function TimingTowerRow({
   row,
@@ -138,16 +201,20 @@ export function TimingTowerRow({
   showDrs?: boolean;
 } & HTMLMotionProps<'li'>) {
   const gained = row.positionChange > 0;
+  const flashKey = useFlipCount(isFastestLap);
   return (
     <motion.li
-      layout
+      layout="position"
       data-slot="timing-tower-row"
       data-position={row.position}
       data-driver={row.driverId}
       data-pit={String(row.inPit)}
       data-lapped={String(row.lapped)}
       data-drs={String(row.drs)}
-      transition={SPRING_ROW}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, transition: { duration: DURATION.fast, ease: EASE_OUT } }}
+      transition={{ layout: SPRING_ROW, opacity: { duration: DURATION.base, ease: EASE_OUT } }}
       className={cn(
         'flex items-center gap-2 border-b border-border bg-card/90 py-1 pr-2 text-card-foreground last:border-b-0',
         highlighted && 'bg-primary/10',
@@ -164,26 +231,55 @@ export function TimingTowerRow({
       <span className="font-display text-sm font-bold uppercase leading-none tracking-wider">
         {driver.code}
       </span>
-      {row.positionChange !== 0 && (
-        <span
-          aria-hidden
-          className={cn('text-[0.5rem] leading-none', gained ? 'text-flag-green' : 'text-primary')}
-        >
-          {gained ? '▲' : '▼'}
-        </span>
-      )}
+      <AnimatePresence initial={false}>
+        {row.positionChange !== 0 && (
+          <motion.span
+            key={gained ? 'gain' : 'loss'}
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: DURATION.fast, ease: EASE_OUT }}
+            className={cn(
+              'text-[0.5rem] leading-none',
+              gained ? 'text-flag-green' : 'text-primary',
+            )}
+          >
+            {gained ? '▲' : '▼'}
+          </motion.span>
+        )}
+      </AnimatePresence>
       {showTyre && <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} />}
-      {showDrs && row.drs && (
-        <span className="border border-flag-green px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest text-flag-green">
-          DRS
-        </span>
+      {/* `showDrs` is configuration, so it unmounts the presence wrapper and never animates. */}
+      {showDrs && (
+        <AnimatePresence initial={false}>
+          {row.drs && (
+            <motion.span
+              key="drs"
+              {...TAG_MOTION}
+              className={cn(TAG_CLASS, 'border border-flag-green text-flag-green')}
+            >
+              DRS
+            </motion.span>
+          )}
+        </AnimatePresence>
       )}
-      {row.inPit && (
-        <span className="bg-status-pit px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest text-status-pit-foreground">
-          PIT
-        </span>
-      )}
-      <TimingTowerValue value={rowValue(row, mode, isLeader)} tone={valueTone(row, isFastestLap)} />
+      <AnimatePresence initial={false}>
+        {row.inPit && (
+          <motion.span
+            key="pit"
+            {...TAG_MOTION}
+            className={cn(TAG_CLASS, 'bg-status-pit text-status-pit-foreground')}
+          >
+            PIT
+          </motion.span>
+        )}
+      </AnimatePresence>
+      <TimingTowerValue
+        value={rowValue(row, mode, isLeader)}
+        tone={valueTone(row, isFastestLap)}
+        flashKey={flashKey}
+      />
     </motion.li>
   );
 }
@@ -225,33 +321,39 @@ export function TimingTower({
       data-mode={mode}
       aria-label="Timing tower"
       className={cn(
-        'flex w-56 list-none flex-col border border-border bg-card/90 font-display text-card-foreground',
+        'relative flex w-56 list-none flex-col border border-border bg-card/90 font-display text-card-foreground',
         className,
       )}
       {...props}
     >
-      {shown.map((row, index) => {
-        const driver = drivers[row.driverId];
-        if (!driver) return null;
-        const team = teams[driver.teamId];
-        if (renderRow) {
-          return <Fragment key={row.driverId}>{renderRow(row, { driver, team, index })}</Fragment>;
-        }
-        return (
-          <TimingTowerRow
-            key={row.driverId}
-            row={row}
-            driver={driver}
-            team={team}
-            mode={mode}
-            isLeader={index === 0}
-            isFastestLap={fastestLapDriverId === row.driverId}
-            highlighted={index < highlightTop}
-            showTyre={showTyre}
-            showDrs={showDrs}
-          />
-        );
-      })}
+      <LayoutGroup>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {shown.map((row, index) => {
+            const driver = drivers[row.driverId];
+            if (!driver) return null;
+            const team = teams[driver.teamId];
+            if (renderRow) {
+              return (
+                <Fragment key={row.driverId}>{renderRow(row, { driver, team, index })}</Fragment>
+              );
+            }
+            return (
+              <TimingTowerRow
+                key={row.driverId}
+                row={row}
+                driver={driver}
+                team={team}
+                mode={mode}
+                isLeader={index === 0}
+                isFastestLap={fastestLapDriverId === row.driverId}
+                highlighted={index < highlightTop}
+                showTyre={showTyre}
+                showDrs={showDrs}
+              />
+            );
+          })}
+        </AnimatePresence>
+      </LayoutGroup>
     </ol>
   );
 }

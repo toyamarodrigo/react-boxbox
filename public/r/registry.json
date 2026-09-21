@@ -344,6 +344,7 @@
         "@boxbox/boxbox-types",
         "@boxbox/boxbox-theme",
         "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number",
         "@boxbox/tyre-badge"
       ],
       "files": [
