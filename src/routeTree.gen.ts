@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ReplayRouteImport } from './routes/replay'
 import { Route as ComponentsIndexRouteImport } from './routes/components/index'
 import { Route as ComponentsSlugRouteImport } from './routes/components/$slug'
 import { Route as DocsInstallationRouteImport } from './routes/docs/installation'
@@ -18,6 +19,11 @@ import { Route as DocsThemingRouteImport } from './routes/docs/theming'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReplayRoute = ReplayRouteImport.update({
+  id: '/replay',
+  path: '/replay',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
@@ -43,6 +49,7 @@ const DocsThemingRoute = DocsThemingRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/replay': typeof ReplayRoute
   '/components/$slug': typeof ComponentsSlugRoute
   '/docs/installation': typeof DocsInstallationRoute
   '/docs/theming': typeof DocsThemingRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/replay': typeof ReplayRoute
   '/components/$slug': typeof ComponentsSlugRoute
   '/docs/installation': typeof DocsInstallationRoute
   '/docs/theming': typeof DocsThemingRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/replay': typeof ReplayRoute
   '/components/$slug': typeof ComponentsSlugRoute
   '/docs/installation': typeof DocsInstallationRoute
   '/docs/theming': typeof DocsThemingRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/replay'
     | '/components/$slug'
     | '/docs/installation'
     | '/docs/theming'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/replay'
     | '/components/$slug'
     | '/docs/installation'
     | '/docs/theming'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/replay'
     | '/components/$slug'
     | '/docs/installation'
     | '/docs/theming'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ReplayRoute: typeof ReplayRoute
   ComponentsSlugRoute: typeof ComponentsSlugRoute
   DocsInstallationRoute: typeof DocsInstallationRoute
   DocsThemingRoute: typeof DocsThemingRoute
@@ -102,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/replay': {
+      id: '/replay'
+      path: '/replay'
+      fullPath: '/replay'
+      preLoaderRoute: typeof ReplayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/components/': {
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ReplayRoute: ReplayRoute,
   ComponentsSlugRoute: ComponentsSlugRoute,
   DocsInstallationRoute: DocsInstallationRoute,
   DocsThemingRoute: DocsThemingRoute,
@@ -145,12 +166,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

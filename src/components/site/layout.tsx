@@ -48,13 +48,22 @@ function Navigation({ close }: { close?: () => void }) {
           </div>
         </div>
       ))}
-      <Link
-        to="/components"
-        onClick={close}
-        className={`block border-t border-border px-3 pt-5 text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground ${FOCUS_RING}`}
-      >
-        All components
-      </Link>
+      <div className="space-y-1 border-t border-border pt-5">
+        <Link
+          to="/components"
+          onClick={close}
+          className={`block px-3 text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground ${FOCUS_RING}`}
+        >
+          All components
+        </Link>
+        <Link
+          to="/replay"
+          onClick={close}
+          className={`block px-3 text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground ${FOCUS_RING}`}
+        >
+          Replay
+        </Link>
+      </div>
     </nav>
   );
 }
@@ -121,6 +130,12 @@ export function SiteLayout() {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          <Link
+            to="/replay"
+            className={`mr-2 hidden text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground sm:inline ${FOCUS_RING}`}
+          >
+            Replay
+          </Link>
           <ThemeToggle />
           <Button variant="ghost" size="icon" asChild>
             <a
