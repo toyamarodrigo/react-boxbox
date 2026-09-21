@@ -3,25 +3,16 @@ import { lazy, Suspense } from 'react';
 import type { ComponentType } from 'react';
 import { getBySlug, getModules, manifest } from '../../content';
 import { ComponentPageBody } from '../../components/site/component-page';
+import { manualBundle } from '../../lib/registry-items';
 import { seo } from '../../lib/seo';
 
-const registrySources = import.meta.glob(['/registry/boxbox/ui/*.tsx', '!**/*.test.tsx'], {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>;
 function createContentPage(slug: string) {
   const modules = getModules(slug);
   const Page = lazy(async () => {
-    const [controls, demo, fallback] = await Promise.all([
-      modules.controls(),
-      modules.demo(),
-      modules.source(),
-    ]);
+    const [controls, demo] = await Promise.all([modules.controls(), modules.demo()]);
     const meta = getBySlug(slug);
     if (!meta) throw notFound();
-    const source =
-      registrySources[`/registry/boxbox/ui/${meta.registryName}.tsx`] ?? fallback.default;
+    const bundle = manualBundle(meta.registryName);
     return {
       default: () => (
         <ComponentPageBody
@@ -30,7 +21,7 @@ function createContentPage(slug: string) {
             controls.default as React.ComponentProps<typeof ComponentPageBody>['definition']
           }
           Demo={demo.default as React.ComponentProps<typeof ComponentPageBody>['Demo']}
-          source={source}
+          bundle={bundle}
         />
       ),
     };

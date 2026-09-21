@@ -2,7 +2,7 @@ import { Check, Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/button';
 
-type Language = 'tsx' | 'bash';
+type Language = 'tsx' | 'ts' | 'bash' | 'css';
 
 export function CodeBlock({ code, language }: { code: string; language: Language }) {
   const [highlighted, setHighlighted] = useState<{ key: string; html: string }>();
@@ -12,17 +12,19 @@ export function CodeBlock({ code, language }: { code: string; language: Language
   useEffect(() => {
     let active = true;
     async function highlight() {
-      const [{ createHighlighterCore }, { createOnigurumaEngine }, theme, tsx, bash] =
+      const [{ createHighlighterCore }, { createOnigurumaEngine }, theme, tsx, ts, bash, css] =
         await Promise.all([
           import('shiki/core'),
           import('shiki/engine/oniguruma'),
           import('@shikijs/themes/github-dark'),
           import('@shikijs/langs/tsx'),
+          import('@shikijs/langs/ts'),
           import('@shikijs/langs/bash'),
+          import('@shikijs/langs/css'),
         ]);
       const highlighter = await createHighlighterCore({
         themes: [theme.default],
-        langs: [tsx.default, bash.default],
+        langs: [tsx.default, ts.default, bash.default, css.default],
         engine: createOnigurumaEngine(import('shiki/wasm')),
       });
       if (active)
