@@ -138,6 +138,11 @@ export function TimingTowerRow({
   showDrs?: boolean;
 } & HTMLMotionProps<'li'>) {
   const gained = row.positionChange > 0;
+  const moved = Math.abs(row.positionChange);
+  // The value column means something different per mode, and the digits and the
+  // ▲/▼ glyph carry no meaning on their own, so each gets a spoken label.
+  const valueLabel =
+    mode === 'lapTime' ? 'Last lap' : mode === 'interval' ? 'Interval' : 'Gap to leader';
   return (
     <motion.li
       layout
@@ -155,6 +160,7 @@ export function TimingTowerRow({
       )}
       {...props}
     >
+      <span className="sr-only">Position</span>
       <TimingTowerPosition position={row.position} positionChange={row.positionChange} />
       <span
         aria-hidden
@@ -165,12 +171,20 @@ export function TimingTowerRow({
         {driver.code}
       </span>
       {row.positionChange !== 0 && (
-        <span
-          aria-hidden
-          className={cn('text-[0.5rem] leading-none', gained ? 'text-flag-green' : 'text-primary')}
-        >
-          {gained ? '▲' : '▼'}
-        </span>
+        <>
+          <span
+            aria-hidden
+            className={cn(
+              'text-[0.5rem] leading-none',
+              gained ? 'text-flag-green' : 'text-primary',
+            )}
+          >
+            {gained ? '▲' : '▼'}
+          </span>
+          <span className="sr-only">
+            {`${gained ? 'gained' : 'lost'} ${moved} ${moved === 1 ? 'place' : 'places'}`}
+          </span>
+        </>
       )}
       {showTyre && <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} />}
       {showDrs && row.drs && (
@@ -183,6 +197,7 @@ export function TimingTowerRow({
           PIT
         </span>
       )}
+      <span className="sr-only">{valueLabel}</span>
       <TimingTowerValue value={rowValue(row, mode, isLeader)} tone={valueTone(row, isFastestLap)} />
     </motion.li>
   );

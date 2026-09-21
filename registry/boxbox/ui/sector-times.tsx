@@ -19,6 +19,14 @@ const TEXT_COLOR: Record<SectorStatus, string> = {
   unset: 'text-muted-foreground',
 };
 
+/** Status is carried by colour alone on screen, so it is also spoken. */
+const STATUS_LABEL: Record<SectorStatus, string> = {
+  fastest: 'session fastest',
+  personal: 'personal best',
+  slower: 'slower',
+  unset: 'not set',
+};
+
 const EMPTY = '—';
 
 /** Formats a sector time in seconds as `30.512`, or an em dash when unset. */
@@ -88,6 +96,7 @@ export function SectorTimesSector({
   const value = (
     <span className={cn('font-mono text-sm tabular-nums', TEXT_COLOR[status])}>
       {formatSectorTime(time)}
+      <span className="sr-only">{`, ${STATUS_LABEL[status]}`}</span>
     </span>
   );
 
@@ -168,6 +177,7 @@ export function SectorTimesLap({
       </span>
       <span className={cn('font-mono text-xl font-bold tabular-nums', TEXT_COLOR[status])}>
         {formatLapTime(shown)}
+        <span className="sr-only">{`, ${STATUS_LABEL[status]}`}</span>
       </span>
     </div>
   );

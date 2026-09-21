@@ -63,7 +63,7 @@ export function Home() {
           </h2>
           <Link
             to="/components"
-            className="font-mono text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+            className="font-mono text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             All components →
           </Link>
