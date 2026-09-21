@@ -32,11 +32,18 @@ const controls = defineControls({
     description: 'Show the tyre compound and its age on each row.',
     default: true,
   },
-  showDrs: {
+  showOvertake: {
     kind: 'boolean',
-    label: 'Show DRS',
-    description: 'Show the DRS tag when a car is in range.',
+    label: 'Show overtake',
+    description: 'Show the overtake tag when a car is in range.',
     default: true,
+  },
+  overtakeMode: {
+    kind: 'select',
+    label: 'Overtake mode',
+    description: 'DRS up to 2025, Overtake Mode from 2026.',
+    default: 'drs',
+    options: ['drs', 'overtake'],
   },
   speed: {
     kind: 'number',

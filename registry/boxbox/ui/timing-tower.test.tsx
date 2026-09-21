@@ -158,6 +158,25 @@ describe('TimingTower', () => {
     expect(screen.queryByText('DRS')).not.toBeInTheDocument();
   });
 
+  it('hides the tag through showOvertake as well, and shows it by default', () => {
+    const { rerender } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} showOvertake={false} />,
+    );
+    expect(screen.queryByText('DRS')).not.toBeInTheDocument();
+    rerender(<TimingTower rows={rows} drivers={drivers} teams={teams} showOvertake />);
+    expect(screen.getAllByText('DRS')).toHaveLength(1);
+  });
+
+  it('renders the tag in overtake mode as OVT', () => {
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} overtakeMode="overtake" />,
+    );
+    const tag = container.querySelector('[data-slot="overtake-indicator"]');
+    expect(tag).toHaveAttribute('data-mode', 'overtake');
+    expect(tag).toHaveAttribute('data-state', 'active');
+    expect(tag).toHaveTextContent('OVT');
+  });
+
   it('paints the fastest lap holder and the leading rows differently', () => {
     const { container } = render(
       <TimingTower

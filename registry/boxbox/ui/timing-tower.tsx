@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { AnimatePresence, type HTMLMotionProps, LayoutGroup, motion } from 'motion/react';
 import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
 import type { Driver, GapMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
+import { type OvertakeMode, OvertakeIndicator } from '@/registry/boxbox/ui/overtake-indicator';
 import { RollingNumber } from '@/registry/boxbox/ui/rolling-number';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
 import { cn } from '@/lib/utils';
@@ -158,6 +159,14 @@ export function TimingTowerValue({
 }
 
 const TAG_CLASS = 'shrink-0 px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest';
+
+/**
+ * `showOvertake` replaced `showDrs` when the DRS tag became the Overtake Indicator.
+ * Either one set to `false` hides the tag, so the old prop keeps working on its own.
+ */
+export function showsOvertake(showOvertake?: boolean, showDrs?: boolean) {
+  return showOvertake ?? showDrs ?? true;
+}
 const TAG_MOTION = {
   initial: { opacity: 0, transform: 'translateX(-4px)' },
   animate: { opacity: 1, transform: 'translateX(0px)' },
@@ -174,7 +183,9 @@ export function TimingTowerRow({
   isFastestLap = false,
   highlighted = false,
   showTyre = true,
-  showDrs = true,
+  showOvertake,
+  showDrs,
+  overtakeMode = 'drs',
   className,
   ...props
 }: {
@@ -186,7 +197,10 @@ export function TimingTowerRow({
   isFastestLap?: boolean;
   highlighted?: boolean;
   showTyre?: boolean;
+  showOvertake?: boolean;
+  /** @deprecated use showOvertake */
   showDrs?: boolean;
+  overtakeMode?: OvertakeMode;
 } & HTMLMotionProps<'li'>) {
   const gained = row.positionChange > 0;
   const moved = Math.abs(row.positionChange);
@@ -257,16 +271,12 @@ export function TimingTowerRow({
         </span>
       )}
       {showTyre && <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} />}
-      {/* `showDrs` is configuration, so it unmounts the presence wrapper and never animates. */}
-      {showDrs && (
+      {/* Showing the tag is configuration, so it unmounts the presence wrapper and never animates. */}
+      {showsOvertake(showOvertake, showDrs) && (
         <AnimatePresence initial={false}>
           {row.drs && (
-            <motion.span
-              key="drs"
-              {...TAG_MOTION}
-              className={cn(TAG_CLASS, 'border border-flag-green text-flag-green')}
-            >
-              DRS
+            <motion.span key="overtake" {...TAG_MOTION} className="flex shrink-0">
+              <OvertakeIndicator size="sm" mode={overtakeMode} state={row.drs ? 'active' : 'off'} />
             </motion.span>
           )}
         </AnimatePresence>
@@ -296,7 +306,9 @@ export function TimingTower({
   maxRows,
   highlightTop = 0,
   showTyre = true,
-  showDrs = true,
+  showOvertake,
+  showDrs,
+  overtakeMode = 'drs',
   fastestLapDriverId = null,
   renderRow,
   className,
@@ -309,7 +321,10 @@ export function TimingTower({
   maxRows?: number;
   highlightTop?: number;
   showTyre?: boolean;
+  showOvertake?: boolean;
+  /** @deprecated use showOvertake */
   showDrs?: boolean;
+  overtakeMode?: OvertakeMode;
   fastestLapDriverId?: string | null;
   renderRow?: (
     row: TimingRow,
@@ -352,7 +367,8 @@ export function TimingTower({
                 isFastestLap={fastestLapDriverId === row.driverId}
                 highlighted={index < highlightTop}
                 showTyre={showTyre}
-                showDrs={showDrs}
+                showOvertake={showsOvertake(showOvertake, showDrs)}
+                overtakeMode={overtakeMode}
               />
             );
           })}
