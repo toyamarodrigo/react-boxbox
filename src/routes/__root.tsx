@@ -43,6 +43,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
+        {/* Static theme bootstrap: a string literal, no user or remote input reaches this sink. */}
         <script
           dangerouslySetInnerHTML={{
             __html:

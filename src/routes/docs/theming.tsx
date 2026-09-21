@@ -55,8 +55,13 @@ function Theming() {
             {tokens.map(([key, value]) => (
               <TableRow key={key}>
                 <TableCell className="font-mono text-xs">--{key}</TableCell>
-                {[value, dark[key]].map((colour, index) => (
-                  <TableCell key={index} className="font-mono text-xs">
+                {(
+                  [
+                    ['light', value],
+                    ['dark', dark[key]],
+                  ] as const
+                ).map(([scheme, colour]) => (
+                  <TableCell key={scheme} className="font-mono text-xs">
                     {key.startsWith('font-') ? null : (
                       <span
                         aria-hidden="true"
