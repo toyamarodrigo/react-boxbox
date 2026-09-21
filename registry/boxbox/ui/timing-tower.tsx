@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment } from 'react';
 import { AnimatePresence, type HTMLMotionProps, LayoutGroup, motion } from 'motion/react';
 import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
 import type { Driver, GapMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
@@ -115,15 +115,9 @@ export function TimingTowerPosition({
 export function TimingTowerValue({
   value,
   tone = 'default',
-  flashKey,
   className,
   ...props
-}: {
-  value: string;
-  tone?: TimingTowerValueTone;
-  /** Change this to replay the fastest-lap flash. Nothing flashes while it stays the same. */
-  flashKey?: number;
-} & React.ComponentProps<'div'>) {
+}: { value: string; tone?: TimingTowerValueTone } & React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="timing-tower-value"
@@ -135,9 +129,9 @@ export function TimingTowerValue({
       )}
       {...props}
     >
-      {flashKey !== undefined && flashKey > 0 && (
+      {/* Mounts once when the tone becomes `fastest`, so the flash plays on the flip only. */}
+      {tone === 'fastest' && (
         <motion.span
-          key={flashKey}
           aria-hidden
           className="pointer-events-none absolute inset-0"
           initial={{ backgroundColor: FLASH_FASTEST }}
@@ -156,17 +150,6 @@ export function TimingTowerValue({
       </motion.span>
     </div>
   );
-}
-
-/** Counts the false → true flips of `active`, so a `key` can replay a one-shot flash. */
-function useFlipCount(active: boolean): number {
-  const [state, setState] = useState({ count: 0, active });
-  if (state.active !== active) {
-    const next = { count: active ? state.count + 1 : state.count, active };
-    setState(next);
-    return next.count;
-  }
-  return state.count;
 }
 
 const TAG_CLASS = 'shrink-0 px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest';
@@ -201,7 +184,6 @@ export function TimingTowerRow({
   showDrs?: boolean;
 } & HTMLMotionProps<'li'>) {
   const gained = row.positionChange > 0;
-  const flashKey = useFlipCount(isFastestLap);
   return (
     <motion.li
       layout="position"
@@ -275,11 +257,7 @@ export function TimingTowerRow({
           </motion.span>
         )}
       </AnimatePresence>
-      <TimingTowerValue
-        value={rowValue(row, mode, isLeader)}
-        tone={valueTone(row, isFastestLap)}
-        flashKey={flashKey}
-      />
+      <TimingTowerValue value={rowValue(row, mode, isLeader)} tone={valueTone(row, isFastestLap)} />
     </motion.li>
   );
 }

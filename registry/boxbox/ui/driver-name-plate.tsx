@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, type Variants } from 'motion/react';
-import { DURATION, EASE_IN_OUT, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
+import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
 import type { Driver, Team } from '@/registry/boxbox/lib/types';
 import { RollingNumber } from '@/registry/boxbox/ui/rolling-number';
 import { cn } from '@/lib/utils';
@@ -174,7 +174,7 @@ export function DriverNamePlateStatus({
       animate={{ clipPath: 'inset(0 0 0 0)' }}
       exit={{
         clipPath: hiddenClip(align),
-        transition: { duration: DURATION.tick, ease: EASE_IN_OUT },
+        transition: { duration: DURATION.tick, ease: EASE_OUT },
       }}
       transition={{ duration: DURATION.fast, ease: EASE_OUT }}
       className={cn(
