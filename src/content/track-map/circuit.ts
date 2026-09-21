@@ -3,10 +3,9 @@ import type { TrackSector } from '@/registry/boxbox/lib/types';
 /**
  * Aster Park, an invented circuit drawn for this project.
  *
- * It is not a copy or an approximation of any real venue. Circuit outlines are the
- * intellectual property of the circuits themselves, so the repository ships a
- * fictional layout only. See the component notes for how to load a real outline
- * from a GeoJSON file in your own project.
+ * It is not a copy or an approximation of any real venue, so it is safe to use as the
+ * default in any context. Real outlines live in `src/data/circuits.ts`, generated from
+ * public GeoJSON by `bun run circuits:build`.
  *
  * Fourteen numbered corners: a long start/finish straight along the bottom, a fast
  * chicane at turns 4 and 5, and a hairpin at turn 7. Start/finish is the first point
@@ -30,8 +29,10 @@ const d = [
   'C 214 108 140 120 116 176',
   'C 92 232 130 288 176 316',
   'C 222 344 268 372 262 420',
-  'C 256 470 206 476 170 492',
-  'C 158 498 146 508 140 520',
+  // The last corner feeds the straight tangentially: the final control point sits
+  // level with the line, so the lap closes without a kink at start/finish.
+  'C 256 470 200 470 160 480',
+  'C 120 490 100 520 140 520',
   'Z',
 ].join(' ');
 

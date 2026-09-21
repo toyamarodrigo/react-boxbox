@@ -1,4 +1,6 @@
+import { CIRCUITS } from '@/data/circuits';
 import { defineControls } from '../types';
+import { FICTIONAL_CIRCUIT } from './circuit';
 
 const sectorOptions = [
   'none',
@@ -11,7 +13,20 @@ const sectorOptions = [
   'chequered',
 ] as const;
 
+/** Circuits are picked by their location, the way a calendar names a round. */
+export const circuitOptions = [
+  FICTIONAL_CIRCUIT.name,
+  ...CIRCUITS.map((circuit) => circuit.location),
+] as [string, ...string[]];
+
 const controls = defineControls({
+  circuit: {
+    kind: 'select',
+    label: 'Circuit',
+    description: 'The 2026 calendar, from public GeoJSON outlines, plus the invented Aster Park.',
+    default: 'Silverstone',
+    options: circuitOptions,
+  },
   sector1: {
     kind: 'select',
     label: 'Sector 1',
@@ -30,7 +45,7 @@ const controls = defineControls({
     kind: 'select',
     label: 'Sector 3',
     description: 'Flag over the last third of the lap.',
-    default: 'none',
+    default: 'green',
     options: sectorOptions,
   },
   cars: {

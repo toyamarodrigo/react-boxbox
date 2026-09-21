@@ -10,9 +10,9 @@ const meta = {
   dependencies: [],
   status: 'stable',
   notes: [
-    'Any outline works. Feed a GeoJSON LineString straight into pathFromPoints(coordinates) and it returns a d and a matching viewBox, with the y axis flipped so north points up. Public collections of circuit geometry exist, such as bacinger/f1-circuits on GitHub, which is MIT licensed.',
-    'Check the licence of the outline, not only of the file. Circuit layouts are the intellectual property of the circuits themselves, which is also what the championship says in its own fan guidelines, so a project that draws a real venue should say plainly that it is unofficial and not affiliated with any series, circuit, or team.',
-    'This project ships a fictional circuit only. Aster Park was drawn for the demo and resembles no real venue.',
+    'Any outline works. Feed a GeoJSON LineString straight into pathFromPoints(coordinates) and it returns a d and a matching viewBox, with the y axis flipped so north points up. The demo outlines come from bacinger/f1-circuits on GitHub (MIT), projected and fitted by scripts/build-circuits.ts; the first point of each outline is treated as start/finish.',
+    'Markers move at constant speed between position updates: set transitionMs to the interval of your data source and every update chains into the next without a stop. On a closed path (a d ending in Z) a car crosses the line without jumping back.',
+    'Check the licence of the outline, not only of the file. Circuit layouts are the intellectual property of the circuits themselves, which is also what the championship says in its own fan guidelines. The layouts shown here are unofficial and this project is not affiliated with any series, circuit, or team. Aster Park is an invented circuit and safe to use anywhere.',
   ],
 } satisfies ComponentMeta;
 

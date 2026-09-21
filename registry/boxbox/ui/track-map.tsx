@@ -1,6 +1,6 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- the map is a graphic built from SVG and markers, not an <img> */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { DURATION, EASE_IN_OUT } from '@/registry/boxbox/lib/motion';
+import { DURATION } from '@/registry/boxbox/lib/motion';
 import type { TrackMarker, TrackSector, TrackStatus } from '@/registry/boxbox/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -42,9 +42,16 @@ export const TRACK_MAP_STROKE_WIDTH = 14;
 const WRAP_FROM = 0.75;
 const WRAP_TO = 0.25;
 
-const EASE_IN_OUT_CSS = `cubic-bezier(${EASE_IN_OUT.join(', ')})`;
+/**
+ * Position samples arrive at a fixed rate, so a marker moves at constant speed
+ * between them. Chained linear transitions that last one sample interval read as
+ * continuous motion; any easing would make each car stop and start on every update.
+ */
+export const TRACK_MAP_TRANSITION_MS = DURATION.base * 1000;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+/** A path that ends with a closepath command loops, so `offset-distance` can exceed 100%. */
+const isClosedPath = (d: string) => /z\s*$/i.test(d);
 const round = (value: number) => Math.round(value * 100) / 100;
 /** Fractions of a lap multiply into long floats; six places is past any pixel. */
 const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
@@ -233,22 +240,31 @@ export function TrackMapMarker({
   marker,
   path,
   size = 'md',
+  transitionMs = TRACK_MAP_TRANSITION_MS,
   className,
   ...props
 }: {
   marker: TrackMarker;
   path: string;
   size?: TrackMapSize;
+  transitionMs?: number;
 } & React.ComponentProps<'div'>) {
   const progress = clamp01(marker.progress);
-  // Adjusting state during render: a lap that wraps must not run the marker backwards,
-  // so the transition is dropped for the frame that crosses the line.
+  // Adjusting state during render: a lap that wraps must not run the marker backwards.
+  // On a closed path `offset-distance` wraps modulo the lap, so the marker keeps a lap
+  // count and is sent to `laps + progress`: it crosses the line without a jump. An open
+  // path has nowhere to continue, so its transition is dropped for the wrapping frame.
+  const closed = isClosedPath(path);
   const [previous, setPrevious] = useState(progress);
+  const [laps, setLaps] = useState(0);
   const [wrapped, setWrapped] = useState(false);
   if (previous !== progress) {
+    const wrap = previous > WRAP_FROM && progress < WRAP_TO;
     setPrevious(progress);
-    setWrapped(previous > WRAP_FROM && progress < WRAP_TO);
+    setLaps(wrap && closed ? laps + 1 : laps);
+    setWrapped(wrap && !closed);
   }
+  const distance = closed ? laps + progress : progress;
 
   const sizes = MARKER_SIZES[size];
   const dot = marker.emphasis ? sizes.emphasis : sizes.dot;
@@ -269,10 +285,10 @@ export function TrackMapMarker({
       )}
       style={{
         offsetPath: `path("${path}")`,
-        offsetDistance: `${round(progress * 100)}%`,
+        offsetDistance: `${round(distance * 100)}%`,
         offsetRotate: '0deg',
-        transitionDuration: `${DURATION.base}s`,
-        transitionTimingFunction: EASE_IN_OUT_CSS,
+        transitionDuration: `${Math.max(0, transitionMs)}ms`,
+        transitionTimingFunction: 'linear',
       }}
       {...props}
     >
@@ -317,6 +333,11 @@ export type TrackMapProps = {
   strokeWidth?: number;
   /** Drives marker and label size only; the map always fills its container. */
   size?: TrackMapSize;
+  /**
+   * How long a marker takes to slide to a new `progress`. Set it to the interval
+   * between your position updates so cars move at constant speed between samples.
+   */
+  transitionMs?: number;
 } & React.ComponentProps<'div'>;
 
 export function TrackMap({
@@ -327,6 +348,7 @@ export function TrackMap({
   showStartFinish = true,
   strokeWidth = TRACK_MAP_STROKE_WIDTH,
   size = 'md',
+  transitionMs = TRACK_MAP_TRANSITION_MS,
   className,
   ...props
 }: TrackMapProps) {
@@ -376,7 +398,13 @@ export function TrackMap({
           style={{ width, height, transform: 'scale(var(--track-map-scale))' }}
         >
           {markers.map((marker) => (
-            <TrackMapMarker key={marker.id} marker={marker} path={path} size={size} />
+            <TrackMapMarker
+              key={marker.id}
+              marker={marker}
+              path={path}
+              size={size}
+              transitionMs={transitionMs}
+            />
           ))}
         </div>
       )}

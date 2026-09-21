@@ -221,18 +221,43 @@ describe('TrackMap', () => {
     expect(list).toHaveTextContent('mso at 25% of the lap');
   });
 
-  it('drops the marker transition on the frame a lap wraps, and restores it after', () => {
+  it('carries the marker past 100% when a lap wraps on a closed path', () => {
     const { container, rerender } = render(
       <TrackMap path={PATH} markers={[marker({ id: 'evo', progress: 0.98 })]} />,
     );
-    const element = () => container.querySelector('[data-slot="track-map-marker"]');
-    expect(element()).not.toHaveAttribute('data-wrap');
+    const element = () => container.querySelector<HTMLElement>('[data-slot="track-map-marker"]');
+    expect(element()?.style.offsetDistance).toBe('98%');
 
     rerender(<TrackMap path={PATH} markers={[marker({ id: 'evo', progress: 0.02 })]} />);
-    expect(element()).toHaveAttribute('data-wrap', 'true');
-
-    rerender(<TrackMap path={PATH} markers={[marker({ id: 'evo', progress: 0.06 })]} />);
+    expect(element()?.style.offsetDistance).toBe('102%');
     expect(element()).not.toHaveAttribute('data-wrap');
+
+    rerender(<TrackMap path={PATH} markers={[marker({ id: 'evo', progress: 0.5 })]} />);
+    expect(element()?.style.offsetDistance).toBe('150%');
+  });
+
+  it('drops the marker transition on the frame a lap wraps on an open path', () => {
+    const open = 'M 0 0 L 100 0 L 100 100';
+    const { container, rerender } = render(
+      <TrackMap path={open} markers={[marker({ id: 'evo', progress: 0.98 })]} />,
+    );
+    const element = () => container.querySelector<HTMLElement>('[data-slot="track-map-marker"]');
+    expect(element()).not.toHaveAttribute('data-wrap');
+
+    rerender(<TrackMap path={open} markers={[marker({ id: 'evo', progress: 0.02 })]} />);
+    expect(element()).toHaveAttribute('data-wrap', 'true');
+    expect(element()?.style.offsetDistance).toBe('2%');
+
+    rerender(<TrackMap path={open} markers={[marker({ id: 'evo', progress: 0.06 })]} />);
+    expect(element()).not.toHaveAttribute('data-wrap');
+  });
+
+  it('slides markers linearly for the given sample interval', () => {
+    const { container } = render(<TrackMap path={PATH} markers={[marker()]} transitionMs={240} />);
+    expect(container.querySelector('[data-slot="track-map-marker"]')).toHaveStyle({
+      transitionDuration: '240ms',
+      transitionTimingFunction: 'linear',
+    });
   });
 
   it('toggles the start finish tick', () => {

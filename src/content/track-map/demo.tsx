@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CIRCUITS } from '@/data/circuits';
 import { grid } from '@/data/grid';
 import type { TrackMarker, TrackSector, TrackStatus } from '@/registry/boxbox/lib/types';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
@@ -16,7 +17,16 @@ function withStatus(sector: TrackSector, status: string): TrackSector {
   return status === 'none' ? sector : { ...sector, status: status as TrackStatus };
 }
 
+/** The invented circuit is the fallback, so an unknown selection never breaks the map. */
+function circuitAt(location: string) {
+  const real = CIRCUITS.find((circuit) => circuit.location === location);
+  return real
+    ? { d: real.d, viewBox: real.viewBox, name: real.name, caption: 'unofficial layout' }
+    : { ...FICTIONAL_CIRCUIT, caption: 'an invented circuit' };
+}
+
 export default function TrackMapDemo({
+  circuit,
   sector1,
   sector2,
   sector3,
@@ -26,6 +36,7 @@ export default function TrackMapDemo({
   animate,
 }: ControlValues<typeof controls.fields>) {
   const progress = useTrackProgress(cars, TICK_MS, animate);
+  const layout = circuitAt(circuit);
 
   const sectors = useMemo<TrackSector[]>(
     () =>
@@ -51,14 +62,17 @@ export default function TrackMapDemo({
   return (
     <figure className="w-full max-w-2xl">
       <TrackMap
-        path={FICTIONAL_CIRCUIT.d}
-        viewBox={FICTIONAL_CIRCUIT.viewBox}
+        // A new outline restarts the markers, so their lap counters do not carry over.
+        key={layout.name}
+        path={layout.d}
+        viewBox={layout.viewBox}
         sectors={sectors}
         markers={markers}
         size={size}
+        transitionMs={TICK_MS}
       />
       <figcaption className="mt-3 text-center font-display text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-        {FICTIONAL_CIRCUIT.name} · an invented circuit
+        {layout.name} · {layout.caption}
       </figcaption>
     </figure>
   );

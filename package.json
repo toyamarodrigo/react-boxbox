@@ -17,6 +17,7 @@
     "test": "vitest run",
     "registry:build": "shadcn build",
     "og:build": "bun run scripts/build-og.ts",
+    "circuits:build": "bun run scripts/build-circuits.ts",
     "replays:build": "bun run scripts/build-replays.ts"
   },
   "dependencies": {
