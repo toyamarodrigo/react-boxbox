@@ -3,6 +3,7 @@ import { RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { grid } from '@/data/grid';
 import { useRaceSimulation } from '@/data/use-race-simulation';
+import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
 import { Button } from '@/components/ui/button';
@@ -82,7 +83,7 @@ export function HeroSequence({
               initial={{ opacity: 0, x: 28 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -28 }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: DURATION.slow, ease: EASE_OUT }}
             >
               <div className="flex items-center justify-between border border-b-0 border-border bg-card px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 <span className="text-primary">Live timing</span>
@@ -106,7 +107,7 @@ export function HeroSequence({
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.94 }}
-              transition={{ duration: 0.45, ease: 'easeOut' }}
+              transition={{ duration: DURATION.slow, ease: EASE_OUT }}
             >
               <StartLights
                 key={run}
