@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "rolling-number",
+  "title": "Rolling Number",
+  "description": "A number that rolls to its next value, upward for a gain and downward for a loss.",
+  "dependencies": [
+    "motion"
+  ],
+  "registryDependencies": [
+    "@boxbox/boxbox-motion"
+  ],
+  "files": [
+    {
+      "path": "registry/boxbox/ui/rolling-number.tsx",
+      "content": "import { AnimatePresence, motion } from 'motion/react';\nimport { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';\nimport { cn } from '@/lib/utils';\n\nexport type RollingNumberDirection = 'up' | 'down';\n\n/** Where the new value comes from: `up` enters from below and pushes the old one out at the top. */\nconst ENTER: Record<RollingNumberDirection, string> = {\n  up: 'translateY(100%)',\n  down: 'translateY(-100%)',\n};\nconst EXIT: Record<RollingNumberDirection, string> = {\n  up: 'translateY(-100%)',\n  down: 'translateY(100%)',\n};\n\n/**\n * A number that rolls to its next value like a mechanical counter.\n * Pass `direction=\"up\"` when the change is an improvement (a lower position),\n * `\"down\"` when it is a loss, so the motion carries the meaning.\n */\nexport function RollingNumber({\n  value,\n  direction = 'up',\n  className,\n  ...props\n}: {\n  value: number | string;\n  direction?: RollingNumberDirection;\n} & React.ComponentProps<'span'>) {\n  return (\n    <span\n      data-slot=\"rolling-number\"\n      className={cn('relative inline-grid overflow-hidden leading-none tabular-nums', className)}\n      {...props}\n    >\n      <AnimatePresence mode=\"popLayout\" initial={false}>\n        <motion.span\n          key={value}\n          className=\"block\"\n          initial={{ opacity: 0, transform: ENTER[direction] }}\n          animate={{ opacity: 1, transform: 'translateY(0%)' }}\n          exit={{ opacity: 0, transform: EXIT[direction] }}\n          transition={{ duration: DURATION.fast, ease: EASE_OUT }}\n        >\n          {value}\n        </motion.span>\n      </AnimatePresence>\n    </span>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

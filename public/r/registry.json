@@ -253,6 +253,20 @@
       }
     },
     {
+      "name": "rolling-number",
+      "type": "registry:ui",
+      "title": "Rolling Number",
+      "description": "A number that rolls to its next value, upward for a gain and downward for a loss.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/rolling-number.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "tyre-badge",
       "type": "registry:ui",
       "title": "Tyre Badge",
