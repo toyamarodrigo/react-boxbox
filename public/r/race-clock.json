@@ -3,12 +3,8 @@
   "name": "race-clock",
   "title": "Race Clock",
   "description": "Broadcast race clock showing time remaining or elapsed as H:MM:SS, driven by its parent.",
-  "dependencies": [
-    "motion"
-  ],
   "registryDependencies": [
-    "@boxbox/boxbox-theme",
-    "@boxbox/boxbox-motion"
+    "@boxbox/boxbox-theme"
   ],
   "files": [
     {

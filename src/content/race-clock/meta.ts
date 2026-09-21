@@ -7,7 +7,7 @@ const meta = {
   description:
     'A broadcast race clock that reads time remaining or elapsed as H:MM:SS. The parent owns the time.',
   registryName: 'race-clock',
-  dependencies: ['motion'],
+  dependencies: [],
   status: 'stable',
 } satisfies ComponentMeta;
 

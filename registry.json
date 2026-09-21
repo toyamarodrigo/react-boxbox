@@ -411,8 +411,7 @@
       "type": "registry:ui",
       "title": "Race Clock",
       "description": "Broadcast race clock showing time remaining or elapsed as H:MM:SS, driven by its parent.",
-      "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme"],
       "files": [
         {
           "path": "registry/boxbox/ui/race-clock.tsx",
