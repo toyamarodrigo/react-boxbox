@@ -74,7 +74,12 @@ export function HeroSequence({
 
   return (
     <div className="flex w-full flex-col items-center gap-6">
-      <div className="grid min-h-[20rem] w-full place-items-center md:min-h-[24rem]">
+      {/*
+        Fixed height, not `min-h`: the tower is taller than the gantry, so a
+        minimum would let the stage grow at lights-out and push the page down.
+        Sized for the tallest state at each breakpoint (8 rows, then 12).
+      */}
+      <div className="grid h-[22rem] w-full place-items-center md:h-[30rem]">
         <AnimatePresence initial={false}>
           {live ? (
             <motion.div
