@@ -57,7 +57,6 @@ it('restarts the reveal on a new lap and holds the previous lap time meanwhile',
   expect(result.current.lapTime).toBe(89.754);
 
   rerender({ sectors: lapTwo, lapTime: 88.9 });
-  act(() => vi.advanceTimersByTime(0));
   expect(result.current.sectors.map((sector) => sector.status)).toEqual([
     'fastest',
     'unset',

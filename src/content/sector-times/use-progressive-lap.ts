@@ -12,6 +12,11 @@ export type ProgressiveLap = {
 
 export type UseProgressiveLapOptions = ProgressiveLap & { intervalMs: number };
 
+type Lap = Pick<ProgressiveLap, 'lapTime' | 'lapStatus'>;
+
+/** How far the current lap has been revealed: S1 only, S1 + S2, or the whole lap. */
+type Stage = { lapKey: string; stage: 0 | 1 | 2; lap: Lap };
+
 /**
  * Paces a completed lap out over one simulator tick.
  *
@@ -27,44 +32,32 @@ export function useProgressiveLap({
   lapStatus,
   intervalMs,
 }: UseProgressiveLapOptions): ProgressiveLap {
-  const [revealed, setRevealed] = useState<ProgressiveLap>({
-    sectors: [sectors[0], UNSET, UNSET],
-    lapTime: null,
-    lapStatus: 'unset',
-  });
-
-  // A new lap is identified by its sector times; the same lap must not restart the reveal.
+  // A lap is identified by its sector times. A new lap is at stage 0 until its timers run.
   const lapKey = sectors.map((sector) => sector.time).join('|');
+  const [state, setState] = useState<Stage>({
+    lapKey,
+    stage: 0,
+    lap: { lapTime: null, lapStatus: 'unset' },
+  });
+  const stage = state.lapKey === lapKey ? state.stage : 0;
 
   useEffect(() => {
-    // Every stage runs from a timer, including S1, so the effect never sets state
-    // synchronously and the reveal order is owned by one mechanism.
-    const first = setTimeout(
-      () =>
-        setRevealed((current) => ({
-          sectors: [sectors[0], UNSET, UNSET],
-          // Hold the previous lap time so the count-up animates from a real value.
-          lapTime: current.lapTime,
-          lapStatus: current.lapStatus,
-        })),
-      0,
-    );
     const second = setTimeout(
-      () => setRevealed((current) => ({ ...current, sectors: [sectors[0], sectors[1], UNSET] })),
+      () => setState((current) => ({ ...current, lapKey, stage: 1 })),
       intervalMs / 3,
     );
     const third = setTimeout(
-      () => setRevealed({ sectors: [sectors[0], sectors[1], sectors[2]], lapTime, lapStatus }),
+      () => setState({ lapKey, stage: 2, lap: { lapTime, lapStatus } }),
       (2 * intervalMs) / 3,
     );
     return () => {
-      clearTimeout(first);
       clearTimeout(second);
       clearTimeout(third);
     };
-    // `lapKey` stands in for the lap identity; the payload is read fresh inside the effect.
-    // oxlint-disable-next-line exhaustive-deps
-  }, [lapKey, intervalMs]);
+  }, [lapKey, lapTime, lapStatus, intervalMs]);
 
-  return revealed;
+  return {
+    sectors: [sectors[0], stage >= 1 ? sectors[1] : UNSET, stage >= 2 ? sectors[2] : UNSET],
+    ...state.lap,
+  };
 }
