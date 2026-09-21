@@ -115,11 +115,53 @@ Each step delivers: component + `registry.json` entry + `controls.ts` + `demo.ts
 20. **Home hero**: Start Lights fire, then a live Timing Tower driven by the simulator. Component grid below with mini previews.
 21. **Polish**: reduced-motion audit, keyboard/a11y pass (oxlint jsx-a11y clean), light-mode check, mobile layout, meta tags + OG image per component page.
 
+## Phase 4b — Motion pass (1–2 sessions)
+
+**Goal:** every state change a viewer cares about is visible as motion, and nothing else moves. Reviewed against Emil Kowalski's design-engineering rules (`/emil-design-eng`), adapted to broadcast graphics: these components are watched, not operated, so motion *is* the state indication. Keep it crisp: UI durations ≤ 300ms, strong ease-out on enters, ease-in-out or a bounce-less spring on movement, no bounce, `transform` / `opacity` / `clipPath` only.
+
+**Ground rules for this phase**
+
+- Motion tokens live in one `registry:lib` item, `boxbox-motion` (`registry/boxbox/lib/motion.ts`), added to every component's `registryDependencies`: `EASE_OUT = [0.23, 1, 0.32, 1]`, `EASE_IN_OUT = [0.77, 0, 0.175, 1]`, `DURATION = { tick: 0.15, fast: 0.2, base: 0.3, slow: 0.45 }`, `SPRING_ROW = { type: 'spring', duration: 0.45, bounce: 0 }`. No component defines its own curve after this step.
+- Anything that animates while the simulator ticks (Timing Tower, Sector Times) uses the full `transform: 'translateY(...)'` string, `opacity`, or `clipPath`, not the `x` / `y` / `scale` shorthands. Motion only hardware-accelerates the full string (confirmed in the Motion performance docs); shorthands run on the main thread and drop frames when 20 rows re-render.
+- Exit is always faster than enter. Enter ≈ `base`, exit ≈ `fast`.
+- Elements never appear from `scale(0)`; start at `scale(0.95)` or `opacity: 0` plus a few pixels of travel.
+- Reduced motion: `MotionConfig reducedMotion="user"` is already in `src/routes/__root.tsx`. It removes transform and layout motion but keeps opacity and colour, so every change below must still read with colour alone. Document the wrapper in `/docs/installation` so registry consumers get the same behaviour.
+- Tests assert structure and data attributes, never timing. Anything timer-driven (demo hooks) is unit-tested with fake timers.
+
+**Motion decision table**
+
+| Component | Trigger | Motion | Why |
+|---|---|---|---|
+| Timing Tower | Row changes position | `layout="position"` on `motion.li` with `SPRING_ROW`; `<ol>` becomes `relative` and wraps rows in `LayoutGroup` + `AnimatePresence mode="popLayout" initial={false}` | Size never changes, so `position` is cheaper than full `layout`. Presence lets rows entering or leaving via `maxRows` fade instead of popping. |
+| Timing Tower | Position gained / lost | **Fix the dead flash**: mount the position cell with `initial={{ backgroundColor: flash }}` → `animate` to transparent over `DURATION.slow`, ease-out. Green on gain, red on loss. Position digit rolls: old digit exits up and new enters from below on a gain, the reverse on a loss (`AnimatePresence mode="popLayout"`, `DURATION.fast`). ▲/▼ fades in with the flash. | Today the cell remounts with `initial={false}` and a keyframe array, so Motion paints the final keyframe and no flash ever plays. Direction of the digit roll encodes the meaning. |
+| Timing Tower | Gap / interval tick | Keep the value swap but shorten to `DURATION.tick`, travel 3px, full `transform` string | Fires on every row every tick; this is the "tens of times" bucket, so reduce rather than embellish. |
+| Timing Tower | PIT / DRS tag appears or disappears | `AnimatePresence`, opacity + 4px slide from the left, enter `fast`, exit `tick` | Prevents tags from popping in a moving row. |
+| Timing Tower | Driver takes fastest lap | One-shot purple flash on the value cell, same mechanism as the position flash | State indication. Only when `isFastestLap` flips to true, not on every render. |
+| Sector Times | Several sectors update in one render | Stagger bar fills 60ms apart in sector order; sector time text fades and slides 4px with its bar | "Elements all appear at once" is the review-checklist failure. Still short enough to feel like one event. |
+| Sector Times | Sector resets to unset | Bar exits with opacity over `DURATION.tick` instead of remounting instantly | Avoids a hard cut when a new lap starts. |
+| Sector Times | Lap completes as session fastest | Lap value flashes `--sector-fastest` once, count-up unchanged (600ms ease-out) | Same pattern as the tower's fastest-lap flash for cohesion. |
+| Driver Name Plate | Status added / removed / changed | `AnimatePresence mode="popLayout"` on the status part, `clipPath` wipe in the plate's `align` direction, `DURATION.fast`; `layout` on the plate root so width changes animate | Today the status pops and the plate jumps in width. |
+| Driver Name Plate | Position changes | Digit roll shared with the tower (extract `RollingNumber` into `boxbox-motion` or a small shared UI part) | One implementation, two consumers. |
+| Tyre Badge | Age ticks | Optional: number slides 3px with opacity, `DURATION.tick` | Cheap, cohesive with the tower value. Skip if it looks busy inside the tower. |
+| Replay Bumper | Panel wipe / slide | Switch panel and label from `x` to the full `transform: 'translateX(...)'` string | The content swap at the midpoint runs on the main thread; the wipe must not drop frames. Keep `easeIn` on the exit: the panel is accelerating off-screen, not settling on it. |
+| Start Lights | Lights out | **No change.** Lights go dark instantly | The instant cut is the event. Animating it would delay the only moment that matters. The 150ms light-on and the aborted pulse stay. |
+| All | Variant, layout, size, align changes | No animation | Configuration, not state. |
+
+**Steps**
+
+22. **Motion tokens**: add `boxbox-motion` to `registry.json`, migrate every component to it, rebuild `public/r/`, verify the item installs into the scratch app. Add the `MotionConfig` note to `/docs/installation`.
+23. **Timing Tower**: implement the five tower rows of the table plus the `LayoutGroup` / `AnimatePresence` wrapper. Add a shared `RollingNumber` part. Extend tests for the presence wrapper (`maxRows` shrink still renders the right rows) and the fastest-lap flag. Demo: unchanged except that `speed` also drives the row spring duration cap (never longer than half a tick).
+24. **Sector Times**: stagger, text fade, reset exit, fastest-lap flash. Demo: add a `useProgressiveLap(sectors, lapTime, intervalMs)` hook in `src/content/sector-times/` that reveals S1 at `0`, S2 at `interval / 3`, S3 plus the lap time at `2 · interval / 3`, and resets to `unset` when the next lap arrives. The component stays pure; the demo owns the pacing. Fake-timer tests for the hook.
+25. **Driver Name Plate, Tyre Badge, Replay Bumper**: the remaining table rows. Small, one commit each.
+26. **Review**: slow-motion pass at 0.25× in the DevTools Animations panel for the tower and the sectors (two states overlapping? origin correct? opacity and transform in sync?). Reduced-motion pass with the OS setting on: every state change in the table must still be readable by colour. Visual verification through `codex-computer-use`. Revisit with fresh eyes the next day before closing the phase.
+
+**Done when:** an overtake in the tower reads as one event (row slides, digit rolls, cell flashes, arrow appears), sectors complete one by one in the live demo, and no component defines its own easing.
+
 ## Phase 5 — Release v1
 
-22. `README.md` (what, install, legal note, fictional data), `LICENSE` (MIT + Commons Clause), `CONTRIBUTING.md`.
-23. End-to-end registry verification from the production URL for all items.
-24. Flip repo to **public**. Tag `v1.0.0`.
+27. `README.md` (what, install, legal note, fictional data), `LICENSE` (MIT + Commons Clause), `CONTRIBUTING.md`.
+28. End-to-end registry verification from the production URL for all items.
+29. Flip repo to **public**. Tag `v1.0.0`.
 
 ---
 
@@ -150,4 +192,5 @@ Flags banner, DRS / Manual Override indicator, Track Map, Podium / Results, Lap 
 - [x] Phase 2 — Docs shell (2026-09-20). Layout, content manifest, defineControls playground, component page template, docs pages, full prerender. Hidden `example` content proves the template.
 - [x] Phase 3 — Components (2026-09-20, 6/6). Tyre Badge, Sector Times, Driver Name Plate, Start Lights, Timing Tower, Replay Bumper as `registry:ui` items with docs pages and tests (64 total). Deployed; all six installed from the production registry into a scratch Vite app with imports rewritten correctly. `doctor.config.json` turns off `only-export-components` and `use-lazy-motion` (both conflict with the registry API decisions).
 - [ ] Phase 4 — Home + polish
+- [ ] Phase 4b — Motion pass
 - [ ] Phase 5 — Release v1

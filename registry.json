@@ -16,6 +16,19 @@
       ]
     },
     {
+      "name": "boxbox-motion",
+      "type": "registry:lib",
+      "title": "boxbox Motion",
+      "description": "Shared easing curves, durations, and springs so every boxbox component moves the same way.",
+      "dependencies": ["motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/lib/motion.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
       "name": "boxbox-theme",
       "type": "registry:theme",
       "title": "boxbox Theme",
@@ -245,7 +258,11 @@
       "title": "Tyre Badge",
       "description": "Broadcast tyre marker showing the compound and the laps on the current set.",
       "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion"
+      ],
       "files": [
         {
           "path": "registry/boxbox/ui/tyre-badge.tsx",
@@ -259,7 +276,11 @@
       "title": "Sector Times",
       "description": "Broadcast sector bars with colour-coded statuses, mini sectors, and an animated lap time.",
       "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion"
+      ],
       "files": [
         {
           "path": "registry/boxbox/ui/sector-times.tsx",
@@ -273,7 +294,11 @@
       "title": "Driver Name Plate",
       "description": "Broadcast lower third that wipes in with the driver position, team colour, name, car number, and race status.",
       "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-types", "@boxbox/boxbox-theme"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion"
+      ],
       "files": [
         {
           "path": "registry/boxbox/ui/driver-name-plate.tsx",
@@ -287,7 +312,7 @@
       "title": "Start Lights",
       "description": "A race-start gantry: five columns arm one by one, hold, then go out, with a yellow flash for an aborted start.",
       "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
       "files": [
         {
           "path": "registry/boxbox/ui/start-lights.tsx",
@@ -304,6 +329,7 @@
       "registryDependencies": [
         "@boxbox/boxbox-types",
         "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
         "@boxbox/tyre-badge"
       ],
       "files": [
@@ -319,7 +345,7 @@
       "title": "Replay Bumper",
       "description": "A broadcast transition that sweeps over a panel so its content can change behind it.",
       "dependencies": ["motion"],
-      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
       "files": [
         {
           "path": "registry/boxbox/ui/replay-bumper.tsx",

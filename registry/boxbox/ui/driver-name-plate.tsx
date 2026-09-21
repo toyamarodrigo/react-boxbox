@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, type Variants } from 'motion/react';
+import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { Driver, Team } from '@/registry/boxbox/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -32,11 +33,11 @@ const STATUS_COLORS: Record<DriverNamePlateStatusValue, string> = {
   out: 'bg-muted text-muted-foreground',
 };
 
-const PLATE_TRANSITION = { duration: 0.32, ease: [0.2, 0, 0, 1] } as const;
+const PLATE_TRANSITION = { duration: DURATION.base, ease: EASE_OUT } as const;
 
 const partVariants = {
   hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.18 } },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION.fast, ease: EASE_OUT } },
 } satisfies Variants;
 
 function plateVariants(align: DriverNamePlateAlign): Variants {

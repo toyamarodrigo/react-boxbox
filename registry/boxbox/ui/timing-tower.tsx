@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { type HTMLMotionProps, motion } from 'motion/react';
+import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
 import type { Driver, GapMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
 import { cn } from '@/lib/utils';
@@ -71,7 +72,7 @@ export function TimingTowerPosition({
       data-slot="timing-tower-position"
       initial={false}
       animate={{ backgroundColor: flash ? [flash, FLASH_IDLE] : FLASH_IDLE }}
-      transition={{ duration: 0.7, ease: 'easeOut' }}
+      transition={{ duration: DURATION.slow, ease: EASE_OUT }}
       className={cn(
         'grid w-7 shrink-0 place-items-center self-stretch font-display text-sm font-black leading-none tabular-nums',
         className,
@@ -104,7 +105,7 @@ export function TimingTowerValue({
         key={value}
         initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+        transition={{ duration: DURATION.fast, ease: EASE_OUT }}
         className="block"
       >
         {value}
@@ -146,7 +147,7 @@ export function TimingTowerRow({
       data-pit={String(row.inPit)}
       data-lapped={String(row.lapped)}
       data-drs={String(row.drs)}
-      transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+      transition={SPRING_ROW}
       className={cn(
         'flex items-center gap-2 border-b border-border bg-card/90 py-1 pr-2 text-card-foreground last:border-b-0',
         highlighted && 'bg-primary/10',

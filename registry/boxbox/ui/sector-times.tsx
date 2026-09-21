@@ -2,6 +2,7 @@ import * as React from 'react';
 import { animate, motion } from 'motion/react';
 
 import { cn } from '@/lib/utils';
+import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { SectorStatus, SectorTime } from '@/registry/boxbox/lib/types';
 
 const BAR_COLOR: Record<SectorStatus, string> = {
@@ -67,7 +68,11 @@ export function SectorTimesSector({
             )}
             initial={{ scaleX: 0 }}
             animate={complete ? { scaleX: 1, opacity: [1, 0.6, 1] } : { scaleX: 0 }}
-            transition={{ duration: 0.3, delay: (segment * 0.2) / segments }}
+            transition={{
+              duration: DURATION.base,
+              ease: EASE_OUT,
+              delay: (segment * 0.2) / segments,
+            }}
           />
         </div>
       ))}
@@ -141,7 +146,7 @@ export function SectorTimesLap({
     if (!countUp || from == null || lapTime == null || from === lapTime) return;
     const controls = animate(from, lapTime, {
       duration: 0.6,
-      ease: 'easeOut',
+      ease: EASE_OUT,
       onUpdate: setAnimated,
       onComplete: () => setAnimated(null),
     });

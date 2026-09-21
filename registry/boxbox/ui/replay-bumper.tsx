@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { AnimatePresence, motion, type Transition } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { EASE_IN, EASE_OUT } from '@/registry/boxbox/lib/motion';
 
 export type ReplayBumperVariant = 'wipe' | 'slide' | 'flash';
 
@@ -35,7 +36,7 @@ export function ReplayBumperOverlay({
   const transition: Transition = {
     duration: duration / 1000,
     times: [0, timeline.cover / duration, timeline.uncover / duration, 1],
-    ease: ['easeOut', 'linear', 'easeIn'],
+    ease: [EASE_OUT, 'linear', EASE_IN],
   };
   const flash = variant === 'flash';
 

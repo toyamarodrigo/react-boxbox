@@ -1,5 +1,6 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- the badge is a graphic built from styled elements, not an <img> */
 import { AnimatePresence, motion } from 'motion/react';
+import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { TyreCompound } from '@/registry/boxbox/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -72,7 +73,7 @@ export function TyreBadgeRing({
           initial={{ rotate: -90, opacity: 0, scale: 0.8 }}
           animate={{ rotate: 0, opacity: 1, scale: 1 }}
           exit={{ rotate: 90, opacity: 0, scale: 0.8 }}
-          transition={{ duration: 0.28, ease: [0.2, 0, 0, 1] }}
+          transition={{ duration: DURATION.base, ease: EASE_OUT }}
           className={cn(
             'absolute inset-0 grid place-items-center rounded-full font-display font-bold leading-none',
             RING_COLORS[compound],

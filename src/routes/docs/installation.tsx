@@ -9,6 +9,12 @@ const registry = `{
   }
 }`;
 
+const motionConfig = `import { MotionConfig } from 'motion/react';
+
+export function App({ children }: { children: React.ReactNode }) {
+  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
+}`;
+
 function Step({
   number,
   title,
@@ -73,6 +79,14 @@ function Installation() {
           Choose a component page, then run its CLI command in your project.
         </p>
         <CodeBlock language="bash" code="bunx shadcn@latest add @boxbox/<component-name>" />
+      </Step>
+      <Step number="06" title="Respect reduced motion">
+        <p className="text-muted-foreground">
+          Components animate with <code className="font-mono">motion</code>. Wrap your app once so
+          position and layout motion follows the visitor&apos;s system setting. Colour and opacity
+          changes stay on, so every state is still readable.
+        </p>
+        <CodeBlock language="tsx" code={motionConfig} />
       </Step>
     </article>
   );
