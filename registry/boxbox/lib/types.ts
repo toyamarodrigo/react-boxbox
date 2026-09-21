@@ -3,7 +3,9 @@ export const TYRE_COMPOUNDS = ['S', 'M', 'H', 'I', 'W'] as const;
 export type TyreCompound = (typeof TYRE_COMPOUNDS)[number];
 export type SectorStatus = 'fastest' | 'personal' | 'slower' | 'unset';
 export type TrackStatus = 'green' | 'yellow' | 'red' | 'sc' | 'vsc' | 'chequered' | 'double-yellow';
-export type GapMode = 'leader' | 'interval' | 'lapTime';
+export type GapMode = 'leader' | 'interval' | 'lapTime' | 'results';
+/** How a car ended the race. Anything other than `finished` is unclassified. */
+export type FinishStatus = 'finished' | 'dnf' | 'dsq' | 'dns';
 
 export type Team = { id: string; name: string; color: string };
 export type Driver = {
@@ -28,4 +30,10 @@ export type TimingRow = {
   lapped: boolean;
   drs: boolean;
   positionChange: number;
+  /** Laps behind the leader, for a lapped car in a results listing. Defaults to one. */
+  lapsBehind?: number;
+  /** Championship points scored, shown in the results listing only. */
+  points?: number;
+  /** How the car ended the race. Absent means it finished. */
+  finishStatus?: FinishStatus;
 };

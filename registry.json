@@ -433,6 +433,24 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "podium",
+      "type": "registry:ui",
+      "title": "Podium",
+      "description": "Three-step podium laid out second, first, third, with the steps rising last place first.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-motion",
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/podium.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
