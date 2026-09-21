@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import type { Driver, SectorTime, Team, TimingRow } from '@/registry/boxbox/lib/types';
 import {
   TimingTower,
@@ -175,6 +175,46 @@ describe('TimingTower', () => {
     const rendered = container.querySelectorAll('[data-slot="timing-tower-row"]');
     expect(rendered[0]).toHaveClass('bg-primary/10');
     expect(rendered[1]).not.toHaveClass('bg-primary/10');
+  });
+
+  it('keeps only the remaining rows when maxRows shrinks', async () => {
+    const { container, rerender } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} maxRows={3} />,
+    );
+    expect(container.querySelectorAll('[data-slot="timing-tower-row"]')).toHaveLength(3);
+    rerender(<TimingTower rows={rows} drivers={drivers} teams={teams} maxRows={1} />);
+    await waitFor(() => {
+      const rendered = [...container.querySelectorAll('[data-slot="timing-tower-row"]')];
+      expect(rendered.map((row) => row.getAttribute('data-driver'))).toEqual(['one']);
+    });
+  });
+
+  it('marks the position cell with the direction of the change', () => {
+    const { container } = render(<TimingTower rows={rows} drivers={drivers} teams={teams} />);
+    const cells = [...container.querySelectorAll('[data-slot="timing-tower-position"]')];
+    expect(cells.map((cell) => cell.getAttribute('data-change'))).toEqual(['none', 'none', 'gain']);
+  });
+
+  it('marks a lost position on the cell of the driver that dropped', () => {
+    const dropped = [makeRow('one', 1), makeRow('two', 2, { positionChange: -2 })];
+    const { container } = render(<TimingTower rows={dropped} drivers={drivers} teams={teams} />);
+    const cells = [...container.querySelectorAll('[data-slot="timing-tower-position"]')];
+    expect(cells.map((cell) => cell.getAttribute('data-change'))).toEqual(['none', 'loss']);
+  });
+
+  it('keeps the fastest lap tone when the flag moves to another driver', () => {
+    const { container, rerender } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} fastestLapDriverId="one" />,
+    );
+    const tone = () =>
+      [...container.querySelectorAll('[data-slot="timing-tower-value"]')].map((value) =>
+        value.getAttribute('data-tone'),
+      );
+    expect(tone()).toEqual(['fastest', 'pit', 'default']);
+    rerender(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} fastestLapDriverId="three" />,
+    );
+    expect(tone()).toEqual(['default', 'pit', 'fastest']);
   });
 
   it('uses renderRow to replace the default row', () => {
