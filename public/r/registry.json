@@ -275,7 +275,8 @@
       "registryDependencies": [
         "@boxbox/boxbox-types",
         "@boxbox/boxbox-theme",
-        "@boxbox/boxbox-motion"
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
       ],
       "files": [
         {
@@ -311,7 +312,8 @@
       "registryDependencies": [
         "@boxbox/boxbox-types",
         "@boxbox/boxbox-theme",
-        "@boxbox/boxbox-motion"
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
       ],
       "files": [
         {

@@ -17,6 +17,12 @@ export function replayBumperTimeline(duration: number) {
 
 const WIPE_CLIP = 'polygon(12% 0, 100% 0, 88% 100%, 0 100%)';
 
+// Full transform strings, not the `x` / `scale` shorthands: only the string is
+// hardware-accelerated, and the panel must not drop frames over the content swap.
+const PANEL_SWEEP = ['translateX(-130%)', 'translateX(0%)', 'translateX(0%)', 'translateX(130%)'];
+const LABEL_SWEEP = ['translateX(-30%)', 'translateX(0%)', 'translateX(0%)', 'translateX(30%)'];
+const LABEL_FLASH = ['scale(1.2)', 'scale(1)', 'scale(1)', 'scale(1)'];
+
 export type ReplayBumperOverlayProps = React.ComponentProps<'div'> & {
   label?: string;
   duration?: number;
@@ -55,19 +61,19 @@ export function ReplayBumperOverlay({
           flash ? 'inset-x-0' : '-inset-x-1/4',
         )}
         style={{ backgroundColor: color, clipPath: variant === 'wipe' ? WIPE_CLIP : undefined }}
-        initial={flash ? { opacity: 0 } : { x: '-130%' }}
-        animate={flash ? { opacity: [0, 1, 1, 0] } : { x: ['-130%', '0%', '0%', '130%'] }}
+        initial={flash ? { opacity: 0 } : { transform: PANEL_SWEEP[0] }}
+        animate={flash ? { opacity: [0, 1, 1, 0] } : { transform: PANEL_SWEEP }}
         transition={transition}
       >
         <motion.span
           className="font-display text-4xl font-black uppercase italic tracking-tight text-primary-foreground"
-          initial={flash ? { scale: 1.2 } : false}
+          initial={flash ? { transform: LABEL_FLASH[0] } : false}
           animate={
             flash
-              ? { scale: [1.2, 1, 1, 1] }
+              ? { transform: LABEL_FLASH }
               : variant === 'wipe'
-                ? { x: ['-30%', '0%', '0%', '30%'] }
-                : { x: '0%' }
+                ? { transform: LABEL_SWEEP }
+                : { transform: 'translateX(0%)' }
           }
           transition={transition}
         >
