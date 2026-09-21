@@ -13,7 +13,9 @@ export type ReplaySpeed = 1 | 5 | 20;
 export const REPLAY_SPEEDS: readonly ReplaySpeed[] = [1, 5, 20];
 
 /** The clock ticks on a fixed grid; the speed changes how much time each tick buys. */
-const TICK_MS = 100;
+/** Wall-clock interval between replay ticks; the Track Map chains its marker transitions to it. */
+export const REPLAY_TICK_MS = 100;
+const TICK_MS = REPLAY_TICK_MS;
 
 export type RaceReplay = {
   /** The lap in progress, which is what a lap board shows. */

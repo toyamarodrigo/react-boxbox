@@ -4,10 +4,10 @@ import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react'
 import { z } from 'zod';
 import type { ReplayIndexEntry, ReplayRace } from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
-import { REPLAY_SPEEDS, useRaceReplay } from '../data/use-race-replay';
+import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
 import { overtakeModeFor, replayPodium } from '../data/replay-timing';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
-import { FICTIONAL_CIRCUIT, FICTIONAL_SECTORS } from '../content/track-map/circuit';
+import { circuitForRace } from '../data/circuit-for-race';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
@@ -199,18 +199,23 @@ function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
   );
 }
 
-function Circuit({ replay }: { replay: RaceReplay }) {
+function Circuit({ replay, race }: { replay: RaceReplay; race: ReplayRace }) {
+  const circuit = circuitForRace(race.circuit);
   return (
     <figure className="border border-border bg-card p-5">
       <TrackMap
-        path={FICTIONAL_CIRCUIT.d}
-        viewBox={FICTIONAL_CIRCUIT.viewBox}
-        sectors={FICTIONAL_SECTORS}
+        // A new outline restarts the markers, so their lap counters do not carry over.
+        key={circuit.name}
+        path={circuit.d}
+        viewBox={circuit.viewBox}
         markers={replay.markers}
+        transitionMs={REPLAY_TICK_MS}
       />
       <figcaption className="mt-3 text-xs text-muted-foreground">
-        Positions are interpolated from lap times on an invented circuit; they are not real
-        telemetry.
+        {circuit.real
+          ? `${circuit.name}, unofficial layout from public GeoJSON. `
+          : `${circuit.name}, an invented circuit. `}
+        Positions are interpolated from lap times; they are not real telemetry.
       </figcaption>
     </figure>
   );
@@ -285,7 +290,7 @@ function ReplayPage() {
       {race.data && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
           <Stage race={race.data} replay={replay} />
-          <Circuit replay={replay} />
+          <Circuit replay={replay} race={race.data} />
         </div>
       )}
     </div>
