@@ -1,7 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { CodeBlock } from '../../components/site/code-block';
+import { seo } from '../../lib/seo';
 
-export const Route = createFileRoute('/docs/installation')({ component: Installation });
+export const Route = createFileRoute('/docs/installation')({
+  head: () => ({
+    meta: seo({
+      title: 'Installation — boxbox',
+      description:
+        'Bring broadcast components into your React project, one registry item at a time.',
+      path: '/docs/installation',
+    }),
+  }),
+  component: Installation,
+});
 
 const registry = `{
   "registries": {

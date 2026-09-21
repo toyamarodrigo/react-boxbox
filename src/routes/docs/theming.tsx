@@ -9,8 +9,19 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
+import { seo } from '../../lib/seo';
 
-export const Route = createFileRoute('/docs/theming')({ component: Theming });
+export const Route = createFileRoute('/docs/theming')({
+  head: () => ({
+    meta: seo({
+      title: 'Theming — boxbox',
+      description:
+        'Semantic tokens for sectors, track status, tyres and flags, each with a light and dark value.',
+      path: '/docs/theming',
+    }),
+  }),
+  component: Theming,
+});
 
 const theme = registry.items.find((item) => item.name === 'boxbox-theme');
 const light: Record<string, string> = theme?.cssVars?.light ?? {};

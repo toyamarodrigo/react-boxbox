@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react';
 import type { ComponentType } from 'react';
 import { getBySlug, getModules, manifest } from '../../content';
 import { ComponentPageBody } from '../../components/site/component-page';
+import { seo } from '../../lib/seo';
 
 const registrySources = import.meta.glob(['/registry/boxbox/ui/*.tsx', '!**/*.test.tsx'], {
   query: '?raw',
@@ -46,6 +47,17 @@ export const Route = createFileRoute('/components/$slug')({
     const meta = getBySlug(params.slug);
     if (!meta) throw notFound();
     return meta;
+  },
+  head: ({ loaderData }) => {
+    if (!loaderData) return {};
+    return {
+      meta: seo({
+        title: `${loaderData.name} — boxbox`,
+        description: loaderData.description,
+        path: `/components/${loaderData.slug}`,
+        image: `/og/${loaderData.slug}.png`,
+      }),
+    };
   },
   component: ComponentRoute,
 });

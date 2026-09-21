@@ -2,6 +2,7 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
 
 import { SiteLayout } from '../components/site/layout';
+import { seo } from '../lib/seo';
 
 import appCss from '../styles.css?url';
 
@@ -16,8 +17,15 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'boxbox',
+        name: 'theme-color',
+        content: '#030303',
       },
+      ...seo({
+        title: 'boxbox — Race graphics for React',
+        description:
+          'Broadcast-inspired React components for timing, race control and the pit lane, distributed through the shadcn registry.',
+        path: '/',
+      }),
     ],
     links: [
       {

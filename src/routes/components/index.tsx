@@ -1,8 +1,19 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { categoryNames, visible } from '../../content';
 import { Badge } from '../../components/ui/badge';
+import { seo } from '../../lib/seo';
 
-export const Route = createFileRoute('/components/')({ component: ComponentsIndex });
+export const Route = createFileRoute('/components/')({
+  head: () => ({
+    meta: seo({
+      title: 'Components — boxbox',
+      description:
+        'Building blocks for race broadcast interfaces: timing, broadcast, race control and pit lane components.',
+      path: '/components',
+    }),
+  }),
+  component: ComponentsIndex,
+});
 
 function ComponentsIndex() {
   const items = visible();
