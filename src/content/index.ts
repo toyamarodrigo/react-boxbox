@@ -11,6 +11,7 @@ import raceClock from './race-clock/meta';
 import flagBanner from './flag-banner/meta';
 import overtakeIndicator from './overtake-indicator/meta';
 import podium from './podium/meta';
+import trackMap from './track-map/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -25,6 +26,7 @@ export const manifest: readonly ComponentMeta[] = [
   flagBanner,
   overtakeIndicator,
   podium,
+  trackMap,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -104,6 +106,11 @@ export const contentModules = {
     controls: () => import('./podium/controls'),
     demo: () => import('./podium/demo'),
     source: () => import('./podium/demo.tsx?raw'),
+  },
+  'track-map': {
+    controls: () => import('./track-map/controls'),
+    demo: () => import('./track-map/demo'),
+    source: () => import('./track-map/demo.tsx?raw'),
   },
 } satisfies Record<
   string,

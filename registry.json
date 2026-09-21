@@ -451,6 +451,23 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "track-map",
+      "type": "registry:ui",
+      "title": "Track Map",
+      "description": "Circuit map that colours each sector with the flag in force and slides a marker per car round the lap.",
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-motion",
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/track-map.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

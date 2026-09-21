@@ -144,6 +144,11 @@ export function ComponentPageBody({
         </div>
         <h1 className="font-display text-5xl font-black tracking-tight md:text-6xl">{meta.name}</h1>
         <p className="mt-4 max-w-2xl text-lg text-muted-foreground">{meta.description}</p>
+        {meta.notes?.map((note) => (
+          <p key={note} className="mt-3 max-w-2xl text-sm text-muted-foreground">
+            {note}
+          </p>
+        ))}
       </header>
       <section aria-labelledby="preview-title">
         <h2 id="preview-title" className="mb-5 font-display text-3xl font-bold tracking-tight">

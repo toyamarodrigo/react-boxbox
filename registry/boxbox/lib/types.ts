@@ -7,6 +7,17 @@ export type GapMode = 'leader' | 'interval' | 'lapTime' | 'results';
 /** How a car ended the race. Anything other than `finished` is unclassified. */
 export type FinishStatus = 'finished' | 'dnf' | 'dsq' | 'dns';
 
+/** A slice of a lap, measured as progress from 0 to 1 along the track path. */
+export type TrackSector = { start: number; end: number; status?: TrackStatus };
+/** A car on the track map. `progress` is 0 to 1 along the lap, from the start/finish line. */
+export type TrackMarker = {
+  id: string;
+  progress: number;
+  color: string;
+  code?: string;
+  emphasis?: boolean;
+};
+
 export type Team = { id: string; name: string; color: string };
 export type Driver = {
   id: string;
