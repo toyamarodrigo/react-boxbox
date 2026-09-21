@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { animate, motion } from 'motion/react';
+import { AnimatePresence, animate, motion } from 'motion/react';
 
 import { cn } from '@/lib/utils';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
@@ -20,6 +20,17 @@ const TEXT_COLOR: Record<SectorStatus, string> = {
 };
 
 const EMPTY = '—';
+
+/** Seconds between the start of one sector bar fill and the next. */
+const STAGGER_STEP = 0.06;
+
+/**
+ * One-shot flash behind a session-fastest lap. A literal rgba is used instead of
+ * `var(--sector-fastest)` because Motion interpolates rgb/hsl, not oklch; the value
+ * is the theme's fastest purple at 45% alpha.
+ */
+const FLASH_FASTEST = 'rgba(150, 74, 227, 0.45)';
+const FLASH_IDLE = 'rgba(0, 0, 0, 0)';
 
 /** Formats a sector time in seconds as `30.512`, or an em dash when unset. */
 export function formatSectorTime(seconds: number | null): string {
@@ -56,24 +67,33 @@ export function SectorTimesSector({
   const complete = time != null;
   const segments = Math.max(1, Math.round(miniSectors));
 
+  // Sector `index` starts `STAGGER_STEP` after sector 0, so three sectors landing in one
+  // render read as one event instead of appearing all at once.
+  const sectorDelay = index * STAGGER_STEP;
+
   const bar = (
     <div aria-hidden className="flex min-w-0 flex-1 gap-px">
       {Array.from({ length: segments }, (_, segment) => (
         <div key={segment} className="h-[3px] flex-1 overflow-hidden bg-muted">
-          <motion.div
-            key={`${index}-${time}`}
-            className={cn(
-              'h-full w-full origin-left',
-              complete ? BAR_COLOR[status] : 'bg-transparent',
-            )}
-            initial={{ scaleX: 0 }}
-            animate={complete ? { scaleX: 1, opacity: [1, 0.6, 1] } : { scaleX: 0 }}
-            transition={{
-              duration: DURATION.base,
-              ease: EASE_OUT,
-              delay: (segment * 0.2) / segments,
-            }}
-          />
+          <AnimatePresence initial={false}>
+            {complete ? (
+              <motion.div
+                key={`${index}-${time}`}
+                className={cn('h-full w-full origin-left', BAR_COLOR[status])}
+                initial={{ transform: 'scaleX(0)', opacity: 1 }}
+                animate={{ transform: 'scaleX(1)', opacity: 1 }}
+                exit={{
+                  opacity: 0,
+                  transition: { duration: DURATION.tick, ease: EASE_OUT },
+                }}
+                transition={{
+                  duration: DURATION.base,
+                  ease: EASE_OUT,
+                  delay: sectorDelay + (segment * 0.2) / segments,
+                }}
+              />
+            ) : null}
+          </AnimatePresence>
         </div>
       ))}
     </div>
@@ -86,9 +106,15 @@ export function SectorTimesSector({
   );
 
   const value = (
-    <span className={cn('font-mono text-sm tabular-nums', TEXT_COLOR[status])}>
+    <motion.span
+      key={`${index}-${time}`}
+      className={cn('font-mono text-sm tabular-nums', TEXT_COLOR[status])}
+      initial={{ opacity: 0, transform: 'translateY(4px)' }}
+      animate={{ opacity: 1, transform: 'translateY(0px)' }}
+      transition={{ duration: DURATION.fast, ease: EASE_OUT, delay: sectorDelay }}
+    >
       {formatSectorTime(time)}
-    </span>
+    </motion.span>
   );
 
   return (
@@ -139,6 +165,7 @@ export function SectorTimesLap({
   const [animated, setAnimated] = React.useState<number | null>(null);
   const previous = React.useRef<number | null>(lapTime);
   const shown = countUp && animated != null ? animated : lapTime;
+  const flashing = status === 'fastest' && lapTime != null;
 
   React.useEffect(() => {
     const from = previous.current;
@@ -166,9 +193,18 @@ export function SectorTimesLap({
       <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
         Lap
       </span>
-      <span className={cn('font-mono text-xl font-bold tabular-nums', TEXT_COLOR[status])}>
+      <motion.span
+        // Remounting with the flash colour is what plays it: a keyed mount runs `initial`,
+        // so the flash fires when the lap lands as session fastest, not on every render.
+        key={flashing ? `fastest-${lapTime}` : 'lap'}
+        data-flash={flashing ? 'fastest' : undefined}
+        initial={flashing ? { backgroundColor: FLASH_FASTEST } : false}
+        animate={{ backgroundColor: FLASH_IDLE }}
+        transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+        className={cn('-mx-1 px-1 font-mono text-xl font-bold tabular-nums', TEXT_COLOR[status])}
+      >
         {formatLapTime(shown)}
-      </span>
+      </motion.span>
     </div>
   );
 }
