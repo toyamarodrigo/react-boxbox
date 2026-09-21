@@ -26,6 +26,9 @@ function TyreBadgePreview() {
 function SectorTimesPreview() {
   return (
     <SectorTimes
+      // `stack` keeps the label, bar and time on one line each, so nothing
+      // collides in the narrow card the way three side-by-side sectors do.
+      layout="stack"
       className="w-56"
       sectors={[
         { time: 28.914, status: 'fastest' },

@@ -15,7 +15,7 @@ export function ComponentGrid() {
           <Link
             to="/components/$slug"
             params={{ slug: item.slug }}
-            className="group flex h-full flex-col p-5 transition-colors hover:bg-card"
+            className="group flex h-full flex-col p-5 transition-colors hover:bg-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
             <div
               aria-hidden="true"

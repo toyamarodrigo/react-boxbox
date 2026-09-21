@@ -5,6 +5,10 @@ import { byCategory, categoryNames, categoryOrder } from '../../content';
 import { Button } from '../ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../ui/sheet';
 
+/** One visible ring for every link the keyboard can reach, in both themes. */
+const FOCUS_RING =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+
 function Navigation({ close }: { close?: () => void }) {
   const { pathname } = useLocation();
   const groups = [
@@ -36,7 +40,7 @@ function Navigation({ close }: { close?: () => void }) {
                 key={link.href}
                 to={link.href}
                 onClick={close}
-                className={`block border-l-2 px-3 py-1.5 text-sm transition-colors hover:text-foreground ${pathname === link.href ? 'border-primary bg-accent text-foreground' : 'border-transparent text-muted-foreground'}`}
+                className={`block border-l-2 px-3 py-1.5 text-sm transition-colors hover:text-foreground ${FOCUS_RING} ${pathname === link.href ? 'border-primary bg-accent text-foreground' : 'border-transparent text-muted-foreground'}`}
               >
                 {link.name}
               </Link>
@@ -47,7 +51,7 @@ function Navigation({ close }: { close?: () => void }) {
       <Link
         to="/components"
         onClick={close}
-        className="block border-t border-border px-3 pt-5 text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
+        className={`block border-t border-border px-3 pt-5 text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground ${FOCUS_RING}`}
       >
         All components
       </Link>
@@ -86,6 +90,12 @@ export function SiteLayout() {
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <a
+        href="#content"
+        className={`sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:border focus:border-border focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-bold ${FOCUS_RING}`}
+      >
+        Skip to content
+      </a>
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background px-4 md:px-8">
         <div className="flex items-center gap-3">
           <div className="lg:hidden">
@@ -103,7 +113,7 @@ export function SiteLayout() {
               </SheetContent>
             </Sheet>
           </div>
-          <Link to="/" className="font-display text-2xl font-black tracking-tight">
+          <Link to="/" className={`font-display text-2xl font-black tracking-tight ${FOCUS_RING}`}>
             boxbox<span className="text-primary">.</span>
           </Link>
           <span className="hidden border-l border-border pl-3 text-xs uppercase tracking-[0.2em] text-muted-foreground sm:inline">
@@ -128,7 +138,11 @@ export function SiteLayout() {
         <aside className="hidden min-h-[calc(100vh-4rem)] border-r border-border lg:block">
           <Navigation />
         </aside>
-        <main id="content" className="min-w-0 px-5 py-10 md:px-10 lg:px-14">
+        <main
+          id="content"
+          tabIndex={-1}
+          className="min-w-0 px-5 py-10 focus:outline-none md:px-10 lg:px-14"
+        >
           <div className="mx-auto max-w-5xl">
             <Outlet />
           </div>

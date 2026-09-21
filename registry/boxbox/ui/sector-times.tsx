@@ -19,6 +19,14 @@ const TEXT_COLOR: Record<SectorStatus, string> = {
   unset: 'text-muted-foreground',
 };
 
+/** Status is carried by colour alone on screen, so it is also spoken. */
+const STATUS_LABEL: Record<SectorStatus, string> = {
+  fastest: 'session fastest',
+  personal: 'personal best',
+  slower: 'slower',
+  unset: 'not set',
+};
+
 const EMPTY = '—';
 
 /** Seconds between the start of one sector bar fill and the next. */
@@ -114,6 +122,7 @@ export function SectorTimesSector({
       transition={{ duration: DURATION.fast, ease: EASE_OUT, delay: sectorDelay }}
     >
       {formatSectorTime(time)}
+      <span className="sr-only">{`, ${STATUS_LABEL[status]}`}</span>
     </motion.span>
   );
 
@@ -204,6 +213,7 @@ export function SectorTimesLap({
         className={cn('-mx-1 px-1 font-mono text-xl font-bold tabular-nums', TEXT_COLOR[status])}
       >
         {formatLapTime(shown)}
+        <span className="sr-only">{`, ${STATUS_LABEL[status]}`}</span>
       </motion.span>
     </div>
   );

@@ -189,6 +189,11 @@ export function TimingTowerRow({
   showDrs?: boolean;
 } & HTMLMotionProps<'li'>) {
   const gained = row.positionChange > 0;
+  const moved = Math.abs(row.positionChange);
+  // The value column means something different per mode, and the digits and the
+  // ▲/▼ glyph carry no meaning on their own, so each gets a spoken label.
+  const valueLabel =
+    mode === 'lapTime' ? 'Last lap' : mode === 'interval' ? 'Interval' : 'Gap to leader';
   return (
     <motion.li
       layout="position"
@@ -209,6 +214,7 @@ export function TimingTowerRow({
       )}
       {...props}
     >
+      <span className="sr-only">Position</span>
       <TimingTowerPosition position={row.position} positionChange={row.positionChange} />
       <span
         aria-hidden
@@ -236,6 +242,11 @@ export function TimingTowerRow({
           </motion.span>
         )}
       </AnimatePresence>
+      {row.positionChange !== 0 && (
+        <span className="sr-only">
+          {`${gained ? 'gained' : 'lost'} ${moved} ${moved === 1 ? 'place' : 'places'}`}
+        </span>
+      )}
       {showTyre && <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} />}
       {/* `showDrs` is configuration, so it unmounts the presence wrapper and never animates. */}
       {showDrs && (
@@ -262,6 +273,7 @@ export function TimingTowerRow({
           </motion.span>
         )}
       </AnimatePresence>
+      <span className="sr-only">{valueLabel}</span>
       <TimingTowerValue value={rowValue(row, mode, isLeader)} tone={valueTone(row, isFastestLap)} />
     </motion.li>
   );

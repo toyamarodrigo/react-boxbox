@@ -31,7 +31,7 @@ function ComponentsIndex() {
               key={item.slug}
               to="/components/$slug"
               params={{ slug: item.slug }}
-              className="border border-border bg-card p-6 transition-colors hover:border-primary"
+              className="border border-border bg-card p-6 transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               <Badge variant="secondary">{categoryNames[item.category]}</Badge>
               <h2 className="mt-5 font-display text-2xl font-bold">{item.name}</h2>
@@ -47,7 +47,7 @@ function ComponentsIndex() {
           </p>
           <Link
             to="/docs/installation"
-            className="mt-4 inline-block text-sm font-bold text-primary"
+            className="mt-4 inline-block text-sm font-bold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             Read installation →
           </Link>
