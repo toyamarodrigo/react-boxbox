@@ -16,7 +16,8 @@
     "format:check": "oxfmt --check",
     "test": "vitest run",
     "registry:build": "shadcn build",
-    "og:build": "bun run scripts/build-og.ts"
+    "og:build": "bun run scripts/build-og.ts",
+    "replays:build": "bun run scripts/build-replays.ts"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

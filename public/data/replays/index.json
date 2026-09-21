@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-09-21T18:12:09.640Z",
+  "races": [
+    {
+      "id": "2026-14",
+      "season": 2026,
+      "round": 14,
+      "name": "Spanish Grand Prix",
+      "circuit": "Madring",
+      "date": "2026-09-13",
+      "totalLaps": 57,
+      "driverCount": 22,
+      "winnerCode": "ANT"
+    },
+    {
+      "id": "2025-1",
+      "season": 2025,
+      "round": 1,
+      "name": "Australian Grand Prix",
+      "circuit": "Albert Park Grand Prix Circuit",
+      "date": "2025-03-16",
+      "totalLaps": 57,
+      "driverCount": 20,
+      "winnerCode": "NOR"
+    },
+    {
+      "id": "2024-21",
+      "season": 2024,
+      "round": 21,
+      "name": "São Paulo Grand Prix",
+      "circuit": "Autódromo José Carlos Pace",
+      "date": "2024-11-03",
+      "totalLaps": 69,
+      "driverCount": 20,
+      "winnerCode": "VER"
+    },
+    {
+      "id": "2023-22",
+      "season": 2023,
+      "round": 22,
+      "name": "Abu Dhabi Grand Prix",
+      "circuit": "Yas Marina Circuit",
+      "date": "2023-11-26",
+      "totalLaps": 58,
+      "driverCount": 20,
+      "winnerCode": "VER"
+    },
+    {
+      "id": "2021-22",
+      "season": 2021,
+      "round": 22,
+      "name": "Abu Dhabi Grand Prix",
+      "circuit": "Yas Marina Circuit",
+      "date": "2021-12-12",
+      "totalLaps": 58,
+      "driverCount": 20,
+      "winnerCode": "VER"
+    }
+  ]
+}
