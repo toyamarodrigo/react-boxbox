@@ -82,6 +82,27 @@ describe('DriverNamePlate', () => {
     expect(bar).toHaveStyle({ backgroundColor: '#C78B46' });
   });
 
+  it('renders the status part only while a status is set', () => {
+    const { container, rerender } = render(
+      <DriverNamePlate driver={driver} team={team} status="pit" />,
+    );
+    const status = () => container.querySelectorAll('[data-slot="driver-name-plate-status"]');
+    expect(status()).toHaveLength(1);
+    rerender(<DriverNamePlate driver={driver} team={team} />);
+    expect(container.querySelector('[data-slot="driver-name-plate"]')).toBeInTheDocument();
+    expect(screen.getByText('Voss')).toBeInTheDocument();
+  });
+
+  it('rolls the position digit', () => {
+    const { container } = render(
+      <DriverNamePlate driver={driver} team={team} position={4} positionChange={2} />,
+    );
+    const roller = container.querySelector(
+      '[data-slot="driver-name-plate-position"] [data-slot="rolling-number"]',
+    );
+    expect(roller).toHaveTextContent('4');
+  });
+
   it('renders no plate when it starts hidden', () => {
     const { container } = render(<DriverNamePlate driver={driver} team={team} visible={false} />);
     expect(container.querySelector('[data-slot="driver-name-plate"]')).toBeNull();

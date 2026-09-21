@@ -41,6 +41,14 @@ describe('TyreBadge', () => {
     expect(screen.queryByText('NEW')).not.toBeInTheDocument();
   });
 
+  it('rolls the age number', () => {
+    const { container } = render(<TyreBadge compound="S" age={7} />);
+    const roller = container.querySelector(
+      '[data-slot="tyre-badge-age"] [data-slot="rolling-number"]',
+    );
+    expect(roller).toHaveTextContent('7');
+  });
+
   it('changes the ring size class with the size prop', () => {
     const { rerender, container } = render(<TyreBadge compound="M" age={5} size="sm" />);
     const ring = () => container.querySelector('[data-slot="tyre-badge-ring"]');
