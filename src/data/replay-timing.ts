@@ -191,16 +191,15 @@ export function replayProgress(race: ReplayRace, lap: number, elapsedMs: number)
   if (!entry) return [];
 
   const before = lap > 1 ? lapAt(race, lap - 1) : undefined;
+  // This runs on every clock tick, so the previous lap is indexed once rather than searched per car.
+  const startedAt = new Map(before?.rows.map((item) => [item.driverId, item.cumulativeMs]) ?? []);
   const drivers = new Map(race.drivers.map((driver) => [driver.id, driver]));
   const teams = new Map(race.teams.map((team) => [team.id, team]));
 
   const markers: TrackMarker[] = [];
   for (const row of entry.rows) {
     if (row.cumulativeMs === null || row.lapTimeMs === null || row.lapTimeMs <= 0) continue;
-    const started =
-      lap > 1
-        ? (before?.rows.find((item) => item.driverId === row.driverId)?.cumulativeMs ?? null)
-        : 0;
+    const started = lap > 1 ? (startedAt.get(row.driverId) ?? null) : 0;
     if (started === null) continue;
 
     const driver = drivers.get(row.driverId);

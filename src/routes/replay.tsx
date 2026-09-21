@@ -27,6 +27,8 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute('/replay')({
+  // `validateSearch` goes first so the router can infer the search type for the rest.
+  validateSearch: (search: Record<string, unknown>) => searchSchema.parse(search),
   head: () => ({
     meta: seo({
       title: 'Replay — boxbox',
@@ -35,7 +37,6 @@ export const Route = createFileRoute('/replay')({
       path: '/replay',
     }),
   }),
-  validateSearch: (search: Record<string, unknown>) => searchSchema.parse(search),
   component: ReplayPage,
 });
 
