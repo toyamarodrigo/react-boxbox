@@ -337,6 +337,20 @@
       ]
     },
     {
+      "name": "overtake-indicator",
+      "type": "registry:ui",
+      "title": "Overtake Indicator",
+      "description": "Badge for the overtaking aid: DRS as it ran from 2011 to 2025, or Overtake Mode as the 2026 rules name it.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-motion", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/overtake-indicator.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "timing-tower",
       "type": "registry:ui",
       "title": "Timing Tower",
@@ -347,7 +361,8 @@
         "@boxbox/boxbox-theme",
         "@boxbox/boxbox-motion",
         "@boxbox/rolling-number",
-        "@boxbox/tyre-badge"
+        "@boxbox/tyre-badge",
+        "@boxbox/overtake-indicator"
       ],
       "files": [
         {

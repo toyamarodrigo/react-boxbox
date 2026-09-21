@@ -60,7 +60,7 @@ function TimingTowerPreview() {
       teams={teamsById}
       maxRows={4}
       highlightTop={1}
-      showDrs={false}
+      showOvertake={false}
       className="w-52"
     />
   );

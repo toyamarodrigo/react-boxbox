@@ -9,6 +9,7 @@ import replayBumper from './replay-bumper/meta';
 import lapCounter from './lap-counter/meta';
 import raceClock from './race-clock/meta';
 import flagBanner from './flag-banner/meta';
+import overtakeIndicator from './overtake-indicator/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -21,6 +22,7 @@ export const manifest: readonly ComponentMeta[] = [
   lapCounter,
   raceClock,
   flagBanner,
+  overtakeIndicator,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -90,6 +92,11 @@ export const contentModules = {
     controls: () => import('./flag-banner/controls'),
     demo: () => import('./flag-banner/demo'),
     source: () => import('./flag-banner/demo.tsx?raw'),
+  },
+  'overtake-indicator': {
+    controls: () => import('./overtake-indicator/controls'),
+    demo: () => import('./overtake-indicator/demo'),
+    source: () => import('./overtake-indicator/demo.tsx?raw'),
   },
 } satisfies Record<
   string,

@@ -10,4 +10,5 @@ export const contentSlugs = [
   'lap-counter',
   'race-clock',
   'flag-banner',
+  'overtake-indicator',
 ] as const;

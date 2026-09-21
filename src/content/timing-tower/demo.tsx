@@ -13,7 +13,8 @@ export default function TimingTowerDemo({
   maxRows,
   highlightTop,
   showTyre,
-  showDrs,
+  showOvertake,
+  overtakeMode,
   speed,
 }: ControlValues<typeof controls.fields>) {
   const { state } = useRaceSimulation({ intervalMs: speed });
@@ -36,7 +37,8 @@ export default function TimingTowerDemo({
         maxRows={maxRows}
         highlightTop={highlightTop}
         showTyre={showTyre}
-        showDrs={showDrs}
+        showOvertake={showOvertake}
+        overtakeMode={overtakeMode}
         fastestLapDriverId={fastestLapDriverId}
       />
     </div>
