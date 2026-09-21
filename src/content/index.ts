@@ -8,6 +8,7 @@ import timingTower from './timing-tower/meta';
 import replayBumper from './replay-bumper/meta';
 import lapCounter from './lap-counter/meta';
 import raceClock from './race-clock/meta';
+import flagBanner from './flag-banner/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -19,6 +20,7 @@ export const manifest: readonly ComponentMeta[] = [
   replayBumper,
   lapCounter,
   raceClock,
+  flagBanner,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -83,6 +85,11 @@ export const contentModules = {
     controls: () => import('./race-clock/controls'),
     demo: () => import('./race-clock/demo'),
     source: () => import('./race-clock/demo.tsx?raw'),
+  },
+  'flag-banner': {
+    controls: () => import('./flag-banner/controls'),
+    demo: () => import('./flag-banner/demo'),
+    source: () => import('./flag-banner/demo.tsx?raw'),
   },
 } satisfies Record<
   string,

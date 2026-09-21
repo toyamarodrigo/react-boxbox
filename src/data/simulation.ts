@@ -174,7 +174,10 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
         ? 'yellow'
         : roll < 0.02
           ? 'vsc'
-          : 'green';
+          : // A double yellow is rarer than a single one, so it comes last.
+            roll < 0.025
+            ? 'double-yellow'
+            : 'green';
   // The clock follows the leader: one tick is one of their laps. Without a lap time
   // to go on, a plausible one keeps the clock moving and stays seeded.
   const lapMs =

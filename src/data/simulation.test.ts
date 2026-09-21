@@ -94,4 +94,29 @@ describe('race simulation', () => {
     }
     expect(pitCount).toBeGreaterThan(0);
   });
+
+  it('runs green, closes on the chequered flag, and raises every caution at some point', () => {
+    const seen = new Set<string>();
+    let greenLaps = 0;
+    let laps = 0;
+    let lastStatus = '';
+    for (let seed = 0; seed < 60; seed++) {
+      const rng = createSeededRng(seed);
+      let state = createInitialRace(grid, rng);
+      for (let lap = 0; lap < state.totalLaps; lap++) {
+        state = advanceRace(state, rng);
+        seen.add(state.trackStatus);
+        if (state.trackStatus === 'green') greenLaps++;
+        laps++;
+      }
+      lastStatus = state.trackStatus;
+    }
+    expect(lastStatus).toBe('chequered');
+    // Green is the normal state; the cautions are rare branches off the same roll.
+    expect(greenLaps / laps).toBeGreaterThan(0.9);
+    for (const status of ['green', 'yellow', 'vsc', 'double-yellow', 'chequered']) {
+      expect(seen).toContain(status);
+    }
+    expect(seen.has('red')).toBe(false);
+  });
 });

@@ -357,6 +357,24 @@
       ]
     },
     {
+      "name": "flag-banner",
+      "type": "registry:ui",
+      "title": "Flag Banner",
+      "description": "Full-width race control banner that wipes in with the track status, the sector it applies to, and an optional message.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-motion",
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/flag-banner.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "replay-bumper",
       "type": "registry:ui",
       "title": "Replay Bumper",

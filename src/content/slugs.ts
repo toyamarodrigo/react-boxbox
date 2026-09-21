@@ -9,4 +9,5 @@ export const contentSlugs = [
   'replay-bumper',
   'lap-counter',
   'race-clock',
+  'flag-banner',
 ] as const;
