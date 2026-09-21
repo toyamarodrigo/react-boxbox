@@ -224,24 +224,26 @@ export function TimingTowerRow({
       <span className="font-display text-sm font-bold uppercase leading-none tracking-wider">
         {driver.code}
       </span>
-      <AnimatePresence initial={false}>
-        {row.positionChange !== 0 && (
-          <motion.span
-            key={gained ? 'gain' : 'loss'}
-            aria-hidden
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DURATION.fast, ease: EASE_OUT }}
-            className={cn(
-              'text-[0.5rem] leading-none',
-              gained ? 'text-flag-green' : 'text-primary',
-            )}
-          >
-            {gained ? '▲' : '▼'}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      {/* A fixed slot: the glyph fades in and out without taking or freeing width in the row. */}
+      <span aria-hidden className="grid w-2 shrink-0 place-items-center">
+        <AnimatePresence initial={false}>
+          {row.positionChange !== 0 && (
+            <motion.span
+              key={gained ? 'gain' : 'loss'}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: DURATION.fast, ease: EASE_OUT }}
+              className={cn(
+                '[grid-area:1/1] text-[0.5rem] leading-none',
+                gained ? 'text-flag-green' : 'text-primary',
+              )}
+            >
+              {gained ? '▲' : '▼'}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </span>
       {row.positionChange !== 0 && (
         <span className="sr-only">
           {`${gained ? 'gained' : 'lost'} ${moved} ${moved === 1 ? 'place' : 'places'}`}

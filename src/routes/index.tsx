@@ -12,10 +12,11 @@ const steps = [
   ['03', 'Make it yours', 'Own the code: semantic tokens, render slots, and named parts.'],
 ] as const;
 
-export function Home() {
+function Home() {
   return (
     <div className="py-12 md:py-16">
-      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
+      {/* The stage column is fixed so neither the lights nor the live tower can resize the layout. */}
+      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-16">
         <div>
           <p className="mb-5 text-xs font-bold uppercase tracking-[0.25em] text-primary">
             Race graphics for React

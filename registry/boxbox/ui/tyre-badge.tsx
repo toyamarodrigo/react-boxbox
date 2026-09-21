@@ -115,7 +115,8 @@ export function TyreBadgeAge({
       )}
       {...props}
     >
-      <RollingNumber value={isNew ? 'NEW' : (age ?? '')} direction="up" />
+      {/* Two characters are reserved so a lap count crossing 9 → 10 does not widen the badge. */}
+      <RollingNumber className="min-w-[2ch]" value={isNew ? 'NEW' : (age ?? '')} direction="up" />
     </span>
   );
 }

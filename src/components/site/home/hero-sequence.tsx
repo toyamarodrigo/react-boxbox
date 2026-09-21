@@ -79,7 +79,8 @@ export function HeroSequence({
           {live ? (
             <motion.div
               key={`tower-${run}`}
-              className="col-start-1 row-start-1 w-full max-w-56 md:max-w-64"
+              // Fixed width: the rows must never size the column, or every tick shifts the page.
+              className="col-start-1 row-start-1 w-56 md:w-64"
               initial={{ opacity: 0, x: 28 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -28 }}

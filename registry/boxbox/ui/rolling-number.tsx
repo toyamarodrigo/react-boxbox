@@ -34,10 +34,11 @@ export function RollingNumber({
       className={cn('relative inline-grid overflow-hidden leading-none tabular-nums', className)}
       {...props}
     >
-      <AnimatePresence mode="popLayout" initial={false}>
+      {/* Old and new digits share one grid cell, so the roll never changes the box or needs measuring. */}
+      <AnimatePresence initial={false}>
         <motion.span
           key={value}
-          className="block"
+          className="block [grid-area:1/1]"
           initial={{ opacity: 0, transform: ENTER[direction] }}
           animate={{ opacity: 1, transform: 'translateY(0%)' }}
           exit={{ opacity: 0, transform: EXIT[direction] }}
