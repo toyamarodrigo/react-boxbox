@@ -65,6 +65,28 @@ function valueTone(row: TimingRow, isFastestLap: boolean): TimingTowerValueTone 
   return 'default';
 }
 
+/**
+ * A one-shot colour flash that fades to transparent as soon as it mounts.
+ * It has its own `AnimatePresence` on purpose: rows live inside the tower's
+ * `AnimatePresence initial={false}`, and that presence context keeps blocking
+ * `initial` on anything that mounts later inside those rows. A fresh presence
+ * boundary that allows initial animations is what lets the flash colour play.
+ */
+function FlashLayer({ color, flashKey }: { color: string; flashKey?: string }) {
+  return (
+    <AnimatePresence>
+      <motion.span
+        key={flashKey}
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        initial={{ backgroundColor: color }}
+        animate={{ backgroundColor: FLASH_IDLE }}
+        transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+      />
+    </AnimatePresence>
+  );
+}
+
 export type TimingTowerPositionChange = 'gain' | 'loss' | 'none';
 
 /** `gain` when the driver moved up the order, `loss` when down, `none` when the row held station. */
@@ -92,17 +114,8 @@ export function TimingTowerPosition({
       )}
       {...props}
     >
-      {flash && (
-        // The key remounts the layer so a second consecutive change flashes again.
-        <motion.span
-          key={`${position}:${positionChange}`}
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          initial={{ backgroundColor: flash }}
-          animate={{ backgroundColor: FLASH_IDLE }}
-          transition={{ duration: DURATION.slow, ease: EASE_OUT }}
-        />
-      )}
+      {/* The key remounts the layer so a second consecutive change flashes again. */}
+      {flash && <FlashLayer color={flash} flashKey={`${position}:${positionChange}`} />}
       <RollingNumber
         className="relative"
         value={position}
@@ -130,15 +143,7 @@ export function TimingTowerValue({
       {...props}
     >
       {/* Mounts once when the tone becomes `fastest`, so the flash plays on the flip only. */}
-      {tone === 'fastest' && (
-        <motion.span
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          initial={{ backgroundColor: FLASH_FASTEST }}
-          animate={{ backgroundColor: FLASH_IDLE }}
-          transition={{ duration: DURATION.slow, ease: EASE_OUT }}
-        />
-      )}
+      {tone === 'fastest' && <FlashLayer color={FLASH_FASTEST} />}
       <motion.span
         key={value}
         initial={{ opacity: 0, transform: 'translateY(-3px)' }}
