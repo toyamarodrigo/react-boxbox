@@ -2,6 +2,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { TyreCompound } from '@/registry/boxbox/lib/types';
+import { RollingNumber } from '@/registry/boxbox/ui/rolling-number';
 import { cn } from '@/lib/utils';
 
 export type TyreCompoundName = 'soft' | 'medium' | 'hard' | 'inter' | 'wet';
@@ -70,9 +71,9 @@ export function TyreBadgeRing({
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span
           key={compound}
-          initial={{ rotate: -90, opacity: 0, scale: 0.8 }}
-          animate={{ rotate: 0, opacity: 1, scale: 1 }}
-          exit={{ rotate: 90, opacity: 0, scale: 0.8 }}
+          initial={{ opacity: 0, transform: 'rotate(-90deg) scale(0.8)' }}
+          animate={{ opacity: 1, transform: 'rotate(0deg) scale(1)' }}
+          exit={{ opacity: 0, transform: 'rotate(90deg) scale(0.8)' }}
           transition={{ duration: DURATION.base, ease: EASE_OUT }}
           className={cn(
             'absolute inset-0 grid place-items-center rounded-full font-display font-bold leading-none',
@@ -114,7 +115,7 @@ export function TyreBadgeAge({
       )}
       {...props}
     >
-      {isNew ? 'NEW' : age}
+      <RollingNumber value={isNew ? 'NEW' : (age ?? '')} direction="up" />
     </span>
   );
 }
