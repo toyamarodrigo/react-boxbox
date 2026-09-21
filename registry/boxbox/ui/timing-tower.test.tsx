@@ -5,6 +5,7 @@ import {
   TimingTower,
   formatGap,
   formatLapTime,
+  isClassified,
   rowValue,
   sortRows,
 } from '@/registry/boxbox/ui/timing-tower';
@@ -109,6 +110,90 @@ describe('rowValue', () => {
     expect(rowValue(pit, 'leader', false)).toBe('IN PIT');
     expect(rowValue(pit, 'lapTime', false)).toBe('IN PIT');
     expect(rowValue(makeRow('three', 3, { lapped: true }), 'leader', false)).toBe('+1 LAP');
+  });
+});
+
+describe('rowValue in results mode', () => {
+  it.each([
+    ['the winner', makeRow('one', 1), true, 'WINNER'],
+    ['a gap to the winner', makeRow('two', 2), false, '+1.234'],
+    ['one lap down', makeRow('two', 2, { lapped: true }), false, '+1 LAP'],
+    ['several laps down', makeRow('two', 2, { lapped: true, lapsBehind: 3 }), false, '+3 LAPS'],
+    ['a retirement', makeRow('two', 2, { finishStatus: 'dnf' }), false, 'DNF'],
+    ['a disqualification', makeRow('two', 2, { finishStatus: 'dsq' }), false, 'DSQ'],
+    ['a non-starter', makeRow('two', 2, { finishStatus: 'dns' }), false, 'DNS'],
+    ['a winner that is still in the pit lane', makeRow('one', 1, { inPit: true }), true, 'WINNER'],
+    ['a retirement even at the front', makeRow('one', 1, { finishStatus: 'dnf' }), true, 'DNF'],
+  ] as [string, TimingRow, boolean, string][])('shows %s', (_label, row, isLeader, expected) => {
+    expect(rowValue(row, 'results', isLeader)).toBe(expected);
+  });
+
+  it('treats a missing finish status as finished', () => {
+    expect(isClassified(makeRow('two', 2))).toBe(true);
+    expect(isClassified(makeRow('two', 2, { finishStatus: 'finished' }))).toBe(true);
+    expect(isClassified(makeRow('two', 2, { finishStatus: 'dsq' }))).toBe(false);
+  });
+});
+
+describe('TimingTower in results mode', () => {
+  const results = [
+    makeRow('one', 1, { points: 25 }),
+    makeRow('two', 2, { points: 18, gapToLeader: 4.512, drs: true }),
+    makeRow('three', 3, { finishStatus: 'dnf' }),
+  ];
+
+  it('shows the finishing order with the winner, the gap, and the retirement', () => {
+    const { container } = render(
+      <TimingTower rows={results} drivers={drivers} teams={teams} mode="results" />,
+    );
+    expect(container.querySelector('[data-slot="timing-tower"]')).toHaveAttribute(
+      'data-mode',
+      'results',
+    );
+    const values = [...container.querySelectorAll('[data-slot="timing-tower-value"]')];
+    expect(values.map((value) => value.textContent)).toEqual(['WINNER', '+4.512', 'DNF']);
+    expect(values[2]).toHaveAttribute('data-tone', 'retired');
+    expect(values[0]).toHaveAttribute('data-tone', 'default');
+  });
+
+  it('marks the unclassified rows', () => {
+    const { container } = render(
+      <TimingTower rows={results} drivers={drivers} teams={teams} mode="results" />,
+    );
+    const rendered = [...container.querySelectorAll('[data-slot="timing-tower-row"]')];
+    expect(rendered.map((row) => row.getAttribute('data-classified'))).toEqual([
+      'true',
+      'true',
+      'false',
+    ]);
+  });
+
+  it('adds a points cell that is empty without points, and only in results mode', () => {
+    const { container, rerender } = render(
+      <TimingTower rows={results} drivers={drivers} teams={teams} mode="results" />,
+    );
+    const points = [...container.querySelectorAll('[data-slot="timing-tower-points"]')];
+    expect(points.map((cell) => cell.textContent)).toEqual(['25', '18', '']);
+    rerender(<TimingTower rows={results} drivers={drivers} teams={teams} mode="leader" />);
+    expect(container.querySelectorAll('[data-slot="timing-tower-points"]')).toHaveLength(0);
+  });
+
+  it('never shows the overtake tag, and keeps the tyre badge under showTyre', () => {
+    const { container, rerender } = render(
+      <TimingTower rows={results} drivers={drivers} teams={teams} mode="results" showOvertake />,
+    );
+    expect(container.querySelectorAll('[data-slot="overtake-indicator"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-slot="tyre-badge"]')).toHaveLength(3);
+    rerender(
+      <TimingTower
+        rows={results}
+        drivers={drivers}
+        teams={teams}
+        mode="results"
+        showTyre={false}
+      />,
+    );
+    expect(container.querySelectorAll('[data-slot="tyre-badge"]')).toHaveLength(0);
   });
 });
 

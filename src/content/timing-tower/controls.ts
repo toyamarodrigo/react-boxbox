@@ -4,9 +4,10 @@ const controls = defineControls({
   mode: {
     kind: 'select',
     label: 'Mode',
-    description: 'Value column: gap to the leader, interval to the car ahead, or last lap time.',
+    description:
+      'Value column: gap to the leader, interval to the car ahead, last lap time, or the classification once the race is over.',
     default: 'leader',
-    options: ['leader', 'interval', 'lapTime'],
+    options: ['leader', 'interval', 'lapTime', 'results'],
   },
   maxRows: {
     kind: 'number',

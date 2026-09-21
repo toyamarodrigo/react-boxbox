@@ -41,8 +41,32 @@ export function formatLapTime(seconds: number | null): string {
   return `${minutes}:${(seconds - minutes * 60).toFixed(3).padStart(6, '0')}`;
 }
 
+const FINISH_LABELS = { dnf: 'DNF', dsq: 'DSQ', dns: 'DNS' } as const;
+
+/** A car counts as classified until it is given a finish status other than `finished`. */
+export function isClassified(row: TimingRow): boolean {
+  return (row.finishStatus ?? 'finished') === 'finished';
+}
+
+/**
+ * The text of the value cell in `results` mode: the winner, the gap to the
+ * winner, the laps a lapped car was behind, or why the car is not classified.
+ */
+export function resultValue(row: TimingRow, isLeader: boolean): string {
+  const status = row.finishStatus ?? 'finished';
+  if (status !== 'finished') return FINISH_LABELS[status];
+  if (isLeader) return 'WINNER';
+  if (row.lapped) {
+    const laps = row.lapsBehind ?? 1;
+    return laps === 1 ? '+1 LAP' : `+${laps} LAPS`;
+  }
+  return formatGap(row.gapToLeader);
+}
+
 /** The text of the value cell for one row. */
 export function rowValue(row: TimingRow, mode: GapMode, isLeader: boolean): string {
+  // The race is over in `results` mode, so pit and interval states no longer apply.
+  if (mode === 'results') return resultValue(row, isLeader);
   if (row.inPit) return 'IN PIT';
   if (mode === 'lapTime') return formatLapTime(row.lastLapTime);
   if (row.lapped) return '+1 LAP';
@@ -50,16 +74,19 @@ export function rowValue(row: TimingRow, mode: GapMode, isLeader: boolean): stri
   return formatGap(mode === 'interval' ? row.interval : row.gapToLeader);
 }
 
-export type TimingTowerValueTone = 'default' | 'pit' | 'lapped' | 'fastest';
+export type TimingTowerValueTone = 'default' | 'pit' | 'lapped' | 'fastest' | 'retired';
 
 const VALUE_TONES: Record<TimingTowerValueTone, string> = {
   default: 'text-foreground',
   pit: 'text-status-pit',
   lapped: 'text-status-lapped',
   fastest: 'text-sector-fastest',
+  retired: 'text-muted-foreground',
 };
 
-function valueTone(row: TimingRow, isFastestLap: boolean): TimingTowerValueTone {
+function valueTone(row: TimingRow, isFastestLap: boolean, mode: GapMode): TimingTowerValueTone {
+  // A result is settled: only the unclassified cars read differently, and they read muted.
+  if (mode === 'results') return isClassified(row) ? 'default' : 'retired';
   if (row.inPit) return 'pit';
   if (isFastestLap) return 'fastest';
   if (row.lapped) return 'lapped';
@@ -158,6 +185,26 @@ export function TimingTowerValue({
   );
 }
 
+/** The points a car scored. Keeps its width when there are none, so the column stays straight. */
+export function TimingTowerPoints({
+  points,
+  className,
+  ...props
+}: { points?: number | undefined } & React.ComponentProps<'span'>) {
+  return (
+    <span
+      data-slot="timing-tower-points"
+      className={cn(
+        'w-6 shrink-0 text-right font-mono text-xs font-bold leading-none tabular-nums',
+        className,
+      )}
+      {...props}
+    >
+      {points === undefined ? '' : points}
+    </span>
+  );
+}
+
 const TAG_CLASS = 'shrink-0 px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest';
 
 /**
@@ -207,7 +254,14 @@ export function TimingTowerRow({
   // The value column means something different per mode, and the digits and the
   // ▲/▼ glyph carry no meaning on their own, so each gets a spoken label.
   const valueLabel =
-    mode === 'lapTime' ? 'Last lap' : mode === 'interval' ? 'Interval' : 'Gap to leader';
+    mode === 'lapTime'
+      ? 'Last lap'
+      : mode === 'interval'
+        ? 'Interval'
+        : mode === 'results'
+          ? 'Result'
+          : 'Gap to leader';
+  const results = mode === 'results';
   return (
     <motion.li
       layout="position"
@@ -217,6 +271,7 @@ export function TimingTowerRow({
       data-pit={String(row.inPit)}
       data-lapped={String(row.lapped)}
       data-drs={String(row.drs)}
+      data-classified={results ? String(isClassified(row)) : undefined}
       // `y` rather than a transform string: Motion composes it with the layout
       // projection, so a row leaving past `maxRows` drops out of the bottom
       // instead of vanishing, and one climbing into view rises into its place.
@@ -274,7 +329,7 @@ export function TimingTowerRow({
         <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} wear={row.tyre.wear} />
       )}
       {/* Showing the tag is configuration, so it unmounts the presence wrapper and never animates. */}
-      {showsOvertake(showOvertake, showDrs) && (
+      {!results && showsOvertake(showOvertake, showDrs) && (
         <AnimatePresence initial={false}>
           {row.drs && (
             <motion.span key="overtake" {...TAG_MOTION} className="flex shrink-0">
@@ -295,7 +350,16 @@ export function TimingTowerRow({
         )}
       </AnimatePresence>
       <span className="sr-only">{valueLabel}</span>
-      <TimingTowerValue value={rowValue(row, mode, isLeader)} tone={valueTone(row, isFastestLap)} />
+      <TimingTowerValue
+        value={rowValue(row, mode, isLeader)}
+        tone={valueTone(row, isFastestLap, mode)}
+      />
+      {results && (
+        <>
+          <span className="sr-only">Points</span>
+          <TimingTowerPoints points={row.points} />
+        </>
+      )}
     </motion.li>
   );
 }
