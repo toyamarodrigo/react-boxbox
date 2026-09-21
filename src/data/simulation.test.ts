@@ -64,6 +64,20 @@ describe('race simulation', () => {
     expect(biggestPitDrop).toBeLessThan(-1);
   });
 
+  it('grows the race clock by one leader lap per tick and starts at zero', () => {
+    const rng = createSeededRng(23);
+    let state = createInitialRace(grid, rng);
+    expect(state.elapsedMs).toBe(0);
+    for (let lap = 0; lap < 20; lap++) {
+      const previous = state;
+      state = advanceRace(state, rng);
+      const leaderLapMs = Math.round(state.rows[0]!.lastLapTime! * 1000);
+      expect(state.elapsedMs).toBe(previous.elapsedMs + leaderLapMs);
+      expect(state.elapsedMs).toBeGreaterThan(previous.elapsedMs);
+    }
+    expect(createInitialRace(grid, createSeededRng(23)).elapsedMs).toBe(0);
+  });
+
   it('uses valid sector statuses and resets tyre age on pit stops', () => {
     let pitCount = 0;
     for (let tick = 1; tick <= 60; tick++) {

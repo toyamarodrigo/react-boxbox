@@ -369,6 +369,38 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "lap-counter",
+      "type": "registry:ui",
+      "title": "Lap Counter",
+      "description": "Broadcast lap counter that rolls the lap and calls the last lap the final lap.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/lap-counter.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "race-clock",
+      "type": "registry:ui",
+      "title": "Race Clock",
+      "description": "Broadcast race clock showing time remaining or elapsed as H:MM:SS, driven by its parent.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/race-clock.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

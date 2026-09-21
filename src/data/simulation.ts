@@ -10,6 +10,8 @@ export type Rng = () => number;
 export type RaceState = {
   lap: number;
   totalLaps: number;
+  /** Race time since lights out, so a clock and a lap counter can share one source. */
+  elapsedMs: number;
   trackStatus: TrackStatus;
   rows: TimingRow[];
   sessionBest: { sectors: [number | null, number | null, number | null]; lap: number | null };
@@ -57,6 +59,7 @@ export function createInitialRace(grid: Grid, rng: Rng): RaceState {
   return {
     lap: 0,
     totalLaps: 70,
+    elapsedMs: 0,
     trackStatus: 'green',
     rows,
     sessionBest: { sectors: [null, null, null], lap: null },
@@ -172,9 +175,16 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
         : roll < 0.02
           ? 'vsc'
           : 'green';
+  // The clock follows the leader: one tick is one of their laps. Without a lap time
+  // to go on, a plausible one keeps the clock moving and stays seeded.
+  const lapMs =
+    ranked[0]?.lastLapTime != null
+      ? Math.round(ranked[0].lastLapTime * 1000)
+      : Math.round(90_000 + (rng() - 0.5) * 6000);
   return {
     lap: state.lap + 1,
     totalLaps: state.totalLaps,
+    elapsedMs: state.elapsedMs + lapMs,
     trackStatus,
     rows: ranked,
     sessionBest: { sectors: sessionSectors, lap: sessionLap },
