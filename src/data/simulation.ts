@@ -31,9 +31,16 @@ export function createSeededRng(seed: number): Rng {
 const round = (value: number) => Math.round(value * 1000) / 1000;
 const compounds: TyreCompound[] = ['S', 'M', 'H', 'I', 'W'];
 
+// Wear runs ahead of age: a set is roughly three percent used per lap, and each
+// driver burns it at their own rate.
+const initialWear = (age: number, rng: Rng) => Math.min(100, round(age * 3 + rng() * 10));
+const nextWear = (wear: number, rng: Rng) => Math.min(100, round(wear + 1.5 + rng() * 2));
+
 export function createInitialRace(grid: Grid, rng: Rng): RaceState {
   const rows = grid.drivers.map((driver, index): TimingRow => {
     const gap = index === 0 ? 0 : round(index * 1.8 + rng() * 0.5);
+    const compound = compounds[Math.floor(rng() * 3)]!;
+    const age = Math.floor(rng() * 8);
     return {
       driverId: driver.id,
       position: index + 1,
@@ -46,7 +53,7 @@ export function createInitialRace(grid: Grid, rng: Rng): RaceState {
         SectorTime,
         SectorTime,
       ],
-      tyre: { compound: compounds[Math.floor(rng() * 3)]!, age: Math.floor(rng() * 8) },
+      tyre: { compound, age, wear: initialWear(age, rng) },
       inPit: false,
       lapped: false,
       drs: false,
@@ -104,8 +111,9 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
                 compounds.length
             ]!,
           age: 0,
+          wear: 0,
         }
-      : { ...row.tyre, age: row.tyre.age + 1 };
+      : { ...row.tyre, age: row.tyre.age + 1, wear: nextWear(row.tyre.wear ?? 0, rng) };
     return {
       ...row,
       sectors,

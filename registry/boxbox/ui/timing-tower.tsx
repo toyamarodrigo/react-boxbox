@@ -256,7 +256,9 @@ export function TimingTowerRow({
           {`${gained ? 'gained' : 'lost'} ${moved} ${moved === 1 ? 'place' : 'places'}`}
         </span>
       )}
-      {showTyre && <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} />}
+      {showTyre && (
+        <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} wear={row.tyre.wear} />
+      )}
       {/* `showDrs` is configuration, so it unmounts the presence wrapper and never animates. */}
       {showDrs && (
         <AnimatePresence initial={false}>
