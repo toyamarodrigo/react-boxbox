@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T18:12:09.640Z",
+  "generatedAt": "2026-09-21T18:24:43.570Z",
   "races": [
     {
       "id": "2026-14",
@@ -35,13 +35,13 @@
       "winnerCode": "VER"
     },
     {
-      "id": "2023-22",
+      "id": "2023-21",
       "season": 2023,
-      "round": 22,
-      "name": "Abu Dhabi Grand Prix",
-      "circuit": "Yas Marina Circuit",
-      "date": "2023-11-26",
-      "totalLaps": 58,
+      "round": 21,
+      "name": "Las Vegas Grand Prix",
+      "circuit": "Las Vegas Strip Street Circuit",
+      "date": "2023-11-19",
+      "totalLaps": 50,
       "driverCount": 20,
       "winnerCode": "VER"
     },
