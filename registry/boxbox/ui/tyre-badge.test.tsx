@@ -49,6 +49,50 @@ describe('TyreBadge', () => {
     expect(roller).toHaveTextContent('7');
   });
 
+  it('draws no wear ring when wear is left out', () => {
+    const { container } = render(<TyreBadge compound="S" age={12} />);
+    expect(container.querySelector('svg')).toBeNull();
+    expect(container.querySelector('[data-slot="tyre-badge"]')).not.toHaveAttribute('data-wear');
+  });
+
+  it('draws the wear arc and reports the wear on the root', () => {
+    const { container } = render(<TyreBadge compound="S" age={12} wear={35} />);
+    const badge = container.querySelector('[data-slot="tyre-badge"]');
+    expect(badge).toHaveAttribute('data-wear', '35');
+    expect(badge).toHaveAttribute('data-wear-warning', 'false');
+    expect(container.querySelector('[data-slot="tyre-badge-ring"] svg circle')).toBeInTheDocument();
+  });
+
+  it('flips the warning flag at the threshold, default and custom', () => {
+    const wearFlag = (container: HTMLElement) =>
+      container.querySelector('[data-slot="tyre-badge"]')?.getAttribute('data-wear-warning');
+    const { container, rerender } = render(<TyreBadge compound="M" wear={69} />);
+    expect(wearFlag(container)).toBe('false');
+    rerender(<TyreBadge compound="M" wear={70} />);
+    expect(wearFlag(container)).toBe('true');
+    rerender(<TyreBadge compound="M" wear={45} wearWarning={40} />);
+    expect(wearFlag(container)).toBe('true');
+    rerender(<TyreBadge compound="M" wear={45} wearWarning={90} />);
+    expect(wearFlag(container)).toBe('false');
+  });
+
+  it('clamps wear to 0 and 100', () => {
+    const { container, rerender } = render(<TyreBadge compound="H" wear={-20} />);
+    const badge = () => container.querySelector('[data-slot="tyre-badge"]');
+    expect(badge()).toHaveAttribute('data-wear', '0');
+    expect(badge()).toHaveAttribute('data-wear-warning', 'false');
+    rerender(<TyreBadge compound="H" wear={140} />);
+    expect(badge()).toHaveAttribute('data-wear', '100');
+    expect(badge()).toHaveAttribute('data-wear-warning', 'true');
+  });
+
+  it('speaks the wear percentage alongside the compound and age', () => {
+    const { rerender } = render(<TyreBadge compound="S" age={24} wear={72} />);
+    expect(screen.getByRole('img', { name: 'Soft tyre, 24 laps, 72% worn' })).toBeInTheDocument();
+    rerender(<TyreBadge compound="S" isNew wear={0} />);
+    expect(screen.getByRole('img', { name: 'Soft tyre, new, 0% worn' })).toBeInTheDocument();
+  });
+
   it('changes the ring size class with the size prop', () => {
     const { rerender, container } = render(<TyreBadge compound="M" age={5} size="sm" />);
     const ring = () => container.querySelector('[data-slot="tyre-badge-ring"]');

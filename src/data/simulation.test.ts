@@ -64,6 +64,37 @@ describe('race simulation', () => {
     expect(biggestPitDrop).toBeLessThan(-1);
   });
 
+  it('wears the tyres down within bounds and fits a fresh set at a stop', () => {
+    const rng = createSeededRng(11);
+    let state = createInitialRace(grid, rng);
+    let previous = new Map(state.rows.map((row) => [row.driverId, row.tyre.wear!]));
+    let grew = 0;
+    let stops = 0;
+    for (const row of state.rows) {
+      expect(row.tyre.wear).toBeGreaterThanOrEqual(0);
+      expect(row.tyre.wear).toBeLessThanOrEqual(100);
+    }
+    for (let lap = 0; lap < 70; lap++) {
+      state = advanceRace(state, rng);
+      for (const row of state.rows) {
+        const wear = row.tyre.wear!;
+        expect(wear).toBeGreaterThanOrEqual(0);
+        expect(wear).toBeLessThanOrEqual(100);
+        const before = previous.get(row.driverId)!;
+        if (row.inPit) {
+          stops++;
+          expect(wear).toBe(0);
+        } else if (before < 100) {
+          grew++;
+          expect(wear).toBeGreaterThan(before);
+        }
+      }
+      previous = new Map(state.rows.map((row) => [row.driverId, row.tyre.wear!]));
+    }
+    expect(stops).toBeGreaterThan(0);
+    expect(grew).toBeGreaterThan(0);
+  });
+
   it('uses valid sector statuses and resets tyre age on pit stops', () => {
     let pitCount = 0;
     for (let tick = 1; tick <= 60; tick++) {

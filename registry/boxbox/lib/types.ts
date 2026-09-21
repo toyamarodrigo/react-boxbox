@@ -23,7 +23,7 @@ export type TimingRow = {
   lastLapTime: number | null;
   bestLapTime: number | null;
   sectors: [SectorTime, SectorTime, SectorTime];
-  tyre: { compound: TyreCompound; age: number };
+  tyre: { compound: TyreCompound; age: number; wear?: number };
   inPit: boolean;
   lapped: boolean;
   drs: boolean;
