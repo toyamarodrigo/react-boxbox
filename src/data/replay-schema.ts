@@ -47,6 +47,30 @@ export const replayLapSchema = z.object({
 
 export const finishStatusSchema = z.enum(['finished', 'dnf', 'dsq', 'dns']);
 
+/** The boxbox `TyreCompound` union: soft, medium, hard, intermediate, wet. */
+export const tyreCompoundSchema = z.enum(['S', 'M', 'H', 'I', 'W']);
+
+/**
+ * One set of tyres, from the start or a pit stop to the next stop or the finish. The laps are
+ * inclusive. `compound` is `null` whenever the compound source has nothing for that stint: the
+ * cuts come from the pit stops, which are complete, and the compound from a second source that
+ * is not.
+ */
+export const replayStintSchema = z
+  .object({
+    fromLap: z.number().int().min(1),
+    toLap: z.number().int().min(1),
+    compound: tyreCompoundSchema.nullable(),
+  })
+  .refine((stint) => stint.toLap >= stint.fromLap, {
+    message: 'A stint ends on or after the lap it starts on',
+  });
+
+export const replayDriverStintsSchema = z.object({
+  driverId: z.string().min(1),
+  stints: z.array(replayStintSchema),
+});
+
 export const replayResultSchema = z.object({
   driverId: z.string().min(1),
   position: z.number().int().min(1).nullable(),
@@ -62,10 +86,18 @@ export const replayResultSchema = z.object({
   lapsBehind: z.number().int().min(0),
 });
 
+/** Where the tyre compounds came from. Absent when a race has none. */
+export const replayCompoundSourceSchema = z.object({
+  provider: z.literal('openf1'),
+  fetchedAt: z.iso.datetime(),
+  url: z.url(),
+});
+
 export const replaySourceSchema = z.object({
   provider: z.literal('jolpica-f1'),
   fetchedAt: z.iso.datetime(),
   url: z.url(),
+  compounds: replayCompoundSourceSchema.optional(),
 });
 
 export const replayRaceSchema = z.object({
@@ -81,6 +113,8 @@ export const replayRaceSchema = z.object({
   teams: z.array(replayTeamSchema).min(1),
   laps: z.array(replayLapSchema).min(1),
   results: z.array(replayResultSchema).min(1),
+  /** One entry per car that ran a lap. Defaults to none, so a race built before this parses. */
+  stints: z.array(replayDriverStintsSchema).default([]),
 });
 
 export const replayIndexEntrySchema = z.object({
@@ -105,8 +139,12 @@ export type ReplayTeam = z.infer<typeof replayTeamSchema>;
 export type ReplayLapRow = z.infer<typeof replayLapRowSchema>;
 export type ReplayLap = z.infer<typeof replayLapSchema>;
 export type ReplayFinishStatus = z.infer<typeof finishStatusSchema>;
+export type ReplayTyreCompound = z.infer<typeof tyreCompoundSchema>;
+export type ReplayStint = z.infer<typeof replayStintSchema>;
+export type ReplayDriverStints = z.infer<typeof replayDriverStintsSchema>;
 export type ReplayResult = z.infer<typeof replayResultSchema>;
 export type ReplaySource = z.infer<typeof replaySourceSchema>;
+export type ReplayCompoundSource = z.infer<typeof replayCompoundSourceSchema>;
 export type ReplayRace = z.infer<typeof replayRaceSchema>;
 export type ReplayIndexEntry = z.infer<typeof replayIndexEntrySchema>;
 export type ReplayIndex = z.infer<typeof replayIndexSchema>;

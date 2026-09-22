@@ -12,6 +12,7 @@ import flagBanner from './flag-banner/meta';
 import overtakeIndicator from './overtake-indicator/meta';
 import podium from './podium/meta';
 import trackMap from './track-map/meta';
+import stintBar from './stint-bar/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -27,6 +28,7 @@ export const manifest: readonly ComponentMeta[] = [
   overtakeIndicator,
   podium,
   trackMap,
+  stintBar,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -98,6 +100,10 @@ export const contentModules = {
   'track-map': {
     controls: () => import('./track-map/controls'),
     demo: () => import('./track-map/demo'),
+  },
+  'stint-bar': {
+    controls: () => import('./stint-bar/controls'),
+    demo: () => import('./stint-bar/demo'),
   },
 } satisfies Record<
   string,

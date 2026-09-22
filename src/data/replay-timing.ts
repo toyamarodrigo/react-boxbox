@@ -2,7 +2,7 @@ import type { SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/t
 import type { OvertakeMode } from '@/registry/boxbox/ui/overtake-indicator';
 import type { PodiumEntry, PodiumSteps } from '@/registry/boxbox/ui/podium';
 import { formatGap, resultValue } from '@/registry/boxbox/ui/timing-tower';
-import type { ReplayLap, ReplayLapRow, ReplayRace } from './replay-schema';
+import type { ReplayLap, ReplayLapRow, ReplayRace, ReplayStint } from './replay-schema';
 
 /**
  * Maps a replay race onto the shapes the registry components take. Everything here is pure:
@@ -520,6 +520,17 @@ export function positionsSinceStart(
 ): number | null {
   const grid = race.results.find((result) => result.driverId === driverId)?.grid ?? null;
   return grid === null || grid === 0 ? null : grid - position;
+}
+
+/**
+ * The set of tyres a car is on at a lap: the stint whose lap range covers it. `undefined` when
+ * no stint does, which is a car with no stint data or a lap past the one it retired on.
+ */
+export function stintAt(
+  stints: readonly ReplayStint[] | undefined,
+  lap: number,
+): ReplayStint | undefined {
+  return stints?.find((stint) => lap >= stint.fromLap && lap <= stint.toLap);
 }
 
 /**

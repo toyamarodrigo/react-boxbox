@@ -13,4 +13,5 @@ export const contentSlugs = [
   'overtake-indicator',
   'podium',
   'track-map',
+  'stint-bar',
 ] as const;

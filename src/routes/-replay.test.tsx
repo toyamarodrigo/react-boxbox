@@ -315,6 +315,38 @@ describe('replay page, followed driver', () => {
     );
   });
 
+  it('shows the followed car its tyres and its stints so far', async () => {
+    renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    // Charlie is on the medium set it started on, new at lap one.
+    const tyre = document.querySelector('[data-figure="tyre"]');
+    expect(tyre?.querySelector('[data-slot="tyre-badge"]')).toHaveAttribute('data-compound', 'M');
+    expect(tyre).toHaveTextContent('0');
+
+    const bar = followedRow()?.querySelector('[data-slot="stint-bar"]');
+    expect(bar).toHaveAttribute('data-size', 'sm');
+    expect(bar).toHaveAttribute('data-total-laps', '3');
+    expect(bar).toHaveAttribute('data-current-lap', '1');
+    expect([...bar!.querySelectorAll('[data-slot="stint-bar-segment"]')]).toHaveLength(2);
+  });
+
+  it('says so rather than guessing when the compound is unknown', async () => {
+    // Delta has one stint and no compound for it.
+    renderReplay('/replay?driver=DEL');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'delta'));
+
+    const tyre = document.querySelector('[data-figure="tyre"]');
+    expect(tyre?.querySelector('[data-slot="tyre-badge"]')).toBeNull();
+    expect(tyre?.querySelector('[title="compound unknown"]')).not.toBeNull();
+    expect(followedRow()?.querySelector('[data-slot="stint-bar-segment"]')).toHaveAttribute(
+      'data-compound',
+      'unknown',
+    );
+  });
+
   it('keeps the follow working once the race is over', async () => {
     const router = renderReplay();
     await screen.findByRole('heading', { name: race.name });
@@ -327,5 +359,68 @@ describe('replay page, followed driver', () => {
     fireEvent.click(rowButton('charlie')!);
     await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
     expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
+  });
+});
+
+describe('replay page, strategy panel', () => {
+  const strategyLines = () => [...document.querySelectorAll('[data-slot="strategy-line"]')];
+
+  it('stays closed until it is asked for', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+
+    const header = await screen.findByRole('button', { name: 'Strategy' });
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(strategyLines()).toHaveLength(0);
+  });
+
+  it('lists every car in tower order, with the followed one picked out', async () => {
+    renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    await waitFor(() => expect(strategyLines()).toHaveLength(4));
+
+    const towerOrder = [...document.querySelectorAll('[data-slot="timing-tower-row"]')].map((row) =>
+      row.getAttribute('data-driver'),
+    );
+    expect(strategyLines().map((line) => line.getAttribute('data-driver'))).toEqual(towerOrder);
+
+    const charlie = strategyLines().find((line) => line.getAttribute('data-driver') === 'charlie');
+    expect(charlie).toHaveAttribute('aria-pressed', 'true');
+    expect(charlie?.querySelector('[data-slot="stint-bar"]')).toHaveAttribute('data-size', 'sm');
+    expect(
+      strategyLines().filter((line) => line.getAttribute('aria-pressed') === 'true'),
+    ).toHaveLength(1);
+  });
+
+  it('follows the driver whose line is clicked', async () => {
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    await waitFor(() => expect(strategyLines()).toHaveLength(4));
+
+    const line = strategyLines().find((entry) => entry.getAttribute('data-driver') === 'bravo');
+    fireEvent.click(line!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('BRA'));
+    expect(followedRow()).toHaveAttribute('data-driver', 'bravo');
+  });
+
+  it('keeps a place for the gap chart until the next delivery', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    await waitFor(() => expect(strategyLines()).toHaveLength(4));
+    expect(screen.getByRole('tab', { name: 'Strategy' })).toHaveAttribute('aria-selected', 'true');
+
+    // Radix switches a tab on mousedown, not on the click that follows it.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Gaps' }));
+    await waitFor(() =>
+      expect(screen.getByText('Gap chart arrives with the next delivery.')).toBeInTheDocument(),
+    );
+    expect(strategyLines()).toHaveLength(0);
   });
 });

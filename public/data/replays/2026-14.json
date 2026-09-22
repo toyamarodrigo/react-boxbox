@@ -8,8 +8,13 @@
   "totalLaps": 57,
   "source": {
     "provider": "jolpica-f1",
-    "fetchedAt": "2026-09-22T06:51:10.302Z",
-    "url": "https://api.jolpi.ca/ergast/f1/2026/14.json"
+    "fetchedAt": "2026-09-22T07:50:20.228Z",
+    "url": "https://api.jolpi.ca/ergast/f1/2026/14.json",
+    "compounds": {
+      "provider": "openf1",
+      "fetchedAt": "2026-09-22T07:50:20.228Z",
+      "url": "https://api.openf1.org/v1/stints?session_key=11369"
+    }
   },
   "drivers": [
     {
@@ -15184,6 +15189,353 @@
       "timeMs": null,
       "gapToWinnerMs": null,
       "lapsBehind": 0
+    }
+  ],
+  "stints": [
+    {
+      "driverId": "antonelli",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "M"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 57,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "max_verstappen",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "S"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 57,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "norris",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 15,
+          "compound": "M"
+        },
+        {
+          "fromLap": 16,
+          "toLap": 57,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "leclerc",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 48,
+          "compound": "H"
+        },
+        {
+          "fromLap": 49,
+          "toLap": 57,
+          "compound": "S"
+        }
+      ]
+    },
+    {
+      "driverId": "russell",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "H"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 28,
+          "compound": "M"
+        },
+        {
+          "fromLap": 29,
+          "toLap": 57,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "lawson",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 44,
+          "compound": "H"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "M"
+        }
+      ]
+    },
+    {
+      "driverId": "colapinto",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "M"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 57,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "piastri",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 42,
+          "compound": "H"
+        },
+        {
+          "fromLap": 43,
+          "toLap": 57,
+          "compound": "M"
+        }
+      ]
+    },
+    {
+      "driverId": "arvid_lindblad",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "M"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 56,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "hulkenberg",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "S"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 56,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "ocon",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "M"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 56,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "gasly",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 55,
+          "compound": "H"
+        },
+        {
+          "fromLap": 56,
+          "toLap": 56,
+          "compound": "S"
+        }
+      ]
+    },
+    {
+      "driverId": "bortoleto",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 47,
+          "compound": "H"
+        },
+        {
+          "fromLap": 48,
+          "toLap": 56,
+          "compound": "S"
+        }
+      ]
+    },
+    {
+      "driverId": "tsunoda",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 36,
+          "compound": "H"
+        },
+        {
+          "fromLap": 37,
+          "toLap": 56,
+          "compound": "M"
+        }
+      ]
+    },
+    {
+      "driverId": "albon",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "M"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 56,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "bearman",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 33,
+          "compound": "H"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 43,
+          "compound": "M"
+        },
+        {
+          "fromLap": 44,
+          "toLap": 56,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "alonso",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "H"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 37,
+          "compound": "S"
+        },
+        {
+          "fromLap": 38,
+          "toLap": 55,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "bottas",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 29,
+          "compound": "H"
+        },
+        {
+          "fromLap": 30,
+          "toLap": 43,
+          "compound": "H"
+        },
+        {
+          "fromLap": 44,
+          "toLap": 54,
+          "compound": "S"
+        }
+      ]
+    },
+    {
+      "driverId": "sainz",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 23,
+          "compound": "H"
+        },
+        {
+          "fromLap": 24,
+          "toLap": 31,
+          "compound": "M"
+        },
+        {
+          "fromLap": 32,
+          "toLap": 43,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "perez",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 14,
+          "compound": "M"
+        },
+        {
+          "fromLap": 15,
+          "toLap": 31,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "stroll",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 12,
+          "compound": "H"
+        }
+      ]
+    },
+    {
+      "driverId": "hamilton",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 6,
+          "compound": "S"
+        }
+      ]
     }
   ]
 }

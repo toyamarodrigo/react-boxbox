@@ -468,6 +468,23 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "stint-bar",
+      "type": "registry:ui",
+      "title": "Stint Bar",
+      "description": "A car's tyre strategy as one bar: a segment per stint in its compound colour, filling up to the current lap.",
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/stint-bar.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

@@ -1,27 +1,35 @@
-import { memo, useCallback, useEffect, useEffectEvent, useMemo } from 'react';
+import { memo, useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ChevronDown, ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
+import { cn } from 'cn';
 import { z } from 'zod';
-import type { ReplayIndexEntry, ReplayRace } from '../data/replay-schema';
+import type { ReplayIndexEntry, ReplayRace, ReplayStint } from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
 import {
+  type PitLaneShape,
   type ReplayPitStop,
+  carLapsAt,
   emphasiseMarker,
   followedDriverId,
   formatRaceTime,
   overtakeModeFor,
   positionsSinceStart,
   replayPodium,
+  stintAt,
 } from '../data/replay-timing';
 import { byDateDescending, formatRaceDate } from '../data/replay-index';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
+import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
+import { StintBar } from '@/registry/boxbox/ui/stint-bar';
+import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
 import {
   type TimingTowerExpandedContext,
   TimingTower,
@@ -33,6 +41,7 @@ import {
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { seo } from '../lib/seo';
 
@@ -269,48 +278,93 @@ const CHANGE_TONES = {
   none: 'text-foreground',
 } as const;
 
+/** A car's stints by driver id: one lookup per race rather than a scan per render. */
+type StintsByDriver = Map<string, ReplayStint[]>;
+
+const stintsByDriver = (race: ReplayRace): StintsByDriver =>
+  new Map(race.stints.map((car) => [car.driverId, car.stints]));
+
 /**
- * What the followed row shows on this page: the tower's own figures plus the places the car has
- * made up since the grid, which the registry cannot know. No tyre line: the dataset has none.
+ * The set of tyres a car is on now. A stint whose compound nobody recorded has no badge to
+ * draw: the compound is the whole content of one, and a grey ring with a letter would be a
+ * guess. It reads as a question mark instead, the way its stint bar segment does.
+ */
+function FollowedTyre({ stint, lap }: { stint: ReplayStint | undefined; lap: number }) {
+  if (stint?.compound == null) {
+    return (
+      <span title="compound unknown" className="text-muted-foreground">
+        ?<span className="sr-only"> compound unknown</span>
+      </span>
+    );
+  }
+  return <TyreBadge size="sm" compound={stint.compound} age={Math.max(0, lap - stint.fromLap)} />;
+}
+
+/**
+ * What the followed row shows on this page: the tower's own figures, the places the car has made
+ * up since the grid, and its tyres — both of which the registry cannot know.
+ *
+ * Every line has a height of its own, because the tower's panel measures itself once as it opens
+ * and anything that grew afterwards would hang out of it.
  */
 function FollowedFigures({
   race,
   row,
   ahead,
   behind,
+  stints,
+  lap,
 }: {
   race: ReplayRace;
   row: TimingRow;
   ahead: TimingRow | undefined;
   behind: TimingRow | undefined;
+  stints: StintsByDriver;
+  /** The lap this car is on, which is not the leader's lap. */
+  lap: number;
 }) {
   const made = positionsSinceStart(race, row.driverId, row.position);
   const change = positionChangeState(made ?? 0);
+  const own = stints.get(row.driverId);
 
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-      <TimingTowerFigure label="Last" figure="last">
-        {formatLapTime(row.lastLapTime)}
-      </TimingTowerFigure>
-      <TimingTowerFigure label="Ahead" figure="ahead">
-        {ahead === undefined ? EMPTY : formatGap(row.interval)}
-      </TimingTowerFigure>
-      <TimingTowerFigure label="Behind" figure="behind">
-        {formatGap(behind?.interval ?? null)}
-      </TimingTowerFigure>
-      <TimingTowerFigure label="Since start" figure="places">
-        {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
-        <span aria-hidden className={CHANGE_TONES[change]}>
-          {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
-        </span>
-        <span className="sr-only">
-          {made === null
-            ? 'no grid slot'
-            : made === 0
-              ? 'no places made up'
-              : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
-        </span>
-      </TimingTowerFigure>
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <TimingTowerFigure label="Last" figure="last">
+          {formatLapTime(row.lastLapTime)}
+        </TimingTowerFigure>
+        <TimingTowerFigure label="Ahead" figure="ahead">
+          {ahead === undefined ? EMPTY : formatGap(row.interval)}
+        </TimingTowerFigure>
+        <TimingTowerFigure label="Behind" figure="behind">
+          {formatGap(behind?.interval ?? null)}
+        </TimingTowerFigure>
+        <TimingTowerFigure label="Since start" figure="places">
+          {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
+          <span aria-hidden className={CHANGE_TONES[change]}>
+            {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
+          </span>
+          <span className="sr-only">
+            {made === null
+              ? 'no grid slot'
+              : made === 0
+                ? 'no places made up'
+                : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
+          </span>
+        </TimingTowerFigure>
+      </div>
+      <div className="flex h-11 items-center gap-3">
+        <TimingTowerFigure label="Tyre" figure="tyre" className="w-12 shrink-0">
+          <FollowedTyre stint={stintAt(own, lap)} lap={lap} />
+        </TimingTowerFigure>
+        <StintBar
+          size="sm"
+          stints={own ?? []}
+          totalLaps={race.totalLaps}
+          currentLap={lap}
+          className="min-w-0 flex-1"
+        />
+      </div>
     </div>
   );
 }
@@ -318,11 +372,15 @@ function FollowedFigures({
 function Stage({
   race,
   replay,
+  stints,
+  pit,
   followedId,
   onFollow,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
+  stints: StintsByDriver;
+  pit: PitLaneShape | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
 }) {
@@ -339,13 +397,31 @@ function Stage({
     [race, replay.finished],
   );
 
+  /**
+   * The lap the followed car is on, which is its own, not the leader's. A car that has no lap in
+   * progress — retired, or the race is over — keeps the last lap of its last stint, so its bar
+   * stays as full as its race was.
+   */
+  const followedLap = useMemo(() => {
+    if (followedId === undefined) return 0;
+    const running = carLapsAt(race, replay.elapsedMs, pit).get(followedId)?.lap;
+    return running ?? stints.get(followedId)?.at(-1)?.toLap ?? 0;
+  }, [followedId, race, replay.elapsedMs, pit, stints]);
+
   // Both are handed to the tower on every tick, so neither may be a fresh value each render.
   const handleRowClick = useCallback((row: TimingRow) => onFollow(row.driverId), [onFollow]);
   const renderExpanded = useCallback(
     (row: TimingRow, ctx: TimingTowerExpandedContext) => (
-      <FollowedFigures race={race} row={row} ahead={ctx.ahead} behind={ctx.behind} />
+      <FollowedFigures
+        race={race}
+        row={row}
+        ahead={ctx.ahead}
+        behind={ctx.behind}
+        stints={stints}
+        lap={followedLap}
+      />
     ),
-    [race],
+    [race, stints, followedLap],
   );
 
   return (
@@ -424,6 +500,182 @@ function Circuit({
   );
 }
 
+/**
+ * One car's strategy. Memoised on what it draws: the panel re-renders ten times a second, and a
+ * bar only changes when its car completes a lap.
+ */
+const StrategyLine = memo(function StrategyLine({
+  driverId,
+  code,
+  color,
+  stints,
+  totalLaps,
+  lap,
+  followed,
+  onFollow,
+}: {
+  driverId: string;
+  code: string;
+  color: string;
+  stints: readonly ReplayStint[];
+  totalLaps: number;
+  lap: number;
+  followed: boolean;
+  onFollow: (driverId: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        data-slot="strategy-line"
+        data-driver={driverId}
+        aria-pressed={followed}
+        onClick={() => onFollow(driverId)}
+        className={cn(
+          'flex w-full cursor-pointer items-center gap-2 px-2 py-1 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+          followed && 'bg-primary/10',
+        )}
+      >
+        <span className="w-9 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider">
+          {code}
+        </span>
+        <span aria-hidden className="h-3.5 w-[3px] shrink-0" style={{ backgroundColor: color }} />
+        <StintBar
+          size="sm"
+          stints={stints}
+          totalLaps={totalLaps}
+          currentLap={lap}
+          className="min-w-0 flex-1"
+        />
+      </button>
+    </li>
+  );
+});
+
+/**
+ * The same accordion movement as the tower's expanded row: the panel's own height is what grows,
+ * the content fades a step faster, and closing is quicker than opening.
+ */
+const PANEL_MOTION = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto', opacity: 1 },
+  exit: {
+    height: 0,
+    opacity: 0,
+    transition: {
+      height: { duration: DURATION.fast, ease: EASE_OUT },
+      opacity: { duration: DURATION.tick, ease: EASE_OUT },
+    },
+  },
+  transition: {
+    height: { duration: DURATION.base, ease: EASE_OUT },
+    opacity: { duration: DURATION.fast, ease: EASE_OUT },
+  },
+} as const;
+
+type StrategyTab = 'strategy' | 'gaps';
+
+/**
+ * The whole field's tyre strategy under the map, in the tower's order, closed until asked for:
+ * it is the second question a viewer has, after who is where.
+ *
+ * Open state and the tab live here rather than in the URL. They are how the page is being read,
+ * not what it is showing, so a shared link should not carry them.
+ */
+function StrategyPanel({
+  race,
+  replay,
+  stints,
+  pit,
+  followedId,
+  onFollow,
+}: {
+  race: ReplayRace;
+  replay: RaceReplay;
+  stints: StintsByDriver;
+  pit: PitLaneShape | undefined;
+  followedId: string | undefined;
+  onFollow: (driverId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<StrategyTab>('strategy');
+
+  const drivers = useMemo(() => new Map(race.drivers.map((d) => [d.id, d])), [race]);
+  const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
+  // Nothing is measured while the panel is closed: this runs on every tick when it is open.
+  const cars = useMemo(
+    () => (open ? carLapsAt(race, replay.elapsedMs, pit) : undefined),
+    [open, race, replay.elapsedMs, pit],
+  );
+
+  return (
+    <section data-slot="strategy-panel" className="border border-border bg-card">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className="flex w-full cursor-pointer items-center justify-between gap-2 px-5 py-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        >
+          <span className="font-display text-sm font-bold uppercase tracking-widest">Strategy</span>
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
+              open && 'rotate-180',
+            )}
+          />
+        </button>
+      </h2>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div key="body" className="overflow-hidden" {...PANEL_MOTION}>
+            <div className="px-5 pb-4">
+              <Tabs
+                value={tab}
+                onValueChange={(value) => setTab(value === 'gaps' ? 'gaps' : 'strategy')}
+              >
+                <TabsList>
+                  <TabsTrigger value="strategy">Strategy</TabsTrigger>
+                  <TabsTrigger value="gaps">Gaps</TabsTrigger>
+                </TabsList>
+                <TabsContent value="strategy">
+                  <ul aria-label="Strategy" className="flex list-none flex-col">
+                    {replay.rows.map((row) => {
+                      const driver = drivers.get(row.driverId);
+                      if (!driver) return null;
+                      const own = stints.get(row.driverId) ?? [];
+                      return (
+                        <StrategyLine
+                          key={row.driverId}
+                          driverId={row.driverId}
+                          code={driver.code}
+                          color={teams.get(driver.teamId)?.color ?? 'currentColor'}
+                          stints={own}
+                          totalLaps={race.totalLaps}
+                          // A car out of the race keeps the race it ran.
+                          lap={cars?.get(row.driverId)?.lap ?? own.at(-1)?.toLap ?? 0}
+                          followed={row.driverId === followedId}
+                          onFollow={onFollow}
+                        />
+                      );
+                    })}
+                  </ul>
+                </TabsContent>
+                <TabsContent value="gaps">
+                  <p className="py-2 text-xs text-muted-foreground">
+                    Gap chart arrives with the next delivery.
+                  </p>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
 function ReplayPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -446,6 +698,10 @@ function ReplayPage() {
   );
   const replay = useRaceReplay(race.data, { pit: circuit?.pit });
 
+  const stints = useMemo(
+    () => (race.data ? stintsByDriver(race.data) : new Map<string, ReplayStint[]>()),
+    [race.data],
+  );
   const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
 
   const release = useCallback(() => {
@@ -561,8 +817,25 @@ function ReplayPage() {
         // The page has the whole width now, so the tower column grows with it while the map,
         // which is the point of the page, still takes everything left over.
         <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-          <Stage race={race.data} replay={replay} followedId={followedId} onFollow={follow} />
-          <Circuit replay={replay} circuit={circuit} followedId={followedId} onFollow={follow} />
+          <Stage
+            race={race.data}
+            replay={replay}
+            stints={stints}
+            pit={circuit.pit}
+            followedId={followedId}
+            onFollow={follow}
+          />
+          <div className="flex min-w-0 flex-col gap-6">
+            <Circuit replay={replay} circuit={circuit} followedId={followedId} onFollow={follow} />
+            <StrategyPanel
+              race={race.data}
+              replay={replay}
+              stints={stints}
+              pit={circuit.pit}
+              followedId={followedId}
+              onFollow={follow}
+            />
+          </div>
         </div>
       )}
     </div>

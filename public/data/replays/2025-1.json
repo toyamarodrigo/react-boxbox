@@ -8,8 +8,13 @@
   "totalLaps": 57,
   "source": {
     "provider": "jolpica-f1",
-    "fetchedAt": "2026-09-22T06:51:10.302Z",
-    "url": "https://api.jolpi.ca/ergast/f1/2025/1.json"
+    "fetchedAt": "2026-09-22T07:50:20.228Z",
+    "url": "https://api.jolpi.ca/ergast/f1/2025/1.json",
+    "compounds": {
+      "provider": "openf1",
+      "fetchedAt": "2026-09-22T07:50:20.228Z",
+      "url": "https://api.openf1.org/v1/stints?session_key=9693"
+    }
   },
   "drivers": [
     {
@@ -12745,6 +12750,588 @@
       "timeMs": null,
       "gapToWinnerMs": null,
       "lapsBehind": 0
+    }
+  ],
+  "stints": [
+    {
+      "driverId": "norris",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 34,
+          "compound": "I"
+        },
+        {
+          "fromLap": 35,
+          "toLap": 44,
+          "compound": "H"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "max_verstappen",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 34,
+          "compound": "I"
+        },
+        {
+          "fromLap": 35,
+          "toLap": 46,
+          "compound": "M"
+        },
+        {
+          "fromLap": 47,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "russell",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 34,
+          "compound": "I"
+        },
+        {
+          "fromLap": 35,
+          "toLap": 44,
+          "compound": "H"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "antonelli",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 44,
+          "compound": "H"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "albon",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 44,
+          "compound": "M"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "stroll",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 44,
+          "compound": "H"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "hulkenberg",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 44,
+          "compound": "M"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "leclerc",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 34,
+          "compound": "I"
+        },
+        {
+          "fromLap": 35,
+          "toLap": 47,
+          "compound": "H"
+        },
+        {
+          "fromLap": 48,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "piastri",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 34,
+          "compound": "I"
+        },
+        {
+          "fromLap": 35,
+          "toLap": 44,
+          "compound": "H"
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "hamilton",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 47,
+          "compound": "H"
+        },
+        {
+          "fromLap": 48,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "gasly",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 46,
+          "compound": "H"
+        },
+        {
+          "fromLap": 47,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "tsunoda",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 47,
+          "compound": "M"
+        },
+        {
+          "fromLap": 48,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "ocon",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 39,
+          "compound": "I"
+        },
+        {
+          "fromLap": 40,
+          "toLap": 46,
+          "compound": "M"
+        },
+        {
+          "fromLap": 47,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "bearman",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 39,
+          "compound": "I"
+        },
+        {
+          "fromLap": 40,
+          "toLap": 44,
+          "compound": null
+        },
+        {
+          "fromLap": 45,
+          "toLap": 57,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "lawson",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 46,
+          "compound": "M"
+        }
+      ]
+    },
+    {
+      "driverId": "bortoleto",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 33,
+          "compound": "I"
+        },
+        {
+          "fromLap": 34,
+          "toLap": 44,
+          "compound": null
+        },
+        {
+          "fromLap": 45,
+          "toLap": 45,
+          "compound": "I"
+        }
+      ]
+    },
+    {
+      "driverId": "alonso",
+      "stints": [
+        {
+          "fromLap": 1,
+          "toLap": 2,
+          "compound": "I"
+        },
+        {
+          "fromLap": 3,
+          "toLap": 3,
+          "compound": "I"
+        },
+        {
+          "fromLap": 4,
+          "toLap": 4,
+          "compound": "I"
+        },
+        {
+          "fromLap": 5,
+          "toLap": 32,
+          "compound": "I"
+        }
+      ]
     }
   ]
 }

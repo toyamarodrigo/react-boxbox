@@ -1,4 +1,12 @@
-import type { ReplayFinishStatus, ReplayLap, ReplayLapRow, ReplayResult } from './replay-schema';
+import type {
+  ReplayDriverStints,
+  ReplayFinishStatus,
+  ReplayLap,
+  ReplayLapRow,
+  ReplayResult,
+  ReplayStint,
+  ReplayTyreCompound,
+} from './replay-schema';
 
 /** The subset of the Ergast-compatible payload the derivation needs. */
 export type RawTiming = { driverId: string; position: string; time: string };
@@ -170,6 +178,180 @@ export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): Replay
   }
 
   return laps;
+}
+
+/** The OpenF1 rows a compound join needs, as that API returns them. */
+export type RawOpenF1Driver = { driver_number?: number | null; name_acronym?: string | null };
+export type RawOpenF1Stint = {
+  driver_number?: number | null;
+  stint_number?: number | null;
+  lap_start?: number | null;
+  lap_end?: number | null;
+  compound?: string | null;
+};
+
+/** What the compound join takes: OpenF1's two payloads plus the race's own driver codes. */
+export type OpenF1Compounds = {
+  drivers: readonly RawOpenF1Driver[];
+  stints: readonly RawOpenF1Stint[];
+  /**
+   * The race's drivers, id and code. The join is on the three-letter code, because the `number`
+   * the older jolpica payloads carry is a classification number, not the car number OpenF1 keys
+   * its rows by.
+   */
+  codes: readonly { id: string; code: string }[];
+};
+
+const COMPOUND_CODES: Record<string, ReplayTyreCompound> = {
+  SOFT: 'S',
+  MEDIUM: 'M',
+  HARD: 'H',
+  INTERMEDIATE: 'I',
+  WET: 'W',
+};
+
+/** OpenF1's compound name as a boxbox compound. Anything else — `UNKNOWN`, a test tyre — is null. */
+export function tyreCompoundOf(compound: string | null | undefined): ReplayTyreCompound | null {
+  return COMPOUND_CODES[compound?.trim().toUpperCase() ?? ''] ?? null;
+}
+
+/**
+ * How far an OpenF1 `lap_start` may sit from a jolpica stint's first lap and still be the same
+ * set of tyres.
+ *
+ * The two sources count the out-lap differently, and OpenF1 is not even consistent with itself:
+ * for a stop on lap 16 it reported `lap_start: 17` in Las Vegas 2023 (the out-lap, which is what
+ * jolpica's next stint starts on) and `lap_start: 16` in Australia 2025 (the in-lap). One lap of
+ * tolerance covers both; more would let a short stint claim a set two stops away.
+ */
+export const COMPOUND_LAP_TOLERANCE = 1;
+
+/** OpenF1 stints by driver code, in lap order. Rows with no `lap_start` cannot be matched. */
+function compoundsByCode(source: OpenF1Compounds): Map<string, RawOpenF1Stint[]> {
+  const acronyms = new Map<number, string>();
+  for (const driver of source.drivers) {
+    const code = driver.name_acronym?.trim().toUpperCase();
+    if (driver.driver_number == null || !code) continue;
+    acronyms.set(driver.driver_number, code);
+  }
+
+  const byCode = new Map<string, RawOpenF1Stint[]>();
+  for (const stint of source.stints) {
+    if (stint.driver_number == null || stint.lap_start == null) continue;
+    const code = acronyms.get(stint.driver_number);
+    if (code === undefined) continue;
+    const list = byCode.get(code) ?? [];
+    list.push(stint);
+    byCode.set(code, list);
+  }
+  for (const list of byCode.values()) {
+    list.sort((a, b) => (a.lap_start ?? 0) - (b.lap_start ?? 0));
+  }
+  return byCode;
+}
+
+/**
+ * The compound for each of a car's stints: the OpenF1 stint whose `lap_start` is nearest the
+ * jolpica stint's first lap, within the tolerance, and the earlier one when two are equally
+ * near. A stint with no candidate in range keeps `null`.
+ *
+ * Two jolpica stints may land on the same OpenF1 stint, and deliberately so: with a stop on
+ * consecutive laps — a red-flag restart, a double stop — the tolerance makes both fit, and
+ * every candidate in range is an adjacent set, so the compound is right either way. Spending
+ * each OpenF1 stint once instead left the long stint after a restart with no compound at all.
+ */
+function matchCompounds(
+  stints: readonly ReplayStint[],
+  candidates: readonly RawOpenF1Stint[],
+): (ReplayTyreCompound | null)[] {
+  return stints.map((stint) => {
+    let best: RawOpenF1Stint | undefined;
+    let closest = Number.POSITIVE_INFINITY;
+    for (const candidate of candidates) {
+      const distance = Math.abs((candidate.lap_start ?? 0) - stint.fromLap);
+      if (distance > COMPOUND_LAP_TOLERANCE || distance >= closest) continue;
+      best = candidate;
+      closest = distance;
+    }
+    return best === undefined ? null : tyreCompoundOf(best.compound);
+  });
+}
+
+/**
+ * Turns the derived laps into one list of stints per car.
+ *
+ * The cuts come from the pit stops alone: jolpica records every one of them, so a car's stints
+ * are lap 1 to its first stop, then stop to stop, and the last one ends at the lap the car
+ * finished on. A car that never stopped has a single stint over the whole race, and a stop on
+ * the final lap adds no stint after it.
+ *
+ * `openF1Stints` only ever adds the compound, never a cut: it is a second source, joined by
+ * driver code, and it is incomplete. A car OpenF1 has no rows for, or a stint whose laps it
+ * reports as `null`, keeps `compound: null`, which the page draws as an unknown grey bar.
+ */
+export function deriveStints(
+  laps: readonly ReplayLap[],
+  results: readonly ReplayResult[],
+  openF1Stints?: OpenF1Compounds,
+): ReplayDriverStints[] {
+  const order: string[] = [];
+  const seen = new Set<string>();
+  const stops = new Map<string, Set<number>>();
+  const lastRowLap = new Map<string, number>();
+
+  const remember = (driverId: string) => {
+    if (seen.has(driverId)) return;
+    seen.add(driverId);
+    order.push(driverId);
+  };
+
+  // Results order first, so the list follows the classification; a car with lap rows but no
+  // result still gets its stints.
+  for (const result of results) remember(result.driverId);
+  for (const lap of laps) {
+    for (const row of lap.rows) {
+      remember(row.driverId);
+      lastRowLap.set(row.driverId, Math.max(lastRowLap.get(row.driverId) ?? 0, lap.lap));
+      if (!row.inPit && row.pitStop === null) continue;
+      const laid = stops.get(row.driverId) ?? new Set<number>();
+      laid.add(lap.lap);
+      stops.set(row.driverId, laid);
+    }
+  }
+
+  const finalLaps = new Map(results.map((result) => [result.driverId, result.laps]));
+  const codes = new Map(
+    (openF1Stints?.codes ?? []).map((driver) => [driver.id, driver.code.trim().toUpperCase()]),
+  );
+  const byCode = openF1Stints ? compoundsByCode(openF1Stints) : new Map<string, RawOpenF1Stint[]>();
+
+  const all: ReplayDriverStints[] = [];
+  for (const driverId of order) {
+    const end = Math.max(finalLaps.get(driverId) ?? 0, lastRowLap.get(driverId) ?? 0);
+    // A car that never got away has no stint to draw.
+    if (end < 1) continue;
+
+    // A stop on the last lap the car ran closes the race rather than opening another stint.
+    const cuts = [...(stops.get(driverId) ?? [])]
+      .filter((lap) => lap >= 1 && lap < end)
+      .sort((a, b) => a - b);
+
+    const stints: ReplayStint[] = [];
+    let fromLap = 1;
+    for (const cut of cuts) {
+      stints.push({ fromLap, toLap: cut, compound: null });
+      fromLap = cut + 1;
+    }
+    stints.push({ fromLap, toLap: end, compound: null });
+
+    const candidates = byCode.get(codes.get(driverId) ?? '') ?? [];
+    const compounds = matchCompounds(stints, candidates);
+    all.push({
+      driverId,
+      stints: stints.map((stint, index) => ({ ...stint, compound: compounds[index] ?? null })),
+    });
+  }
+  return all;
 }
 
 /**

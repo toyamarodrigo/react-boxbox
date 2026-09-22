@@ -165,6 +165,26 @@ export function testReplayRace(): ReplayRace {
         lapsBehind: 0,
       },
     ],
+    // Alpha runs the race on one set, bravo and charlie stop once, and delta's compound is
+    // unknown: the grey "?" case every stint bar has to draw.
+    stints: [
+      {
+        driverId: 'bravo',
+        stints: [
+          { fromLap: 1, toLap: 1, compound: 'S' },
+          { fromLap: 2, toLap: 3, compound: 'H' },
+        ],
+      },
+      { driverId: 'alpha', stints: [{ fromLap: 1, toLap: 3, compound: 'M' }] },
+      {
+        driverId: 'charlie',
+        stints: [
+          { fromLap: 1, toLap: 2, compound: 'M' },
+          { fromLap: 3, toLap: 3, compound: 'S' },
+        ],
+      },
+      { driverId: 'delta', stints: [{ fromLap: 1, toLap: 2, compound: null }] },
+    ],
   };
 }
 

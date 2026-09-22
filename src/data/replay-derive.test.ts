@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveLaps,
   deriveResults,
+  deriveStints,
   finishStatusOf,
   parseGap,
   parseLapTime,
+  tyreCompoundOf,
+  type OpenF1Compounds,
   type RawLap,
+  type RawOpenF1Stint,
   type RawPitStop,
   type RawResult,
 } from './replay-derive';
@@ -273,5 +277,187 @@ describe('deriveResults', () => {
       },
     ]);
     expect(excluded?.position).toBeNull();
+  });
+});
+
+describe('tyreCompoundOf', () => {
+  it.each([
+    ['SOFT', 'S'],
+    ['MEDIUM', 'M'],
+    ['HARD', 'H'],
+    ['INTERMEDIATE', 'I'],
+    ['WET', 'W'],
+    ['soft', 'S'],
+    [' Medium ', 'M'],
+  ])('maps %o to %o', (name, expected) => expect(tyreCompoundOf(name)).toBe(expected));
+
+  it.each(['UNKNOWN', 'TEST_UNKNOWN', '', null, undefined])('has no compound for %o', (name) =>
+    expect(tyreCompoundOf(name)).toBeNull(),
+  );
+});
+
+describe('deriveStints', () => {
+  const laps = deriveLaps(rawLaps, rawPitStops);
+  const results = deriveResults(rawResults);
+  const stintsOf = (all: ReturnType<typeof deriveStints>, driverId: string) =>
+    all.find((car) => car.driverId === driverId)?.stints;
+
+  /** The same mini race with charlie stopping twice, on laps 2 and 3. */
+  const twoStops = deriveLaps(rawLaps, [
+    { driverId: 'charlie', lap: '2', stop: '1', duration: '22.4' },
+    { driverId: 'charlie', lap: '3', stop: '2', duration: '21.9' },
+  ]);
+
+  it('cuts a stint at every pit stop and follows the classification order', () => {
+    const all = deriveStints(laps, results);
+    expect(all.map((car) => car.driverId)).toEqual(['alpha', 'charlie', 'bravo']);
+    // No stop: one stint over the whole race.
+    expect(stintsOf(all, 'alpha')).toEqual([{ fromLap: 1, toLap: 4, compound: null }]);
+    // One stop, on lap 3.
+    expect(stintsOf(all, 'charlie')).toEqual([
+      { fromLap: 1, toLap: 3, compound: null },
+      { fromLap: 4, toLap: 4, compound: null },
+    ]);
+    // Retired after lap 2: the last stint ends where the car did.
+    expect(stintsOf(all, 'bravo')).toEqual([{ fromLap: 1, toLap: 2, compound: null }]);
+  });
+
+  it('cuts twice for two stops', () => {
+    expect(stintsOf(deriveStints(twoStops, results), 'charlie')).toEqual([
+      { fromLap: 1, toLap: 2, compound: null },
+      { fromLap: 3, toLap: 3, compound: null },
+      { fromLap: 4, toLap: 4, compound: null },
+    ]);
+  });
+
+  it('adds no stint for a stop on the last lap a car ran', () => {
+    const lateStop = deriveLaps(rawLaps, [{ driverId: 'alpha', lap: '4', stop: '1' }]);
+    expect(stintsOf(deriveStints(lateStop, results), 'alpha')).toEqual([
+      { fromLap: 1, toLap: 4, compound: null },
+    ]);
+  });
+
+  it('leaves out a car that never ran a lap, and covers one with no result', () => {
+    const withDns = [
+      ...results,
+      {
+        driverId: 'delta',
+        position: null,
+        positionText: 'N',
+        grid: 20,
+        points: 0,
+        laps: 0,
+        status: 'Did not start',
+        finishStatus: 'dns' as const,
+        timeMs: null,
+        gapToWinnerMs: null,
+        lapsBehind: 0,
+      },
+    ];
+    const all = deriveStints(laps, withDns);
+    expect(stintsOf(all, 'delta')).toBeUndefined();
+
+    // A car in the lap timings but not in the classification still gets its stints.
+    expect(stintsOf(deriveStints(laps, []), 'bravo')).toEqual([
+      { fromLap: 1, toLap: 2, compound: null },
+    ]);
+  });
+
+  it('falls back to the laps in the classification when a car has no timings', () => {
+    // No lap rows at all: every car still gets the one stint its result says it ran.
+    expect(deriveStints([], results)).toEqual([
+      { driverId: 'alpha', stints: [{ fromLap: 1, toLap: 4, compound: null }] },
+      { driverId: 'charlie', stints: [{ fromLap: 1, toLap: 4, compound: null }] },
+      { driverId: 'bravo', stints: [{ fromLap: 1, toLap: 2, compound: null }] },
+    ]);
+    expect(deriveStints([], [])).toEqual([]);
+  });
+
+  const openF1 = (stints: RawOpenF1Stint[]): OpenF1Compounds => ({
+    // The car numbers are deliberately not the ones jolpica carries: the join is on the code.
+    drivers: [
+      { driver_number: 44, name_acronym: 'cha' },
+      { driver_number: 55, name_acronym: 'ALP' },
+    ],
+    stints,
+    codes: [
+      { id: 'alpha', code: 'ALP' },
+      { id: 'charlie', code: 'CHA' },
+      { id: 'bravo', code: 'BRA' },
+    ],
+  });
+
+  it('joins the compound by driver code, case insensitively', () => {
+    const all = deriveStints(
+      laps,
+      results,
+      openF1([
+        { driver_number: 44, lap_start: 1, lap_end: 3, compound: 'MEDIUM' },
+        { driver_number: 44, lap_start: 4, lap_end: 4, compound: 'SOFT' },
+        { driver_number: 55, lap_start: 1, lap_end: 4, compound: 'HARD' },
+      ]),
+    );
+    expect(stintsOf(all, 'charlie')?.map((stint) => stint.compound)).toEqual(['M', 'S']);
+    expect(stintsOf(all, 'alpha')?.map((stint) => stint.compound)).toEqual(['H']);
+  });
+
+  it('accepts an out-lap counted one lap either way', () => {
+    const early = deriveStints(
+      twoStops,
+      results,
+      // The two sources disagree about the out-lap: lap 2 here is the jolpica stint from lap 3.
+      openF1([
+        { driver_number: 44, lap_start: 1, lap_end: 2, compound: 'MEDIUM' },
+        { driver_number: 44, lap_start: 2, lap_end: 3, compound: 'SOFT' },
+        { driver_number: 44, lap_start: 5, lap_end: 5, compound: 'WET' },
+      ]),
+    );
+    // Laps 1-2 → MEDIUM, laps 3-3 → the stint starting a lap early, laps 4-4 → a lap late.
+    expect(stintsOf(early, 'charlie')?.map((stint) => stint.compound)).toEqual(['M', 'S', 'W']);
+
+    // Two laps out is another set of tyres, not this one.
+    const far = deriveStints(
+      laps,
+      results,
+      openF1([{ driver_number: 55, lap_start: 3, lap_end: 4, compound: 'HARD' }]),
+    );
+    expect(stintsOf(far, 'alpha')?.map((stint) => stint.compound)).toEqual([null]);
+  });
+
+  it('skips an OpenF1 stint with no laps of its own', () => {
+    const all = deriveStints(
+      laps,
+      results,
+      openF1([
+        { driver_number: 55, lap_start: null, lap_end: null, compound: 'SOFT' },
+        { driver_number: 44, lap_start: 1, lap_end: 3, compound: 'MEDIUM' },
+      ]),
+    );
+    expect(stintsOf(all, 'alpha')?.map((stint) => stint.compound)).toEqual([null]);
+    expect(stintsOf(all, 'charlie')?.map((stint) => stint.compound)).toEqual(['M', null]);
+  });
+
+  it('leaves a car OpenF1 has no rows for without compounds', () => {
+    const all = deriveStints(
+      laps,
+      results,
+      openF1([{ driver_number: 44, lap_start: 1, lap_end: 3, compound: 'MEDIUM' }]),
+    );
+    // bravo is in the race but has no OpenF1 driver, so its number never resolves to a code.
+    expect(stintsOf(all, 'bravo')?.map((stint) => stint.compound)).toEqual([null]);
+  });
+
+  it('maps a compound OpenF1 does not name to nothing', () => {
+    const all = deriveStints(
+      laps,
+      results,
+      openF1([{ driver_number: 55, lap_start: 1, lap_end: 4, compound: 'UNKNOWN' }]),
+    );
+    expect(stintsOf(all, 'alpha')?.map((stint) => stint.compound)).toEqual([null]);
+  });
+
+  it('has no compounds at all for a season without a compound source', () => {
+    const all = deriveStints(laps, results);
+    expect(all.flatMap((car) => car.stints).every((stint) => stint.compound === null)).toBe(true);
   });
 });

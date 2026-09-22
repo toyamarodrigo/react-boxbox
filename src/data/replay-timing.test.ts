@@ -15,6 +15,7 @@ import {
   replayPodium,
   replayProgress,
   replayResultsRows,
+  stintAt,
 } from './replay-timing';
 
 const race = testReplayRace();
@@ -449,5 +450,22 @@ describe('followedDriverId', () => {
   it('ignores an unknown code and no code at all', () => {
     expect(followedDriverId(race, 'ZZZ')).toBeUndefined();
     expect(followedDriverId(race, undefined)).toBeUndefined();
+  });
+});
+
+describe('stintAt', () => {
+  const stints = race.stints.find((car) => car.driverId === 'charlie')?.stints;
+
+  it('finds the set of tyres the car is on at a lap', () => {
+    expect(stintAt(stints, 1)).toEqual({ fromLap: 1, toLap: 2, compound: 'M' });
+    expect(stintAt(stints, 2)?.compound).toBe('M');
+    expect(stintAt(stints, 3)?.compound).toBe('S');
+  });
+
+  it('has nothing for a lap outside the stints, or a car without any', () => {
+    expect(stintAt(stints, 4)).toBeUndefined();
+    expect(stintAt(stints, 0)).toBeUndefined();
+    expect(stintAt(undefined, 1)).toBeUndefined();
+    expect(stintAt([], 1)).toBeUndefined();
   });
 });
