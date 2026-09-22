@@ -67,6 +67,8 @@ export function resultValue(row: TimingRow, isLeader: boolean): string {
 export function rowValue(row: TimingRow, mode: GapMode, isLeader: boolean): string {
   // The race is over in `results` mode, so pit and interval states no longer apply.
   if (mode === 'results') return resultValue(row, isLeader);
+  // A car out of the race has no gap to show while the race is still running.
+  if (!isClassified(row)) return 'OUT';
   if (row.inPit) return 'IN PIT';
   if (mode === 'lapTime') return formatLapTime(row.lastLapTime);
   if (row.lapped) return '+1 LAP';
@@ -85,8 +87,9 @@ const VALUE_TONES: Record<TimingTowerValueTone, string> = {
 };
 
 function valueTone(row: TimingRow, isFastestLap: boolean, mode: GapMode): TimingTowerValueTone {
-  // A result is settled: only the unclassified cars read differently, and they read muted.
-  if (mode === 'results') return isClassified(row) ? 'default' : 'retired';
+  // A car out of the race reads muted in every mode; in a settled result nothing else differs.
+  if (!isClassified(row)) return 'retired';
+  if (mode === 'results') return 'default';
   if (row.inPit) return 'pit';
   if (isFastestLap) return 'fastest';
   if (row.lapped) return 'lapped';
@@ -214,12 +217,60 @@ const TAG_CLASS = 'shrink-0 px-1 font-mono text-[0.5rem] font-bold leading-[1.4]
 export function showsOvertake(showOvertake?: boolean, showDrs?: boolean) {
   return showOvertake ?? showDrs ?? true;
 }
+/**
+ * The value column means something different per mode, and the digits and the ▲/▼ glyph carry
+ * no meaning on their own, so each gets a spoken label.
+ */
+const VALUE_LABELS: Record<GapMode, string> = {
+  leader: 'Gap to leader',
+  interval: 'Interval',
+  lapTime: 'Last lap',
+  results: 'Result',
+};
+
 const TAG_MOTION = {
   initial: { opacity: 0, transform: 'translateX(-4px)' },
   animate: { opacity: 1, transform: 'translateX(0px)' },
   exit: { opacity: 0, transition: { duration: DURATION.tick, ease: EASE_OUT } },
   transition: { duration: DURATION.fast, ease: EASE_OUT },
 } as const;
+
+/**
+ * The ▲/▼ glyph for a position change, plus its spoken sentence. A fixed slot: the glyph fades
+ * in and out without taking or freeing width in the row.
+ */
+export function TimingTowerChange({ positionChange }: { positionChange: number }) {
+  const gained = positionChange > 0;
+  const moved = Math.abs(positionChange);
+  return (
+    <>
+      <span aria-hidden className="grid w-2 shrink-0 place-items-center">
+        <AnimatePresence initial={false}>
+          {positionChange !== 0 && (
+            <motion.span
+              key={gained ? 'gain' : 'loss'}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: DURATION.fast, ease: EASE_OUT }}
+              className={cn(
+                '[grid-area:1/1] text-[0.5rem] leading-none',
+                gained ? 'text-flag-green' : 'text-primary',
+              )}
+            >
+              {gained ? '▲' : '▼'}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </span>
+      {positionChange !== 0 && (
+        <span className="sr-only">
+          {`${gained ? 'gained' : 'lost'} ${moved} ${moved === 1 ? 'place' : 'places'}`}
+        </span>
+      )}
+    </>
+  );
+}
 
 export function TimingTowerRow({
   row,
@@ -249,19 +300,10 @@ export function TimingTowerRow({
   showDrs?: boolean;
   overtakeMode?: OvertakeMode;
 } & HTMLMotionProps<'li'>) {
-  const gained = row.positionChange > 0;
-  const moved = Math.abs(row.positionChange);
-  // The value column means something different per mode, and the digits and the
-  // ▲/▼ glyph carry no meaning on their own, so each gets a spoken label.
-  const valueLabel =
-    mode === 'lapTime'
-      ? 'Last lap'
-      : mode === 'interval'
-        ? 'Interval'
-        : mode === 'results'
-          ? 'Result'
-          : 'Gap to leader';
+  const valueLabel = VALUE_LABELS[mode];
   const results = mode === 'results';
+  // A car that has left the race while it is still running: it stays listed, faded, with no tags.
+  const out = !results && !isClassified(row);
   return (
     <motion.li
       layout="position"
@@ -272,6 +314,7 @@ export function TimingTowerRow({
       data-lapped={String(row.lapped)}
       data-drs={String(row.drs)}
       data-classified={results ? String(isClassified(row)) : undefined}
+      data-out={out ? 'true' : undefined}
       // `y` rather than a transform string: Motion composes it with the layout
       // projection, so a row leaving past `maxRows` drops out of the bottom
       // instead of vanishing, and one climbing into view rises into its place.
@@ -286,6 +329,7 @@ export function TimingTowerRow({
       className={cn(
         'flex items-center gap-2 border-b border-border bg-card/90 py-1 pr-2 text-card-foreground last:border-b-0',
         highlighted && 'bg-primary/10',
+        out && 'opacity-50',
         className,
       )}
       {...props}
@@ -300,38 +344,14 @@ export function TimingTowerRow({
       <span className="font-display text-sm font-bold uppercase leading-none tracking-wider">
         {driver.code}
       </span>
-      {/* A fixed slot: the glyph fades in and out without taking or freeing width in the row. */}
-      <span aria-hidden className="grid w-2 shrink-0 place-items-center">
-        <AnimatePresence initial={false}>
-          {row.positionChange !== 0 && (
-            <motion.span
-              key={gained ? 'gain' : 'loss'}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: DURATION.fast, ease: EASE_OUT }}
-              className={cn(
-                '[grid-area:1/1] text-[0.5rem] leading-none',
-                gained ? 'text-flag-green' : 'text-primary',
-              )}
-            >
-              {gained ? '▲' : '▼'}
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </span>
-      {row.positionChange !== 0 && (
-        <span className="sr-only">
-          {`${gained ? 'gained' : 'lost'} ${moved} ${moved === 1 ? 'place' : 'places'}`}
-        </span>
-      )}
+      <TimingTowerChange positionChange={row.positionChange} />
       {showTyre && (
         <TyreBadge size="sm" compound={row.tyre.compound} age={row.tyre.age} wear={row.tyre.wear} />
       )}
       {/* Showing the tag is configuration, so it unmounts the presence wrapper and never animates. */}
       {!results && showsOvertake(showOvertake, showDrs) && (
         <AnimatePresence initial={false}>
-          {row.drs && (
+          {row.drs && !out && (
             <motion.span key="overtake" {...TAG_MOTION} className="flex shrink-0">
               <OvertakeIndicator size="sm" mode={overtakeMode} state={row.drs ? 'active' : 'off'} />
             </motion.span>
@@ -339,7 +359,7 @@ export function TimingTowerRow({
         </AnimatePresence>
       )}
       <AnimatePresence initial={false}>
-        {row.inPit && (
+        {row.inPit && !out && (
           <motion.span
             key="pit"
             {...TAG_MOTION}

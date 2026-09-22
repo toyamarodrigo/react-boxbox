@@ -3,9 +3,9 @@ import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
 import {
   leaderCumulative,
+  replayLiveRows,
   replayProgress,
   replayResultsRows,
-  replayRowsForLap,
 } from './replay-timing';
 
 /** How fast the replay runs against the real race time. */
@@ -16,6 +16,13 @@ export const REPLAY_SPEEDS: readonly ReplaySpeed[] = [1, 5, 20];
 /** Wall-clock interval between replay ticks; the Track Map chains its marker transitions to it. */
 export const REPLAY_TICK_MS = 100;
 const TICK_MS = REPLAY_TICK_MS;
+
+/**
+ * How often the tower's gaps and intervals refresh, in race time. The order updates every tick;
+ * the numbers once a second, the way a timing screen refreshes at each timing loop rather than
+ * running like a stopwatch.
+ */
+export const GAP_REFRESH_MS = 1000;
 
 export type RaceReplay = {
   /** The lap in progress, which is what a lap board shows. */
@@ -55,9 +62,9 @@ export type RaceReplay = {
  * crosses the line, not on a timer of its own — and it makes seeking exact, because jumping to
  * a lap is just moving the clock to that boundary.
  *
- * The tower shows the last *completed* lap while the lap board shows the lap in progress. Gaps
- * and intervals are only settled once a lap is in the books, so showing the lap in progress in
- * the tower would mean showing a timing screen that is half empty.
+ * The tower runs live between the recorded laps: order by interpolated race distance every tick,
+ * gaps and intervals interpolated and refreshed once per race second, position changes measured
+ * against the order at the leader's last line crossing. The lap board shows the lap in progress.
  */
 export function useRaceReplay(
   race: ReplayRace | undefined,
@@ -106,14 +113,18 @@ export function useRaceReplay(
     completedLap = lap;
   }
   const lapInProgress = Math.min(completedLap + 1, Math.max(totalLaps, 1));
-  // Lap one's rows stand in before anyone has completed a lap, so the tower is never blank.
-  const lapShown = Math.max(1, completedLap);
+  // Position arrows compare with the leader's last line crossing; none during the first lap,
+  // where the only earlier order would be the grid, which the dataset does not carry.
+  const referenceMs = completedLap >= 1 ? boundaries[completedLap] : undefined;
 
   const rows = useMemo(() => {
     if (!race) return [];
     if (finished) return replayResultsRows(race);
-    return replayRowsForLap(race, lapShown, lapShown > 1 ? lapShown - 1 : undefined);
-  }, [race, finished, lapShown]);
+    return replayLiveRows(race, elapsedMs, {
+      gapAtMs: Math.floor(elapsedMs / GAP_REFRESH_MS) * GAP_REFRESH_MS,
+      referenceMs,
+    });
+  }, [race, finished, elapsedMs, referenceMs]);
 
   const markers = useMemo(() => {
     if (!race || finished) return [];

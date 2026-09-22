@@ -156,6 +156,29 @@ describe('TimingTower in results mode', () => {
     expect(values[0]).toHaveAttribute('data-tone', 'default');
   });
 
+  it('lists a car that is out while the race runs: OUT, muted, faded, no tags', () => {
+    const live = [
+      makeRow('one', 1),
+      makeRow('two', 2, { drs: true }),
+      makeRow('three', 3, { finishStatus: 'dnf', inPit: true, drs: true, positionChange: -2 }),
+    ];
+    const { container } = render(
+      <TimingTower rows={live} drivers={drivers} teams={teams} mode="leader" />,
+    );
+    const values = [...container.querySelectorAll('[data-slot="timing-tower-value"]')];
+    expect(values.map((value) => value.textContent)).toEqual(['LEADER', '+1.234', 'OUT']);
+    expect(values[2]).toHaveAttribute('data-tone', 'retired');
+
+    const rows = [...container.querySelectorAll('[data-slot="timing-tower-row"]')];
+    expect(rows.map((row) => row.getAttribute('data-out'))).toEqual([null, null, 'true']);
+    expect(rows[2]).toHaveClass('opacity-50');
+    expect(rows[2]?.textContent).not.toContain('PIT');
+    expect(rows[2]?.querySelector('[data-slot="overtake-indicator"]')).toBeNull();
+    // The one running car with the aid keeps its tag.
+    expect(rows[1]?.querySelector('[data-slot="overtake-indicator"]')).not.toBeNull();
+    expect(rowValue(live[2]!, 'interval', false)).toBe('OUT');
+  });
+
   it('marks the unclassified rows', () => {
     const { container } = render(
       <TimingTower rows={results} drivers={drivers} teams={teams} mode="results" />,

@@ -111,6 +111,7 @@ describe('finishStatusOf', () => {
     ['Finished', '1', 'finished'],
     ['+1 Lap', '2', 'finished'],
     ['+3 Laps', '14', 'finished'],
+    ['Lapped', '9', 'finished'],
     ['Engine', 'R', 'dnf'],
     ['Accident', 'R', 'dnf'],
     ['Disqualified', 'D', 'dsq'],
@@ -229,6 +230,24 @@ describe('deriveResults', () => {
     expect(results[1]?.finishStatus).toBe('finished');
     expect(results[1]?.timeMs).toBeNull();
     expect(results[1]?.gapToWinnerMs).toBeNull();
+  });
+
+  it('counts a `Lapped` finisher against the winner laps, as newer seasons report it', () => {
+    const lapped = deriveResults([
+      ...rawResults.slice(0, 1),
+      {
+        position: '9',
+        positionText: '9',
+        points: '2',
+        laps: '2',
+        status: 'Lapped',
+        Driver: { driverId: 'delta' },
+        Time: { time: '+10.408' },
+      },
+    ]);
+    expect(lapped[1]?.finishStatus).toBe('finished');
+    expect(lapped[1]?.lapsBehind).toBe(2);
+    expect(lapped[1]?.gapToWinnerMs).toBe(10408);
   });
 
   it('classifies a retirement', () => {

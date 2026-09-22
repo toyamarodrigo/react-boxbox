@@ -45,6 +45,9 @@ export type TimingRow = {
   lapsBehind?: number;
   /** Championship points scored, shown in the results listing only. */
   points?: number;
-  /** How the car ended the race. Absent means it finished. */
+  /**
+   * How the car ended the race. Absent means it finished. While the race is still running, a
+   * value other than `finished` lists the car as `OUT`: faded, muted, without tags.
+   */
   finishStatus?: FinishStatus;
 };

@@ -43,16 +43,22 @@ export function parseGap(value: string): number | null {
   return parseLapTime(trimmed.startsWith('+') ? trimmed.slice(1) : trimmed);
 }
 
-/** `+1 Lap` / `+3 Laps` in a result status means the car finished that many laps down. */
-function lapsBehindFromStatus(status: string): number {
-  const laps = /^\+(\d+)\s+Laps?$/.exec(status.trim())?.[1];
-  return laps === undefined ? 0 : Number.parseInt(laps, 10);
+/**
+ * `+1 Lap` / `+3 Laps` in a result status means the car finished that many laps down. Newer
+ * seasons say only `Lapped`; the count then comes from the laps the car completed against the
+ * winner's (`winnerLaps`), when the caller has it.
+ */
+function lapsBehindFromStatus(status: string, laps = 0, winnerLaps = 0): number {
+  const clean = status.trim();
+  if (clean === 'Lapped') return Math.max(1, winnerLaps - laps);
+  const count = /^\+(\d+)\s+Laps?$/.exec(clean)?.[1];
+  return count === undefined ? 0 : Number.parseInt(count, 10);
 }
 
 /**
  * Maps an Ergast `status` / `positionText` pair onto the boxbox `FinishStatus` union.
  * `positionText` wins where it is unambiguous: `D` disqualified, `W` withdrew, `R` retired.
- * Everything that is not `Finished` or `+N Lap(s)` is a retirement.
+ * Everything that is not `Finished`, `+N Lap(s)` or `Lapped` is a retirement.
  */
 export function finishStatusOf(status: string, positionText: string): ReplayFinishStatus {
   const text = positionText.trim();
@@ -158,21 +164,25 @@ export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): Replay
  * carries a `+gap` string, which becomes `gapToWinnerMs`.
  */
 export function deriveResults(rawResults: RawResult[]): ReplayResult[] {
+  // The race distance: what a `Lapped` car is measured against.
+  const winnerLaps = Math.max(0, ...rawResults.map((result) => Number.parseInt(result.laps, 10)));
+
   return rawResults.map((result) => {
     const raw = result.Time?.time.trim();
     const isGap = raw !== undefined && raw.startsWith('+');
+    const laps = Number.parseInt(result.laps, 10);
 
     return {
       driverId: result.Driver.driverId,
       position: /^\d+$/.test(result.position) ? Number.parseInt(result.position, 10) : null,
       positionText: result.positionText,
       points: Number.parseFloat(result.points),
-      laps: Number.parseInt(result.laps, 10),
+      laps,
       status: result.status,
       finishStatus: finishStatusOf(result.status, result.positionText),
       timeMs: raw === undefined || isGap ? null : parseLapTime(raw),
       gapToWinnerMs: raw === undefined ? null : isGap ? parseGap(raw) : 0,
-      lapsBehind: lapsBehindFromStatus(result.status),
+      lapsBehind: lapsBehindFromStatus(result.status, laps, winnerLaps),
     };
   });
 }

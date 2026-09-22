@@ -57,7 +57,8 @@ describe('replay page', () => {
     expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument();
     // One marker per car running that lap, drawn on the invented circuit.
     expect(screen.getByRole('img', { name: 'Track map, 4 cars' })).toBeInTheDocument();
-    expect(screen.getByText(/interpolated from lap times/i)).toBeInTheDocument();
+    // Both the map caption and the tower note say so.
+    expect(screen.getAllByText(/interpolated from lap times/i)).toHaveLength(2);
   });
 
   it('steps forward and back a lap', async () => {

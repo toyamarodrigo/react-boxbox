@@ -8,7 +8,7 @@
   "totalLaps": 57,
   "source": {
     "provider": "jolpica-f1",
-    "fetchedAt": "2026-09-21T18:12:09.640Z",
+    "fetchedAt": "2026-09-22T02:59:53.822Z",
     "url": "https://api.jolpi.ca/ergast/f1/2026/14.json"
   },
   "drivers": [
@@ -12792,10 +12792,10 @@
       "points": 2,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 10408,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "hulkenberg",
@@ -12804,10 +12804,10 @@
       "points": 1,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 11298,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "ocon",
@@ -12816,10 +12816,10 @@
       "points": 0,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 15143,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "gasly",
@@ -12828,10 +12828,10 @@
       "points": 0,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 26152,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "bortoleto",
@@ -12840,10 +12840,10 @@
       "points": 0,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 28389,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "tsunoda",
@@ -12852,10 +12852,10 @@
       "points": 0,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 60163,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "albon",
@@ -12864,10 +12864,10 @@
       "points": 0,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 86212,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "bearman",
@@ -12876,10 +12876,10 @@
       "points": 0,
       "laps": 56,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 89963,
-      "lapsBehind": 0
+      "lapsBehind": 1
     },
     {
       "driverId": "alonso",
@@ -12888,10 +12888,10 @@
       "points": 0,
       "laps": 55,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 33776,
-      "lapsBehind": 0
+      "lapsBehind": 2
     },
     {
       "driverId": "bottas",
@@ -12900,10 +12900,10 @@
       "points": 0,
       "laps": 54,
       "status": "Lapped",
-      "finishStatus": "dnf",
+      "finishStatus": "finished",
       "timeMs": null,
       "gapToWinnerMs": 49246,
-      "lapsBehind": 0
+      "lapsBehind": 3
     },
     {
       "driverId": "sainz",

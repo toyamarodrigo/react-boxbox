@@ -38,52 +38,70 @@ function lapAt(race: ReplayRace, lap: number): ReplayLap | undefined {
   return race.laps.find((entry) => entry.lap === lap);
 }
 
+/** One timed lap of one car: it runs from `start` to `end` on the race clock. */
+type DriverLap = { lap: number; start: number; end: number; row: ReplayLapRow };
+
+/** Each car's timed laps in lap order. */
+type RaceIndex = Map<string, DriverLap[]>;
+
 /**
- * The best lap a driver has set up to and including `lap`, in seconds. Scanning the laps each
- * time keeps the function pure and costs a few thousand comparisons for a full grand prix.
+ * The index is derived from the race alone, so it is built once per race object and looked up
+ * by identity afterwards: the hook calls into this module ten times a second.
  */
-function bestLapSoFar(race: ReplayRace, driverId: string, lap: number): number | null {
-  let best: number | null = null;
+const INDEXES = new WeakMap<ReplayRace, RaceIndex>();
+
+/**
+ * A car is on lap N from its cumulative time at the end of lap N-1 until its cumulative time at
+ * the end of lap N. A lap whose start is unknown — the car's cumulative time is missing, or the
+ * lap does not follow the car's previous one (a gap in the source) — cannot be timed and is left
+ * out, rather than placed at a guess.
+ */
+function indexRace(race: ReplayRace): RaceIndex {
+  const cached = INDEXES.get(race);
+  if (cached) return cached;
+
+  const index: RaceIndex = new Map();
+  /** The end of each car's previous lap: the lap number and the cumulative time at the line. */
+  const lastLine = new Map<string, { lap: number; at: number }>();
+
   for (const entry of race.laps) {
-    if (entry.lap > lap) break;
-    const row = entry.rows.find((item) => item.driverId === driverId);
-    const time = row?.lapTimeMs ?? null;
-    if (time !== null && (best === null || time < best)) best = time;
+    for (const row of entry.rows) {
+      const previous = lastLine.get(row.driverId);
+      const start = entry.lap === 1 ? 0 : previous?.lap === entry.lap - 1 ? previous.at : null;
+
+      if (row.cumulativeMs === null) lastLine.delete(row.driverId);
+      else lastLine.set(row.driverId, { lap: entry.lap, at: row.cumulativeMs });
+
+      if (start === null || row.cumulativeMs === null || row.cumulativeMs <= start) continue;
+      const laps = index.get(row.driverId) ?? [];
+      laps.push({ lap: entry.lap, start, end: row.cumulativeMs, row });
+      index.set(row.driverId, laps);
+    }
   }
-  return toSeconds(best);
+  INDEXES.set(race, index);
+  return index;
 }
 
 /**
- * The tower rows for one lap. Drivers missing from the lap have retired, and they are simply
- * absent: the tower animates them out rather than showing a stale position.
- *
- * `previousLap` is the lap the position change is measured against. Without it every row reads
- * as unchanged, which is what the first lap of a replay should show.
+ * When a car reaches a race distance (laps completed plus a fraction), on its own clock, by the
+ * same constant-speed assumption as `carLapsAt`. `null` when the car never recorded that lap.
  */
-export function replayRowsForLap(race: ReplayRace, lap: number, previousLap?: number): TimingRow[] {
-  const entry = lapAt(race, lap);
-  if (!entry) return [];
+function timeAtDistance(laps: readonly DriverLap[], distance: number): number | null {
+  const number = Math.floor(distance) + 1;
+  const lap = laps.find((item) => item.lap === number);
+  if (!lap) return null;
+  return lap.start + (distance - (number - 1)) * (lap.end - lap.start);
+}
 
-  const before = previousLap === undefined ? undefined : lapAt(race, previousLap);
-
-  return entry.rows.map((row) => {
-    const was = before?.rows.find((item) => item.driverId === row.driverId);
-    return {
-      driverId: row.driverId,
-      position: row.position,
-      gapToLeader: toSeconds(row.gapToLeaderMs),
-      interval: toSeconds(row.intervalMs),
-      lastLapTime: toSeconds(row.lapTimeMs),
-      bestLapTime: bestLapSoFar(race, row.driverId, lap),
-      sectors: sectors(),
-      tyre: { ...PLACEHOLDER_TYRE },
-      inPit: row.inPit,
-      lapped: row.lapsBehind > 0,
-      lapsBehind: row.lapsBehind,
-      drs: row.overtake,
-      positionChange: was === undefined ? 0 : was.position - row.position,
-    };
-  });
+/** The fastest of a car's timed laps before lap `until`, in seconds. */
+function bestLapBefore(laps: readonly DriverLap[], until: number): number | null {
+  let best: number | null = null;
+  for (const lap of laps) {
+    if (lap.lap >= until) break;
+    const time = lap.row.lapTimeMs;
+    if (time !== null && (best === null || time < best)) best = time;
+  }
+  return toSeconds(best);
 }
 
 /** A result counts as classified when it finished and carries a real position. */
@@ -183,38 +201,132 @@ export type CarLap = {
 };
 
 /**
- * Which lap each car is on at `elapsedMs`, measured on that car's own clock.
+ * Which lap each car is on at `elapsedMs`, measured on that car's own clock, in `race.drivers`
+ * order.
  *
- * A car is on lap N from its cumulative time at the end of lap N-1 until its cumulative time at
- * the end of lap N. That differs from the leader's lap: a car a minute behind is still finishing
- * lap N when the leader starts lap N+1, and a lapped car is a whole lap further back. Keying every
- * car to the leader's lap is what made cars jump back to the start line at each lap boundary.
+ * That differs from the leader's lap: a car a minute behind is still finishing lap N when the
+ * leader starts lap N+1, and a lapped car is a whole lap further back. Keying every car to the
+ * leader's lap is what made cars jump back to the start line at each lap boundary.
  *
- * A car with no lap in progress — it has retired, or its cumulative time is unknown — is absent.
- * A lap that does not follow the car's previous one (a gap in the source) cannot be timed, so the
- * car is absent for it too, rather than placed at a guess.
+ * A car with no lap in progress — it has retired, or its lap cannot be timed — is absent.
  */
 export function carLapsAt(race: ReplayRace, elapsedMs: number): Map<string, CarLap> {
+  const index = indexRace(race);
   const cars = new Map<string, CarLap>();
-  /** The end of each car's previous lap: the lap number and the cumulative time at the line. */
-  const lastLine = new Map<string, { lap: number; at: number }>();
-
-  for (const entry of race.laps) {
-    for (const row of entry.rows) {
-      const previous = lastLine.get(row.driverId);
-      const start = entry.lap === 1 ? 0 : previous?.lap === entry.lap - 1 ? previous.at : null;
-
-      if (row.cumulativeMs === null) lastLine.delete(row.driverId);
-      else lastLine.set(row.driverId, { lap: entry.lap, at: row.cumulativeMs });
-
-      if (start === null || row.cumulativeMs === null || row.cumulativeMs <= start) continue;
-      if (cars.has(row.driverId) || elapsedMs < start || elapsedMs >= row.cumulativeMs) continue;
-
-      const progress = (elapsedMs - start) / (row.cumulativeMs - start);
-      cars.set(row.driverId, { lap: entry.lap, row, progress, distance: entry.lap - 1 + progress });
-    }
+  for (const driver of race.drivers) {
+    const lap = index
+      .get(driver.id)
+      ?.find((item) => elapsedMs >= item.start && elapsedMs < item.end);
+    if (!lap) continue;
+    const progress = (elapsedMs - lap.start) / (lap.end - lap.start);
+    cars.set(driver.id, { lap: lap.lap, row: lap.row, progress, distance: lap.lap - 1 + progress });
   }
   return cars;
+}
+
+/** The running order at a moment: cars furthest along the race first. Stable for ties. */
+function orderAt(race: ReplayRace, elapsedMs: number): [string, CarLap][] {
+  return [...carLapsAt(race, elapsedMs)].sort((a, b) => b[1].distance - a[1].distance);
+}
+
+/** Overtake aid threshold, the same one the dataset applies at the line. */
+const OVERTAKE_WITHIN_MS = 1000;
+
+export type LiveRowsOptions = {
+  /**
+   * The moment gaps and intervals are measured at; defaults to `elapsedMs`. A timing screen
+   * refreshes its numbers less often than it reorders, so the page passes a rounded-down clock.
+   */
+  gapAtMs?: number;
+  /** The moment the position change is measured against; without it every row reads unchanged. */
+  referenceMs?: number;
+};
+
+/**
+ * The tower rows at a moment of the race, between the laps the dataset records.
+ *
+ * Order is by race distance, so an overtake shows when the interpolated cars cross, not when the
+ * leader next completes a lap. The gap is how long ago the leader passed the point the car is at
+ * now, on the leader's own lap times; the interval is the same against the car ahead. Measured
+ * that way the gap grows with the distance behind, so it never disagrees with the order, and at
+ * the line it equals the gap the dataset records. Both are interpolations, and the page says so.
+ *
+ * Cars out of the race stay listed after the running cars, the most recent retirement first,
+ * carrying their finish status so the tower reads them as `OUT`.
+ */
+export function replayLiveRows(
+  race: ReplayRace,
+  elapsedMs: number,
+  { gapAtMs = elapsedMs, referenceMs }: LiveRowsOptions = {},
+): TimingRow[] {
+  const index = indexRace(race);
+  const order = orderAt(race, elapsedMs);
+  const measured = gapAtMs === elapsedMs ? new Map(order) : carLapsAt(race, gapAtMs);
+  const reference =
+    referenceMs === undefined
+      ? null
+      : new Map(orderAt(race, referenceMs).map(([id], i) => [id, i + 1]));
+
+  /** How long ago `aheadId` passed the point `car` is at, in ms; `null` when it cannot be timed. */
+  const timeBehind = (car: CarLap | undefined, aheadId: string | undefined): number | null => {
+    const laps = aheadId === undefined ? undefined : index.get(aheadId);
+    const passed = car && laps ? timeAtDistance(laps, car.distance) : null;
+    return passed === null ? null : gapAtMs - passed;
+  };
+
+  const leaderId = order[0]?.[0];
+  const rows: TimingRow[] = order.map(([driverId, car], i) => {
+    const position = i + 1;
+    const laps = index.get(driverId) ?? [];
+    const leader = order[0]?.[1];
+    const lapsBehind = leader ? Math.floor(leader.distance - car.distance) : 0;
+    const gapToLeader = i === 0 ? 0 : timeBehind(measured.get(driverId), leaderId);
+    const interval = i === 0 ? null : timeBehind(measured.get(driverId), order[i - 1]?.[0]);
+    const lastLap = laps.find((item) => item.lap === car.lap - 1);
+
+    return {
+      driverId,
+      position,
+      gapToLeader: gapToLeader === null ? null : gapToLeader / 1000,
+      interval: interval === null ? null : interval / 1000,
+      lastLapTime: toSeconds(lastLap?.row.lapTimeMs ?? null),
+      bestLapTime: bestLapBefore(laps, car.lap),
+      sectors: sectors(),
+      tyre: { ...PLACEHOLDER_TYRE },
+      inPit: car.row.inPit,
+      lapped: lapsBehind > 0,
+      lapsBehind,
+      drs: interval !== null && interval < OVERTAKE_WITHIN_MS && !car.row.inPit && position > 1,
+      positionChange: reference === null ? 0 : (reference.get(driverId) ?? position) - position,
+    };
+  });
+
+  const running = new Set(order.map(([id]) => id));
+  const out = race.results
+    .filter((result) => !running.has(result.driverId) && result.finishStatus !== 'finished')
+    .map((result) => ({ result, leftAt: index.get(result.driverId)?.at(-1)?.end ?? -1 }))
+    .filter((item) => item.leftAt <= elapsedMs)
+    .sort((a, b) => b.leftAt - a.leftAt);
+
+  for (const { result } of out) {
+    rows.push({
+      driverId: result.driverId,
+      position: rows.length + 1,
+      gapToLeader: null,
+      interval: null,
+      lastLapTime: null,
+      bestLapTime: bestLapBefore(index.get(result.driverId) ?? [], Number.POSITIVE_INFINITY),
+      sectors: sectors(),
+      tyre: { ...PLACEHOLDER_TYRE },
+      inPit: false,
+      lapped: false,
+      lapsBehind: 0,
+      drs: false,
+      positionChange: 0,
+      finishStatus: result.finishStatus,
+    });
+  }
+  return rows;
 }
 
 /**

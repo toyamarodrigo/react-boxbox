@@ -8,26 +8,25 @@ import {
   leaderCumulative,
   overtakeModeFor,
   replayPodium,
+  replayLiveRows,
   replayProgress,
   replayResultsRows,
-  replayRowsForLap,
 } from './replay-timing';
 
 const race = testReplayRace();
 
-describe('replayRowsForLap', () => {
-  it('maps a lap onto tower rows in seconds', () => {
-    const rows = replayRowsForLap(race, 1);
+describe('replayLiveRows', () => {
+  it('lists the grid in drivers order at the start, with placeholders for what the data lacks', () => {
+    const rows = replayLiveRows(race, 0);
     expect(rows.map((row) => row.driverId)).toEqual(['alpha', 'bravo', 'charlie', 'delta']);
+    expect(rows.map((row) => row.position)).toEqual([1, 2, 3, 4]);
 
     const leader = rows[0];
-    expect(leader?.position).toBe(1);
     expect(leader?.gapToLeader).toBe(0);
     expect(leader?.interval).toBeNull();
-    expect(leader?.lastLapTime).toBe(100);
-    expect(leader?.bestLapTime).toBe(100);
+    expect(leader?.lastLapTime).toBeNull();
+    expect(leader?.bestLapTime).toBeNull();
     expect(leader?.positionChange).toBe(0);
-    expect(leader?.lapped).toBe(false);
     expect(leader?.sectors).toEqual([
       { time: null, status: 'unset' },
       { time: null, status: 'unset' },
@@ -36,34 +35,92 @@ describe('replayRowsForLap', () => {
     expect(leader?.tyre).toEqual({ compound: 'M', age: 0 });
   });
 
-  it('tracks the best lap so far and the change against the previous lap', () => {
-    const rows = replayRowsForLap(race, 3, 2);
-    const bravo = rows.find((row) => row.driverId === 'bravo');
-    const alpha = rows.find((row) => row.driverId === 'alpha');
+  it('orders by interpolated distance and measures how long ago the car ahead was there', () => {
+    // Bravo has just completed lap two; alpha is 1% of a lap short of the line.
+    const rows = replayLiveRows(race, 199_000);
+    expect(rows.map((row) => row.driverId)).toEqual(['bravo', 'alpha', 'charlie', 'delta']);
 
+    const [bravo, alpha, charlie, delta] = rows;
+    expect(bravo?.gapToLeader).toBe(0);
+    expect(bravo?.interval).toBeNull();
+    // Bravo passed alpha's point at 101000 + 0.99 × 98000 = 198020.
+    expect(alpha?.gapToLeader).toBeCloseTo(0.98);
+    expect(alpha?.interval).toBeCloseTo(0.98);
+    expect(alpha?.drs).toBe(true);
+    // Charlie is 0.24375 into lap two; bravo was there at 124887.5, alpha at 124375.
+    expect(charlie?.gapToLeader).toBeCloseTo(74.1125);
+    expect(charlie?.interval).toBeCloseTo(74.625);
+    expect(charlie?.drs).toBe(false);
+    expect(delta?.gapToLeader).toBeCloseTo(77.30435, 3);
+    expect(delta?.interval).toBeCloseTo(5.2112, 3);
+
+    expect(bravo?.lastLapTime).toBe(98);
     expect(bravo?.bestLapTime).toBe(98);
-    expect(bravo?.positionChange).toBe(0);
-    // Alpha led lap one, so on lap two it lost a place and holds second on lap three.
+    expect(alpha?.lastLapTime).toBe(100);
+    expect(alpha?.bestLapTime).toBe(100);
+  });
+
+  it('shows an overtake as soon as the interpolated cars cross, not at the leader line', () => {
+    // Alpha leads until bravo, on a faster lap two, catches up before the line.
     expect(
-      replayRowsForLap(race, 2, 1).find((row) => row.driverId === 'alpha')?.positionChange,
-    ).toBe(-1);
-    expect(alpha?.bestLapTime).toBe(99);
+      replayLiveRows(race, 150_000)
+        .map((row) => row.driverId)
+        .slice(0, 2),
+    ).toEqual(['alpha', 'bravo']);
+    const passed = replayLiveRows(race, 180_000);
+    expect(passed.map((row) => row.driverId).slice(0, 2)).toEqual(['bravo', 'alpha']);
+    // Bravo passed alpha's point (0.8 of lap two) at 179400: 600 ms ago, inside the aid range.
+    expect(passed[1]?.interval).toBeCloseTo(0.6);
+    expect(passed[1]?.drs).toBe(true);
   });
 
-  it('carries the lapped flag and the overtake range', () => {
-    const rows = replayRowsForLap(race, 2, 1);
-    const charlie = rows.find((row) => row.driverId === 'charlie');
-    expect(charlie?.lapped).toBe(true);
-    expect(charlie?.lapsBehind).toBe(1);
-    expect(rows.find((row) => row.driverId === 'alpha')?.drs).toBe(true);
+  it('matches the dataset gap when a car reaches the line', () => {
+    // Charlie completes lap one at 160000, 60000 behind alpha, who led that lap. By then bravo
+    // has taken the lead on the road, so the dataset figure is the interval to alpha in P2.
+    const rows = replayLiveRows(race, 160_000);
+    expect(rows.map((row) => row.driverId).slice(0, 3)).toEqual(['bravo', 'alpha', 'charlie']);
+    expect(rows[2]?.interval).toBeCloseTo(60);
+    expect(rows[2]?.gapToLeader).toBeCloseTo(59);
   });
 
-  it('omits a driver that is no longer in the lap', () => {
-    expect(replayRowsForLap(race, 3, 2).map((row) => row.driverId)).not.toContain('delta');
+  it('measures gaps at the moment given, so the numbers can refresh slower than the order', () => {
+    const live = replayLiveRows(race, 199_500);
+    const held = replayLiveRows(race, 199_500, { gapAtMs: 199_000 });
+    expect(live.find((row) => row.driverId === 'alpha')?.gapToLeader).toBeCloseTo(0.99);
+    expect(held.find((row) => row.driverId === 'alpha')?.gapToLeader).toBeCloseTo(0.98);
   });
 
-  it('returns nothing for a lap the race does not have', () => {
-    expect(replayRowsForLap(race, 99)).toEqual([]);
+  it('marks a car lapped once it is a whole lap of distance behind', () => {
+    const early = replayLiveRows(race, 250_000).find((row) => row.driverId === 'charlie');
+    expect(early?.lapped).toBe(false);
+    const late = replayLiveRows(race, 290_000).find((row) => row.driverId === 'charlie');
+    expect(late?.lapped).toBe(true);
+    expect(late?.lapsBehind).toBe(1);
+  });
+
+  it('measures the position change against the order at the reference moment', () => {
+    // At 100000 alpha led; by 199000 bravo has passed it.
+    const rows = replayLiveRows(race, 199_000, { referenceMs: 100_000 });
+    expect(rows.find((row) => row.driverId === 'bravo')?.positionChange).toBe(1);
+    expect(rows.find((row) => row.driverId === 'alpha')?.positionChange).toBe(-1);
+    expect(rows.find((row) => row.driverId === 'charlie')?.positionChange).toBe(0);
+    expect(replayLiveRows(race, 199_000).every((row) => row.positionChange === 0)).toBe(true);
+  });
+
+  it('keeps a retired car listed after the running cars, as OUT', () => {
+    // Delta is still on its lap two at 325999 and has no lap three.
+    expect(replayLiveRows(race, 325_999).map((row) => row.driverId)).toContain('delta');
+    const rows = replayLiveRows(race, 330_000);
+    // Bravo and alpha have finished and are not out; charlie is still running its last lap.
+    expect(rows.map((row) => row.driverId)).toEqual(['charlie', 'delta']);
+    const delta = rows[1];
+    expect(delta?.position).toBe(2);
+    expect(delta?.finishStatus).toBe('dnf');
+    expect(delta?.gapToLeader).toBeNull();
+    expect(delta?.interval).toBeNull();
+    expect(delta?.drs).toBe(false);
+    expect(delta?.bestLapTime).toBe(161);
+    expect(rows[0]?.finishStatus).toBeUndefined();
   });
 });
 

@@ -9,6 +9,9 @@ const meta = {
   registryName: 'timing-tower',
   dependencies: ['motion'],
   status: 'stable',
+  notes: [
+    'A row with a `finishStatus` other than `finished` stays listed while the race runs: it reads `OUT`, muted and faded, with no tags. In `results` mode the same row reads its finish status.',
+  ],
 } satisfies ComponentMeta;
 
 export default meta;

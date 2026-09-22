@@ -242,6 +242,11 @@ function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
         overtakeMode={overtakeModeFor(race.season)}
         className="w-full"
       />
+      {!replay.finished && (
+        <p className="text-xs text-muted-foreground">
+          Order and gaps between laps are interpolated from lap times.
+        </p>
+      )}
     </div>
   );
 }
