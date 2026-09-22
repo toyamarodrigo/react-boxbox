@@ -1043,8 +1043,10 @@ function zonesAsSectors(zones: ReadonlyMap<number, TrackStatus>, count: number):
  * - a safety-car wording above sets or clears the car state, and nothing else;
  * - a driver-scoped message never touches the track: `BLUE` and `BLACK AND WHITE` are addressed to
  *   one car, and a green flag for the field is not among them;
- * - `RED` is red and puts every local flag out;
- * - `CHEQUERED` is chequered;
+ * - `RED` is red and puts every local flag out, and it ends the car state with them: the race is
+ *   stopped, and a safety car deployed into a stoppage never gets an ending message of its own
+ *   (São Paulo 2024). Without this the car would outrank the red for the rest of the race;
+ * - `CHEQUERED` is chequered, and ends the car state for the same reason: the race is over;
  * - a message naming a sector opens a zone for `YELLOW` / `DOUBLE YELLOW` and closes it for
  *   `CLEAR` / `GREEN`, without touching the flag over the track;
  * - track-wide `YELLOW` / `DOUBLE YELLOW` is the flag over the track;
@@ -1085,9 +1087,11 @@ function indexRaceControl(race: ReplayRace): RaceControlIndex {
     } else if (scope !== 'DRIVER') {
       if (value === 'RED') {
         flag = 'red';
+        safety = null;
         zones.clear();
       } else if (value === 'CHEQUERED') {
         flag = 'chequered';
+        safety = null;
       } else if (message.sector !== null && scope !== 'TRACK') {
         if (value === 'YELLOW') zones.set(message.sector, 'yellow');
         else if (value === 'DOUBLE YELLOW') zones.set(message.sector, 'double-yellow');
@@ -1145,6 +1149,152 @@ export function raceControlUpTo(race: ReplayRace, elapsedMs: number): ReplayRace
   const count = countAtOrBefore(index.ats, elapsedMs);
   if (count === 0) return NO_MESSAGES;
   return index.newestFirst.slice(index.newestFirst.length - count);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Neutralisation
+ *
+ * The stretches of the race run under a safety car, a virtual safety car or a red flag, read off
+ * the same state machine that paints the map, so the timeline's bands and the banner over the map
+ * can never disagree about what was flying.
+ * ------------------------------------------------------------------------------------------- */
+
+/** The statuses that neutralise the race. A local flag is not one: the race runs on under it. */
+export type NeutralisationStatus = Extract<TrackStatus, 'sc' | 'vsc' | 'red'>;
+
+/** A stretch of the race under one of those statuses, on the race clock and in laps. */
+export type NeutralisationPeriod = {
+  status: NeutralisationStatus;
+  fromMs: number;
+  toMs: number;
+  /** The lap in progress when it began and when it ended; `null` for a race with no laps. */
+  fromLap: number | null;
+  toLap: number | null;
+};
+
+function isNeutralisation(status: TrackStatus | undefined): status is NeutralisationStatus {
+  return status === 'sc' || status === 'vsc' || status === 'red';
+}
+
+/** Nothing neutralised: one shared array, so a memoised consumer sees the same value every tick. */
+const NO_PERIODS: NeutralisationPeriod[] = [];
+
+const NEUTRALISATIONS = new WeakMap<ReplayRace, NeutralisationPeriod[]>();
+
+/** The lap in progress at a moment, which is what a lap board shows; `null` for a race of none. */
+function lapInProgressAt(race: ReplayRace, elapsedMs: number): number | null {
+  if (race.totalLaps < 1) return null;
+  return Math.min(leaderLapsCompleted(race, elapsedMs) + 1, race.totalLaps);
+}
+
+/**
+ * Every stretch of the race the timeline draws as a band, in race-clock order.
+ *
+ * A period runs from the moment the track status becomes one of the three until the moment it
+ * becomes anything else — its own ending message, a red flag, or the chequered flag. A period
+ * still open when the messages run out ends with the race, so a safety car whose ending message
+ * never arrives still has a length.
+ *
+ * Built once per race object, like the indexes it reads, and always the same empty array when
+ * there is nothing: the page asks for these ten times a second.
+ */
+export function neutralisationPeriods(race: ReplayRace): readonly NeutralisationPeriod[] {
+  const cached = NEUTRALISATIONS.get(race);
+  if (cached) return cached;
+
+  const index = indexRaceControl(race);
+  const endMs = leaderCumulative(race, race.totalLaps);
+  const periods: NeutralisationPeriod[] = [];
+  let open: { status: NeutralisationStatus; fromMs: number } | null = null;
+
+  const close = (toMs: number) => {
+    if (open === null) return;
+    const fromMs = Math.min(open.fromMs, endMs);
+    const to = Math.min(Math.max(toMs, fromMs), endMs);
+    if (fromMs < endMs) {
+      periods.push({
+        status: open.status,
+        fromMs,
+        toMs: to,
+        fromLap: lapInProgressAt(race, fromMs),
+        toLap: lapInProgressAt(race, to),
+      });
+    }
+    open = null;
+  };
+
+  for (const [position, at] of index.ats.entries()) {
+    const status = index.status[position];
+    if (open !== null && status !== open.status) close(at);
+    if (open === null && isNeutralisation(status)) open = { status, fromMs: at };
+  }
+  close(endMs);
+
+  const built = periods.length === 0 ? NO_PERIODS : periods;
+  NEUTRALISATIONS.set(race, built);
+  return built;
+}
+
+const NEUTRALISATION_NAMES: Record<NeutralisationStatus, string> = {
+  sc: 'safety car',
+  vsc: 'virtual safety car',
+  red: 'red flag',
+};
+
+/** Small counts read as words, the way a sentence reads them; anything larger stays a figure. */
+const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+function countWord(count: number): string {
+  return COUNT_WORDS[count] ?? String(count);
+}
+
+/** `1 to 7`, or `7` for a period inside one lap; `null` when the race carries no laps. */
+function lapRange(period: NeutralisationPeriod): string | null {
+  const { fromLap, toLap } = period;
+  if (fromLap === null || toLap === null) return null;
+  return fromLap === toLap ? `${fromLap}` : `${fromLap} to ${toLap}`;
+}
+
+/** `a, b and c`, the way a sentence lists them. */
+function sentenceList(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/**
+ * One sentence for the whole bar: what the race was neutralised by, and where.
+ *
+ * One sentence rather than one per band, because the bar is a time control and someone using it
+ * wants to know what they will run into, not to navigate the race event by event — the feed does
+ * that. A race running both kinds names each of them, since the bar tells them apart by pattern
+ * alone. `null` when there is nothing to say, so the page renders no sentence at all.
+ */
+export function neutralisationSummary(periods: readonly NeutralisationPeriod[]): string | null {
+  if (periods.length === 0) return null;
+  const kinds = new Set(periods.map((period) => period.status));
+  const count = countWord(periods.length);
+  const plural = periods.length === 1 ? '' : 's';
+
+  const first = periods[0];
+  if (kinds.size === 1 && first !== undefined) {
+    const ranges = periods.map(lapRange).filter((range) => range !== null);
+    const head = `${count} ${NEUTRALISATION_NAMES[first.status]} period${plural}`;
+    if (ranges.length === 0) return `${capitalise(head)}.`;
+    const word = periods.length === 1 && first.fromLap === first.toLap ? 'lap' : 'laps';
+    return `${capitalise(head)}: ${word} ${sentenceList(ranges)}.`;
+  }
+
+  const parts = periods.map((period) => {
+    const range = lapRange(period);
+    const name = NEUTRALISATION_NAMES[period.status];
+    if (range === null) return name;
+    return `${name} ${period.fromLap === period.toLap ? 'lap' : 'laps'} ${range}`;
+  });
+  return `${capitalise(`${count} neutralisation period${plural}`)}: ${sentenceList(parts)}.`;
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** The best speed-trap reading of the race up to `elapsedMs`, and who set it. */

@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useId,
   useMemo,
   useState,
 } from 'react';
@@ -22,6 +23,8 @@ import type {
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
 import {
+  type NeutralisationPeriod,
+  type NeutralisationStatus,
   type PitLaneShape,
   type ReplayPitStop,
   carLapsAt,
@@ -31,6 +34,7 @@ import {
   formatRaceTime,
   hasTimingData,
   leaderLapsCompleted,
+  neutralisationSummary,
   overtakeModeFor,
   positionsSinceStart,
   raceControlUpTo,
@@ -192,13 +196,84 @@ const PitStopMarks = memo(function PitStopMarks({
 });
 
 /**
+ * The bands keep the Flag Banner's vocabulary, so a stretch of the bar is painted the colour the
+ * banner flew over it: the safety car and the virtual safety car share the yellow, and the stripe
+ * is what tells them apart, exactly as the banner tells a double yellow from a single one.
+ */
+const NEUTRALISATION_TONES: Record<NeutralisationStatus, string> = {
+  sc: 'bg-flag-yellow',
+  vsc: 'bg-flag-yellow',
+  red: 'bg-flag-red',
+};
+
+/**
+ * The banner's diagonal stripe at the band's scale: its own 14px/18px period is wider than a band
+ * is tall, so at that size a band would come out a plain yellow block with one wedge cut off it.
+ * The angle, the transparency and the colour are the banner's.
+ */
+const NEUTRALISATION_PATTERNS: Partial<Record<NeutralisationStatus, React.CSSProperties>> = {
+  vsc: {
+    backgroundImage:
+      'repeating-linear-gradient(45deg, transparent 0 4px, var(--flag-yellow-foreground) 4px 6px)',
+  },
+};
+
+/**
+ * Where the race was neutralised, in a row of its own under the bar.
+ *
+ * Decorative and inert: a band sits over the stretch of bar the viewer drags to, so anything
+ * clickable here would take the drag away from the slider, which is the bar's whole job. The
+ * spoken summary on the slider says in one sentence what the bands say in colour.
+ *
+ * Memoised on the periods and the length of the race, like `PitStopMarks`: the page renders ten
+ * times a second and these never move for the whole of a race.
+ */
+const NeutralisationBands = memo(function NeutralisationBands({
+  periods,
+  endMs,
+}: {
+  periods: readonly NeutralisationPeriod[];
+  endMs: number;
+}) {
+  // No row at all rather than an empty one, so a race with nothing to show has no gap under it.
+  if (periods.length === 0 || endMs <= 0) return null;
+  return (
+    <div
+      aria-hidden
+      data-slot="timeline-neutralisations"
+      className="pointer-events-none relative mt-2 h-1.5"
+    >
+      {periods.map((period) => (
+        <span
+          key={`${period.status}:${period.fromMs}`}
+          data-slot="timeline-neutralisation"
+          data-status={period.status}
+          className={cn('absolute inset-y-0 min-w-[3px]', NEUTRALISATION_TONES[period.status])}
+          style={{
+            left: `${(period.fromMs / endMs) * 100}%`,
+            width: `${((period.toMs - period.fromMs) / endMs) * 100}%`,
+            ...NEUTRALISATION_PATTERNS[period.status],
+          }}
+        />
+      ))}
+    </div>
+  );
+});
+
+/**
  * The race on one bar: drag anywhere in the race, with a tick at every lap boundary and the lap
  * in progress riding on the thumb. Seeking is live while dragging; the map snaps rather than
  * slides on those renders (see `RaceReplay.jumped`).
  */
 function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean }) {
-  const { endMs, lapBoundaries, pitStops, totalLaps } = replay;
+  const { endMs, lapBoundaries, neutralisations, pitStops, totalLaps } = replay;
   const percent = (ms: number) => (endMs > 0 ? (ms / endMs) * 100 : 0);
+  /**
+   * The summary describes the slider rather than labelling it: a description is read once, when
+   * the control takes focus, where `aria-valuetext` is read again on every tick of the clock.
+   */
+  const summaryId = useId();
+  const summary = useMemo(() => neutralisationSummary(neutralisations), [neutralisations]);
 
   return (
     <div className="relative pt-6 pb-3">
@@ -223,6 +298,7 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
         thumbProps={{
           'aria-label': 'Race time',
           'aria-valuetext': `Lap ${replay.lap} of ${totalLaps}, ${formatRaceTime(replay.elapsedMs)}`,
+          'aria-describedby': summary === null ? undefined : summaryId,
           className: 'relative',
           children: (
             <span
@@ -234,6 +310,12 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
           ),
         }}
       />
+      <NeutralisationBands periods={neutralisations} endMs={endMs} />
+      {summary !== null && (
+        <p id={summaryId} className="sr-only">
+          {summary}
+        </p>
+      )}
     </div>
   );
 }

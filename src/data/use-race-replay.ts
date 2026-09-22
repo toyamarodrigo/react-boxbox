@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
 import {
+  type NeutralisationPeriod,
   type PitLaneShape,
   type ReplayPitStop,
   leaderCumulative,
+  neutralisationPeriods,
   replayLiveRows,
   replayPitStops,
   replayProgress,
@@ -27,6 +29,9 @@ const TICK_MS = REPLAY_TICK_MS;
  */
 export const GAP_REFRESH_MS = 1000;
 
+/** No race to read: the same empty array every render, so a memoised consumer is not woken. */
+const NO_NEUTRALISATIONS: readonly NeutralisationPeriod[] = [];
+
 export type RaceReplay = {
   /** The lap in progress, which is what a lap board shows. */
   lap: number;
@@ -45,6 +50,8 @@ export type RaceReplay = {
   markers: TrackMarker[];
   /** When each drawable pit stop begins, on the race clock, in time order. */
   pitStops: readonly ReplayPitStop[];
+  /** The stretches run under a safety car, a virtual safety car or a red flag, in time order. */
+  neutralisations: readonly NeutralisationPeriod[];
   finished: boolean;
   isPlaying: boolean;
   speed: ReplaySpeed;
@@ -148,6 +155,12 @@ export function useRaceReplay(
 
   const pitStops = useMemo(() => (race && pit ? replayPitStops(race, pit) : []), [race, pit]);
 
+  /** Derived from the race alone, like the stops: the helper caches them per race object. */
+  const neutralisations = useMemo(
+    () => (race ? neutralisationPeriods(race) : NO_NEUTRALISATIONS),
+    [race],
+  );
+
   const seek = useCallback(
     (ms: number) => {
       if (!race) return;
@@ -181,6 +194,7 @@ export function useRaceReplay(
     rows,
     markers,
     pitStops,
+    neutralisations,
     finished,
     isPlaying,
     speed,

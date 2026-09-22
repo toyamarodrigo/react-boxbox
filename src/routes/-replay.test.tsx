@@ -72,6 +72,8 @@ const untimedRace = () => ({
   })),
 });
 const banner = () => document.querySelector('[data-slot="flag-banner"]');
+const bands = () => [...document.querySelectorAll('[data-slot="timeline-neutralisation"]')];
+const bandRow = () => document.querySelector('[data-slot="timeline-neutralisations"]');
 const flaggedSectors = () => [...document.querySelectorAll('[data-slot="track-map-sector"]')];
 /** The same race with nothing from race control: an older season, or a source failure. */
 const quietRace = () => ({ ...race, raceControl: [] });
@@ -571,6 +573,144 @@ describe('replay page, race control', () => {
     fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
     await waitFor(() => expect(banner()).not.toBeNull());
     expect(banner()).toHaveAttribute('data-status', 'chequered');
+  });
+});
+
+describe('replay page, neutralisation bands', () => {
+  /** Serves one race instead of the fixture, for a case that needs a different dataset. */
+  const serve = (body: unknown) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(body);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  };
+
+  /** The fixture with a safety car after its virtual one: the two kinds in one race. */
+  const bothKinds = () => ({
+    ...race,
+    raceControl: [
+      ...race.raceControl,
+      {
+        atMs: 150_000,
+        lap: 2,
+        flag: null,
+        category: 'SafetyCar',
+        scope: null,
+        sector: null,
+        driverId: null,
+        message: 'SAFETY CAR DEPLOYED',
+      },
+      {
+        atMs: 250_000,
+        lap: 3,
+        flag: null,
+        category: 'SafetyCar',
+        scope: null,
+        sector: null,
+        driverId: null,
+        message: 'SAFETY CAR IN THIS LAP',
+      },
+    ],
+  });
+
+  const description = () => {
+    const id = screen.getByRole('slider', { name: 'Race time' }).getAttribute('aria-describedby');
+    return id === null ? null : document.getElementById(id)?.textContent;
+  };
+
+  it('draws one band per period, in the kind’s own colour', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(bands()).toHaveLength(1));
+
+    const [band] = bands();
+    // The one period the fixture carries: the virtual safety car from 60s to 120s of a 297s race.
+    expect(band).toHaveAttribute('data-status', 'vsc');
+    expect(band).toHaveClass('bg-flag-yellow');
+    expect(band).toHaveStyle({ left: `${(60_000 / 297_000) * 100}%` });
+    // The stripe is what tells it from a safety car, which is the same yellow without one.
+    expect(band?.getAttribute('style')).toContain('repeating-linear-gradient');
+    expect(band?.getAttribute('style')).toContain('--flag-yellow-foreground');
+  });
+
+  it('draws both kinds of a race that ran both, in race order', async () => {
+    serve(bothKinds());
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(bands()).toHaveLength(2));
+
+    expect(bands().map((band) => band.getAttribute('data-status'))).toEqual(['vsc', 'sc']);
+    // The safety car is the same yellow, painted solid.
+    expect(bands()[1]).toHaveClass('bg-flag-yellow');
+    expect(bands()[1]?.getAttribute('style')).not.toContain('repeating-linear-gradient');
+  });
+
+  it('has no row at all for a race with no race control', async () => {
+    serve(quietRace());
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    expect(bandRow()).toBeNull();
+    expect(bands()).toHaveLength(0);
+    // Nothing to say, so the slider carries no description either.
+    expect(screen.getByRole('slider', { name: 'Race time' })).not.toHaveAttribute(
+      'aria-describedby',
+    );
+  });
+
+  it('is decorative: nothing to focus, nothing to click, no drag taken from the slider', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(bands()).toHaveLength(1));
+
+    expect(bandRow()).toHaveAttribute('aria-hidden');
+    expect(bandRow()?.querySelectorAll('button')).toHaveLength(0);
+    for (const band of bands()) {
+      expect(band.tagName).toBe('SPAN');
+      expect(band).not.toHaveAttribute('tabindex');
+      expect(band).not.toHaveAttribute('role');
+    }
+
+    // Clicking one moves nothing: the bar seeks by its slider alone.
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(screen.getByText('Lap 2 of 3')).toBeInTheDocument());
+    const band = bands()[0];
+    if (band) fireEvent.click(band);
+    expect(screen.getByText('Lap 2 of 3')).toBeInTheDocument();
+  });
+
+  it('describes the whole bar in one sentence, naming each kind', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(bands()).toHaveLength(1));
+
+    expect(description()).toBe('One virtual safety car period: laps 1 to 2.');
+  });
+
+  it('names both kinds in one sentence for a race that ran both', async () => {
+    serve(bothKinds());
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(bands()).toHaveLength(2));
+
+    expect(description()).toBe(
+      'Two neutralisation periods: virtual safety car laps 1 to 2 and safety car laps 2 to 3.',
+    );
+    // The sentence is a description, not the value: seeking does not re-announce it.
+    const slider = screen.getByRole('slider', { name: 'Race time' });
+    const before = slider.getAttribute('aria-describedby');
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(screen.getByText('Lap 2 of 3')).toBeInTheDocument());
+    expect(slider.getAttribute('aria-describedby')).toBe(before);
+    expect(description()).toBe(
+      'Two neutralisation periods: virtual safety car laps 1 to 2 and safety car laps 2 to 3.',
+    );
   });
 });
 

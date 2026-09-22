@@ -10,6 +10,8 @@ import {
   formatRaceTime,
   leaderCumulative,
   leaderLapsCompleted,
+  neutralisationPeriods,
+  neutralisationSummary,
   overtakeModeFor,
   positionsSinceStart,
   raceControlUpTo,
@@ -792,6 +794,136 @@ describe('raceControlUpTo', () => {
   });
 });
 
+describe('neutralisationPeriods', () => {
+  /** What the bands draw: the kind, the ends on the clock and the laps they fall on. */
+  const shape = (real: ReplayRace) =>
+    neutralisationPeriods(real).map((period) => [period.status, period.fromLap, period.toLap]);
+
+  it('reads the fixture’s virtual safety car off the same machine as the flag', () => {
+    expect(neutralisationPeriods(race)).toEqual([
+      { status: 'vsc', fromMs: 60_000, toMs: 120_000, fromLap: 1, toLap: 2 },
+    ]);
+    expect(trackStatusAt(race, 60_000)).toBe('vsc');
+    expect(trackStatusAt(race, 120_000)).toBe('green');
+  });
+
+  it('is the same empty array for a race with no race control', () => {
+    const quiet = { ...race, raceControl: [] };
+    const first = neutralisationPeriods(quiet);
+    expect(first).toEqual([]);
+    // The identity holds across calls, so a memoised consumer is not woken by a fresh `[]`.
+    expect(neutralisationPeriods(quiet)).toBe(first);
+    expect(neutralisationPeriods({ ...race, raceControl: [] })).toBe(first);
+  });
+
+  it('builds the periods once per race object', () => {
+    expect(neutralisationPeriods(race)).toBe(neutralisationPeriods(race));
+  });
+
+  it('leaves a local flag out: the race runs on under it', () => {
+    const local = {
+      ...race,
+      raceControl: [
+        message(10_000, { flag: 'YELLOW', scope: 'Sector', sector: 2, message: 'YELLOW IN 2' }),
+        message(20_000, { flag: 'DOUBLE YELLOW', scope: 'Track', message: 'DOUBLE YELLOW' }),
+        message(30_000, { flag: 'GREEN', scope: 'Track', message: 'GREEN' }),
+      ],
+    };
+    expect(neutralisationPeriods(local)).toEqual([]);
+  });
+
+  it('ends a safety car that never ends at the red flag that stopped the race', () => {
+    const stopped = {
+      ...race,
+      raceControl: [
+        message(20_000, { category: 'SafetyCar', message: 'SAFETY CAR DEPLOYED' }),
+        message(50_000, { flag: 'RED', scope: 'Track', message: 'RED FLAG' }),
+        message(150_000, { flag: 'CLEAR', scope: 'Track', message: 'TRACK CLEAR' }),
+      ],
+    };
+    expect(shape(stopped)).toEqual([
+      ['sc', 1, 1],
+      ['red', 1, 2],
+    ]);
+  });
+
+  it('ends a period still open at the last message with the race', () => {
+    const open = {
+      ...race,
+      raceControl: [message(250_000, { category: 'SafetyCar', message: 'SAFETY CAR DEPLOYED' })],
+    };
+    expect(neutralisationPeriods(open)).toEqual([
+      { status: 'sc', fromMs: 250_000, toMs: 297_000, fromLap: 3, toLap: 3 },
+    ]);
+  });
+
+  it('ends a period at the chequered flag', () => {
+    const toTheFlag = {
+      ...race,
+      raceControl: [
+        message(250_000, { category: 'SafetyCar', message: 'SAFETY CAR DEPLOYED' }),
+        message(280_000, { flag: 'CHEQUERED', scope: 'Track', message: 'CHEQUERED FLAG' }),
+      ],
+    };
+    expect(neutralisationPeriods(toTheFlag)).toEqual([
+      { status: 'sc', fromMs: 250_000, toMs: 280_000, fromLap: 3, toLap: 3 },
+    ]);
+  });
+
+  it('runs one period into the next when the kind changes with no green between', () => {
+    const backToBack = {
+      ...race,
+      raceControl: [
+        message(20_000, { category: 'SafetyCar', message: 'VSC DEPLOYED' }),
+        message(40_000, { category: 'SafetyCar', message: 'SAFETY CAR DEPLOYED' }),
+        message(80_000, { category: 'SafetyCar', message: 'SAFETY CAR IN THIS LAP' }),
+      ],
+    };
+    expect(
+      neutralisationPeriods(backToBack).map((period) => [period.status, period.fromMs]),
+    ).toEqual([
+      ['vsc', 20_000],
+      ['sc', 40_000],
+    ]);
+    expect(neutralisationPeriods(backToBack)[1]?.toMs).toBe(80_000);
+  });
+});
+
+describe('neutralisationSummary', () => {
+  const period = (status: 'sc' | 'vsc' | 'red', fromLap: number, toLap: number) =>
+    ({ status, fromMs: 0, toMs: 0, fromLap, toLap }) as const;
+
+  it('has nothing to say about a race that was never neutralised', () => {
+    expect(neutralisationSummary([])).toBeNull();
+  });
+
+  it('names the kind once when the race only ran one', () => {
+    expect(
+      neutralisationSummary([period('sc', 1, 7), period('sc', 33, 41), period('sc', 48, 53)]),
+    ).toBe('Three safety car periods: laps 1 to 7, 33 to 41 and 48 to 53.');
+    expect(neutralisationSummary([period('vsc', 14, 15)])).toBe(
+      'One virtual safety car period: laps 14 to 15.',
+    );
+    expect(neutralisationSummary([period('vsc', 28, 28)])).toBe(
+      'One virtual safety car period: lap 28.',
+    );
+  });
+
+  it('names each kind when the race ran more than one', () => {
+    expect(
+      neutralisationSummary([period('vsc', 1, 2), period('sc', 3, 6), period('red', 32, 33)]),
+    ).toBe(
+      'Three neutralisation periods: virtual safety car laps 1 to 2, safety car laps 3 to 6 and red flag laps 32 to 33.',
+    );
+  });
+
+  it('still counts them when the race carries no laps to place them on', () => {
+    expect(
+      neutralisationSummary([{ status: 'sc', fromMs: 0, toMs: 1, fromLap: null, toLap: null }]),
+    ).toBe('One safety car period.');
+  });
+});
+
 describe('race control on the generated dataset', () => {
   const files = generatedReplayFiles();
   if (files.length === 0) {
@@ -835,6 +967,79 @@ describe('race control on the generated dataset', () => {
     expect(trackStatusAt(real, deployed.atMs)).toBe('vsc');
     expect(trackStatusAt(real, (deployed.atMs + ending.atMs) / 2)).toBe('vsc');
     expect(trackStatusAt(real, ending.atMs)).toBe('green');
+  });
+
+  /** What the curated set was measured to carry, race by race: the kinds, in race order. */
+  const expectedKinds: Record<string, string[]> = {
+    '2021-22.json': [],
+    '2023-21.json': ['vsc', 'sc', 'sc'],
+    '2024-21.json': ['vsc', 'sc', 'red', 'sc'],
+    '2025-1.json': ['sc', 'sc', 'sc'],
+    '2026-14.json': ['vsc'],
+  };
+
+  it.each(files.map((file) => [path.basename(file), file] as const))(
+    '%s carries the neutralisation periods it was measured to have',
+    (name, file) => {
+      const real = replayRaceSchema.parse(readJson(file));
+      const periods = neutralisationPeriods(real);
+      const expected = expectedKinds[name];
+      if (expected === undefined) return;
+      expect(periods.map((period) => period.status)).toEqual(expected);
+
+      const end = leaderCumulative(real, real.totalLaps);
+      for (const [index, period] of periods.entries()) {
+        expect(period.toMs).toBeGreaterThan(period.fromMs);
+        expect(period.toMs).toBeLessThanOrEqual(end);
+        // In race order, and never overlapping the one before it.
+        if (index > 0) expect(period.fromMs).toBeGreaterThanOrEqual(periods[index - 1]?.toMs ?? 0);
+        // The bands and the map read the same machine: the flag flying inside a period is it.
+        expect(trackStatusAt(real, (period.fromMs + period.toMs) / 2)).toBe(period.status);
+      }
+    },
+  );
+
+  it('ends São Paulo 2024’s unclosed safety car at the red flag', () => {
+    const file = files.find((entry) => path.basename(entry) === '2024-21.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+    const red = real.raceControl.find((entry) => entry.flag === 'RED');
+    // The car is deployed and its ending message never comes: the race was stopped instead.
+    const deployed = real.raceControl.filter((entry) => entry.message === 'SAFETY CAR DEPLOYED');
+    const ended = real.raceControl.filter((entry) => entry.message.includes('SAFETY CAR IN THIS'));
+    expect(deployed).toHaveLength(2);
+    expect(ended).toHaveLength(1);
+
+    const periods = neutralisationPeriods(real);
+    expect(periods[1]?.status).toBe('sc');
+    expect(periods[1]?.fromMs).toBe(deployed[0]?.atMs);
+    expect(periods[1]?.toMs).toBe(red?.atMs);
+    // The red flag that ended it is a period of its own, and the map agrees.
+    expect(periods[2]?.status).toBe('red');
+    expect(periods[2]?.fromMs).toBe(red?.atMs);
+    expect(trackStatusAt(real, (red?.atMs ?? 0) + 1000)).toBe('red');
+  });
+
+  it('opens Australia 2025 neutralised, on the first lap', () => {
+    const file = files.find((entry) => path.basename(entry) === '2025-1.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+    const first = neutralisationPeriods(real)[0];
+    expect(first?.status).toBe('sc');
+    expect(first?.fromLap).toBe(1);
+    expect(first?.toLap).toBe(7);
+    expect(neutralisationSummary(neutralisationPeriods(real))).toBe(
+      'Three safety car periods: laps 1 to 7, 34 to 41 and 47 to 51.',
+    );
+  });
+
+  it('tells the two kinds apart in Las Vegas 2023, which ran both', () => {
+    const file = files.find((entry) => path.basename(entry) === '2023-21.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+    expect(neutralisationSummary(neutralisationPeriods(real))).toBe(
+      'Three neutralisation periods: virtual safety car laps 1 to 2, safety car laps 3 to 6 and safety car laps 26 to 28.',
+    );
   });
 
   it('has no race control at all for a race OpenF1 does not cover', () => {
