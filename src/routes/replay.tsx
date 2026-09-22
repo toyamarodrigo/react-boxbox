@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useEffectEvent, useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { z } from 'zod';
@@ -452,6 +452,10 @@ function ReplayPage() {
     void navigate({
       search: ({ driver: _driver, ...rest }) => rest,
       replace: true,
+      // The router has `scrollRestoration`, and a navigation resets the scroll unless told
+      // otherwise. Following is a change of view inside the page, not a page change: the
+      // tower has to stay where the viewer clicked it.
+      resetScroll: false,
     });
   }, [navigate]);
 
@@ -467,28 +471,37 @@ function ReplayPage() {
       }
       const code = race.data?.drivers.find((driver) => driver.id === driverId)?.code;
       if (code === undefined) return;
-      void navigate({ search: (prev) => ({ ...prev, driver: code }), replace: true });
+      void navigate({
+        search: (prev) => ({ ...prev, driver: code }),
+        replace: true,
+        resetScroll: false,
+      });
     },
     [followedId, navigate, race.data, release],
   );
 
+  // Escape belongs to whatever the viewer is typing in or dragging, if anything.
+  const onEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest('input, textarea, select, [role="slider"], [contenteditable="true"]')
+    ) {
+      return;
+    }
+    release();
+  });
+
+  // Subscribed once for as long as a driver is followed: the handler above reads the current
+  // `release` on its own, so switching driver does not tear the listener down and back up.
+  const following = followedId !== undefined;
   useEffect(() => {
-    if (followedId === undefined) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      // Escape belongs to whatever the viewer is typing in or dragging, if anything.
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest('input, textarea, select, [role="slider"], [contenteditable="true"]')
-      ) {
-        return;
-      }
-      release();
-    };
+    if (!following) return;
+    const onKeyDown = (event: KeyboardEvent) => onEscape(event);
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [followedId, release]);
+  }, [following]);
 
   return (
     <div className="space-y-8 py-4">

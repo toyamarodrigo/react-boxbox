@@ -365,11 +365,16 @@ export function TrackMapMarker({
       data-pit={marker.inPit ? 'true' : undefined}
       data-wrap={wrapped ? 'true' : undefined}
       data-dimmed={dimmed ? 'true' : undefined}
+      data-emphasis={marker.emphasis === true ? 'true' : undefined}
       // A clickable marker has to stay in the accessibility tree; a decorative one does not.
       aria-hidden={onSelect === undefined ? true : undefined}
       className={cn(
         'absolute left-0 top-0 size-0 transition-[offset-distance,opacity]',
         'motion-reduce:transition-none data-[wrap]:transition-none',
+        // The markers are siblings in one absolutely positioned layer, so a stacking order is
+        // all it takes to keep the car being watched — dot and code both — over every other
+        // one, rather than under whichever marker happens to come later in the list.
+        marker.emphasis === true && 'z-10',
         dimmed && 'opacity-40',
         className,
       )}

@@ -291,6 +291,30 @@ describe('replay page, followed driver', () => {
     expect(screen.getByRole('button', { name: 'CHA' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('does not reset the scroll to follow, but a new race is a real page change', async () => {
+    // The router has `scrollRestoration`, so it scrolls the window on every navigation it is
+    // not told to leave alone. `window.scrollTo` is where that lands.
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(rowButton('charlie')).not.toBeNull());
+    scrollTo.mockClear();
+
+    fireEvent.click(rowButton('charlie')!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'charlie'));
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(searchOf(router).driver).toBeUndefined());
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Test$/ }));
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 })),
+    );
+  });
+
   it('keeps the follow working once the race is over', async () => {
     const router = renderReplay();
     await screen.findByRole('heading', { name: race.name });

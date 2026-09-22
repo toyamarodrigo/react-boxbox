@@ -355,11 +355,29 @@ export function TimingTowerExpanded({
   );
 }
 
+/**
+ * The panel opens and closes as one accordion movement: its own height is what grows, so the
+ * row below simply reflows with it, and `overflow-hidden` clips the figures instead of letting
+ * them squash. The content fades one step faster than the height in each direction so nothing
+ * pops at the edges. Height is the one property this cannot animate on the compositor, which is
+ * why it is kept to this one small wrapper and the padding lives on the element inside it: with
+ * padding here, `height: 0` would not be zero.
+ */
 const EXPANDED_MOTION = {
-  initial: { opacity: 0, transform: 'translateY(-4px)' },
-  animate: { opacity: 1, transform: 'translateY(0px)' },
-  exit: { opacity: 0, transition: { duration: DURATION.fast, ease: EASE_OUT } },
-  transition: { duration: DURATION.base, ease: EASE_OUT },
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto', opacity: 1 },
+  exit: {
+    height: 0,
+    opacity: 0,
+    transition: {
+      height: { duration: DURATION.fast, ease: EASE_OUT },
+      opacity: { duration: DURATION.tick, ease: EASE_OUT },
+    },
+  },
+  transition: {
+    height: { duration: DURATION.base, ease: EASE_OUT },
+    opacity: { duration: DURATION.fast, ease: EASE_OUT },
+  },
 } as const;
 
 export function TimingTowerRow({
@@ -456,6 +474,10 @@ export function TimingTowerRow({
 
   return (
     <motion.li
+      // `position` only: the row's own height changes when its panel opens, and that growth is
+      // the accordion, not something to project. Pass `layoutDependency` (see `TimingTower`) to
+      // say when the order actually changed, or Motion measures on every render — at ten renders
+      // a second that turns the panel's reflow into a spring the rows below chase.
       layout="position"
       data-slot="timing-tower-row"
       data-position={row.position}
@@ -517,10 +539,12 @@ export function TimingTowerRow({
             // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="group"
             aria-label={`${driver.code} details`}
-            className="px-2 pb-2"
+            className="overflow-hidden"
             {...EXPANDED_MOTION}
           >
-            {expanded}
+            <div data-slot="timing-tower-expanded-content" className="px-2 pb-2">
+              {expanded}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -569,6 +593,14 @@ export function TimingTower({
 } & React.ComponentProps<'ol'>) {
   const ordered = sortRows(rows);
   const shown = maxRows === undefined ? ordered : ordered.slice(0, Math.max(0, maxRows));
+  /**
+   * What the rows are allowed to animate their layout for: the shown order and nothing else.
+   * Motion measures every `layout` component on every render unless it is given this, and a
+   * live tower renders ten times a second. `followedId` is deliberately not part of it —
+   * following is what opens the panel, and the rows below must ride that height animation
+   * rather than be re-measured and sprung into place a frame behind it.
+   */
+  const order = shown.map((row) => row.driverId).join(',');
 
   return (
     <ol
@@ -598,6 +630,7 @@ export function TimingTower({
             return (
               <TimingTowerRow
                 key={row.driverId}
+                layoutDependency={order}
                 row={row}
                 driver={driver}
                 team={team}

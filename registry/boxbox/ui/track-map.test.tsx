@@ -369,6 +369,24 @@ describe('TrackMap', () => {
     );
   });
 
+  it('paints the emphasised car over the others, label included', () => {
+    const { container } = render(
+      <TrackMap
+        path={PATH}
+        // Listed last, so without a stacking order it would be the one covered up.
+        markers={[
+          marker({ id: 'mso', code: 'MSO' }),
+          marker({ id: 'evo', code: 'EVO', emphasis: true }),
+        ]}
+        dimOthers
+      />,
+    );
+    const markers = [...container.querySelectorAll('[data-slot="track-map-marker"]')];
+    expect(markers.map((element) => element.getAttribute('data-emphasis'))).toEqual([null, 'true']);
+    expect(markers[1]).toHaveClass('z-10');
+    expect(markers[0]).not.toHaveClass('z-10');
+  });
+
   it('takes the marker layer size from the viewBox', () => {
     const { container } = render(
       <TrackMap path={PATH} viewBox="0 0 400 200" markers={[marker()]} />,

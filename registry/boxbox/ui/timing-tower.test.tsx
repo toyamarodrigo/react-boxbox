@@ -402,6 +402,19 @@ describe('TimingTower', () => {
     expect(screen.getByRole('group', { name: 'BBB details' })).toBeInTheDocument();
   });
 
+  it('clips the panel and keeps its padding inside, so the row can collapse to nothing', () => {
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} followedId="two" />,
+    );
+    const panel = container.querySelector('[data-slot="timing-tower-expanded"]');
+    expect(panel).toHaveClass('overflow-hidden');
+    // Padding on the element whose height animates would keep it off zero.
+    expect(panel?.className).not.toMatch(/(^|\s)p[xybtlre]?-/);
+    const content = panel?.querySelector('[data-slot="timing-tower-expanded-content"]');
+    expect(content).toHaveClass('px-2', 'pb-2');
+    expect(content?.querySelector('[data-slot="timing-tower-expanded-figures"]')).not.toBeNull();
+  });
+
   it('gives renderExpanded the neighbours in the shown order', () => {
     const seen: (string | undefined)[] = [];
     render(
