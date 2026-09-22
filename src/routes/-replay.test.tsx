@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testReplayIndex, testReplayRace } from '../data/replay-fixtures';
@@ -16,6 +16,19 @@ function jsonResponse(body: unknown): Response {
     statusText: 'OK',
     json: async () => body,
   } as Response;
+}
+
+/**
+ * Lets the frames the router schedules for itself — its scroll restoration, above all — run
+ * before the test looks at what it did. Two turns: one for the frame, one for anything that
+ * frame schedules in turn.
+ */
+async function settleFrames() {
+  for (let turn = 0; turn < 2; turn++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
 }
 
 /**
@@ -321,6 +334,11 @@ describe('replay page, followed driver', () => {
     const router = renderReplay();
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(rowButton('charlie')).not.toBeNull());
+    // The router restores the scroll for the *first* navigation too, in a frame of its own after
+    // the page has rendered. On a loaded machine that frame can land after the clear below, and
+    // the test would then read the arrival of the page as the follow having scrolled. Settling
+    // the frames first is what makes the assertion about following and nothing else.
+    await settleFrames();
     scrollTo.mockClear();
 
     fireEvent.click(rowButton('charlie')!);
