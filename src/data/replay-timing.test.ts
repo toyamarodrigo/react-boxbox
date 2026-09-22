@@ -17,6 +17,9 @@ import {
   replayPodium,
   replayProgress,
   replayResultsRows,
+  sectorStatusesAt,
+  speedTrapAt,
+  speedTrapBestAt,
   stintAt,
 } from './replay-timing';
 
@@ -499,4 +502,198 @@ describe('replayGaps', () => {
   it('keeps the dataset gap of a lapped car, which is where it belongs on the chart', () => {
     expect(gaps.get('charlie')).toEqual([60, 121, 181]);
   });
+});
+
+describe('sectorStatusesAt', () => {
+  const statuses = (driverId: string, lap: number, at: number) =>
+    sectorStatusesAt(race, driverId, lap, at).map((sector) => sector.status);
+  const times = (driverId: string, lap: number, at: number) =>
+    sectorStatusesAt(race, driverId, lap, at).map((sector) => sector.time);
+
+  it('fills a lap in as the car runs it and never before', () => {
+    // Alpha's opening lap is 30 / 35 / 35, so its sectors fall at 30s, 65s and 100s.
+    expect(statuses('alpha', 1, 0)).toEqual(['unset', 'unset', 'unset']);
+    expect(statuses('alpha', 1, 29_999)).toEqual(['unset', 'unset', 'unset']);
+    expect(times('alpha', 1, 30_000)).toEqual([30, null, null]);
+    expect(times('alpha', 1, 65_000)).toEqual([30, 35, null]);
+    expect(times('alpha', 1, 100_000)).toEqual([30, 35, 35]);
+  });
+
+  it('never shows a lap the clock has not reached', () => {
+    // Alpha starts its third lap at 200s, so nothing of it is readable at the line before.
+    expect(statuses('alpha', 3, 200_000)).toEqual(['unset', 'unset', 'unset']);
+  });
+
+  it('calls the best of the race fastest and a car’s own best personal', () => {
+    // Alpha sets the first sector one of the race at 30s; bravo is 0.3 slower on its own lap.
+    expect(statuses('alpha', 1, 100_000)[0]).toBe('fastest');
+    expect(statuses('bravo', 1, 101_000)[0]).toBe('personal');
+    // Bravo goes quickest of all on lap two (29.4), so alpha's later 29.7 is only its own best.
+    expect(statuses('bravo', 2, 199_000)[0]).toBe('fastest');
+    expect(statuses('alpha', 3, 299_000)[0]).toBe('personal');
+    // Charlie's opening sector one is its own first, so it is its best; its second lap is
+    // slower than that, and slower than the race's.
+    expect(statuses('charlie', 1, 160_000)[0]).toBe('personal');
+    expect(statuses('charlie', 2, 320_000)[0]).toBe('slower');
+  });
+
+  it('counts only what is complete, so seeking backwards never keeps a later best', () => {
+    // At 100s only alpha has a sector one time, so its 30.0 is the best of the race.
+    expect(statuses('alpha', 1, 100_000)[0]).toBe('fastest');
+    // Later, bravo's 29.4 has taken the race and alpha's own 29.7 has taken its own.
+    expect(statuses('alpha', 1, 299_000)[0]).toBe('slower');
+  });
+
+  it('leaves a sector, a car or a lap with no timing unset', () => {
+    // Charlie's second lap has no middle sector, and its last one is held back to the line.
+    expect(statuses('charlie', 2, 319_999)).toEqual(['slower', 'unset', 'unset']);
+    expect(times('charlie', 2, 320_000)).toEqual([52, null, 108]);
+    // Delta's second lap has no timing at all, and neither has a car or lap outside the race.
+    expect(statuses('delta', 2, 326_000)).toEqual(['unset', 'unset', 'unset']);
+    expect(statuses('delta', 9, 999_999)).toEqual(['unset', 'unset', 'unset']);
+    expect(statuses('nobody', 1, 999_999)).toEqual(['unset', 'unset', 'unset']);
+  });
+});
+
+describe('speedTrapAt and speedTrapBestAt', () => {
+  it('reads a car’s most recent reading, and nothing before its first', () => {
+    expect(speedTrapAt(race, 'alpha', 99_999)).toBe(null);
+    expect(speedTrapAt(race, 'alpha', 100_000)).toBe(240);
+    expect(speedTrapAt(race, 'alpha', 298_999)).toBe(240);
+    expect(speedTrapAt(race, 'alpha', 299_000)).toBe(241);
+    expect(speedTrapAt(race, 'nobody', 999_999)).toBe(null);
+  });
+
+  it('holds a car’s last reading through a lap the source did not time', () => {
+    // Delta's second lap carries no reading, so its first lap's stands.
+    expect(speedTrapAt(race, 'delta', 326_000)).toBe(175);
+  });
+
+  it('names the best of the race so far, and nobody before the first reading', () => {
+    expect(speedTrapBestAt(race, 99_999)).toBe(null);
+    expect(speedTrapBestAt(race, 100_000)).toEqual({
+      driverId: 'alpha',
+      code: 'ALP',
+      speedKph: 240,
+    });
+    expect(speedTrapBestAt(race, 199_000)).toEqual({
+      driverId: 'bravo',
+      code: 'BRA',
+      speedKph: 242,
+    });
+  });
+
+  it('never lets the best of the race fall as the clock advances', () => {
+    let best = 0;
+    for (let at = 0; at <= 500_000; at += 1000) {
+      const now = speedTrapBestAt(race, at)?.speedKph ?? 0;
+      expect(now).toBeGreaterThanOrEqual(best);
+      best = now;
+    }
+  });
+});
+
+describe('timing helpers on the generated dataset', () => {
+  const files = generatedReplayFiles();
+  if (files.length === 0) {
+    it.skip('is not generated yet, so the dataset checks are skipped', () => {});
+    return;
+  }
+
+  /** Twenty-five moments spread over the race, plus the very start. */
+  const samples = (real: ReplayRace) => {
+    const end = leaderCumulative(real, real.totalLaps);
+    return Array.from({ length: 26 }, (_, step) => Math.round((end * step) / 25));
+  };
+
+  /** Every sector time the clock has revealed at `at`, and the best of them per sector. */
+  const revealed = (real: ReplayRace, at: number) => {
+    const best: (number | null)[] = [null, null, null];
+    const fastest: number[][] = [[], [], []];
+    for (const driver of real.drivers) {
+      for (const lap of real.laps) {
+        const sectors = sectorStatusesAt(real, driver.id, lap.lap, at);
+        for (const [index, sector] of sectors.entries()) {
+          if (sector.time === null) continue;
+          const held = best[index] ?? null;
+          if (held === null || sector.time < held) best[index] = sector.time;
+          if (sector.status === 'fastest') fastest[index]?.push(sector.time);
+        }
+      }
+    }
+    return { best, fastest };
+  };
+
+  it.each(files.map((file) => [path.basename(file), file] as const))(
+    '%s keeps the bests honest as the clock advances',
+    (name, file) => {
+      const real = replayRaceSchema.parse(readJson(file));
+      const held: (number | null)[] = [null, null, null];
+      let bestSpeed = 0;
+
+      for (const at of samples(real)) {
+        const { best, fastest } = revealed(real, at);
+        for (const [index, time] of best.entries()) {
+          const previous = held[index] ?? null;
+          // A sector best can appear, and can improve, but it can never get slower.
+          if (time !== null && previous !== null) expect(time).toBeLessThanOrEqual(previous);
+          if (time !== null) held[index] = time;
+          // Only the best of the race so far may be flagged as the fastest of it.
+          for (const flagged of fastest[index] ?? []) expect(flagged).toBe(time);
+        }
+
+        const speed = speedTrapBestAt(real, at)?.speedKph ?? 0;
+        expect(speed, `${name} at ${at}`).toBeGreaterThanOrEqual(bestSpeed);
+        bestSpeed = speed;
+      }
+    },
+  );
+
+  it.each(files.map((file) => [path.basename(file), file] as const))(
+    '%s never reads a lap the clock has not reached',
+    (_name, file) => {
+      const real = replayRaceSchema.parse(readJson(file));
+      for (const at of samples(real)) {
+        for (const [driverId, car] of carLapsAt(real, at)) {
+          for (const lap of [car.lap + 1, car.lap + 2, real.totalLaps]) {
+            if (lap <= car.lap) continue;
+            expect(
+              sectorStatusesAt(real, driverId, lap, at).every((sector) => sector.time === null),
+              `${driverId} lap ${lap} at ${at}`,
+            ).toBe(true);
+          }
+        }
+      }
+    },
+  );
+
+  it('has no timing at all for a season OpenF1 does not cover', () => {
+    const file = files.find((entry) => path.basename(entry) === '2021-22.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+    expect(real.source.timing).toBeUndefined();
+    expect(speedTrapBestAt(real, Number.MAX_SAFE_INTEGER)).toBe(null);
+    for (const driver of real.drivers) {
+      expect(speedTrapAt(real, driver.id, Number.MAX_SAFE_INTEGER)).toBe(null);
+      expect(
+        sectorStatusesAt(real, driver.id, 1, Number.MAX_SAFE_INTEGER).map((s) => s.status),
+      ).toEqual(['unset', 'unset', 'unset']);
+    }
+  });
+
+  it.each(files.map((file) => [path.basename(file), file] as const))(
+    '%s reads a car’s sectors where the source has them',
+    (_name, file) => {
+      const real = replayRaceSchema.parse(readJson(file));
+      if (real.source.timing === undefined) return;
+      const end = Number.MAX_SAFE_INTEGER;
+      const read = real.drivers.flatMap((driver) =>
+        real.laps.flatMap((lap) =>
+          sectorStatusesAt(real, driver.id, lap.lap, end).filter((s) => s.time !== null),
+        ),
+      );
+      expect(read.length).toBeGreaterThan(0);
+      expect(speedTrapBestAt(real, end)?.speedKph).toBeGreaterThan(100);
+    },
+  );
 });

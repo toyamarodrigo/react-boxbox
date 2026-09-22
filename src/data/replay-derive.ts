@@ -149,6 +149,9 @@ export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): Replay
           stopNumber === null || Number.isNaN(stopNumber) || stopNumber < 1 ? null : stopNumber,
         overtake: false,
         lapsBehind: 0,
+        // Timing is a second source: `withTiming` fills these when OpenF1 has the race.
+        sectorMs: [null, null, null],
+        speedTrapKph: null,
       };
     });
 
@@ -190,6 +193,16 @@ export type RawOpenF1Stint = {
   compound?: string | null;
 };
 
+/** One row of OpenF1's `laps`: one car, one lap. Durations are seconds, speeds km/h. */
+export type RawOpenF1Lap = {
+  driver_number?: number | null;
+  lap_number?: number | null;
+  duration_sector_1?: number | null;
+  duration_sector_2?: number | null;
+  duration_sector_3?: number | null;
+  st_speed?: number | null;
+};
+
 /** What the compound join takes: OpenF1's two payloads plus the race's own driver codes. */
 export type OpenF1Compounds = {
   drivers: readonly RawOpenF1Driver[];
@@ -226,14 +239,20 @@ export function tyreCompoundOf(compound: string | null | undefined): ReplayTyreC
  */
 export const COMPOUND_LAP_TOLERANCE = 1;
 
-/** OpenF1 stints by driver code, in lap order. Rows with no `lap_start` cannot be matched. */
-function compoundsByCode(source: OpenF1Compounds): Map<string, RawOpenF1Stint[]> {
+/** OpenF1's car numbers mapped to the three-letter codes both sources share. */
+function acronymsByNumber(drivers: readonly RawOpenF1Driver[]): Map<number, string> {
   const acronyms = new Map<number, string>();
-  for (const driver of source.drivers) {
+  for (const driver of drivers) {
     const code = driver.name_acronym?.trim().toUpperCase();
     if (driver.driver_number == null || !code) continue;
     acronyms.set(driver.driver_number, code);
   }
+  return acronyms;
+}
+
+/** OpenF1 stints by driver code, in lap order. Rows with no `lap_start` cannot be matched. */
+function compoundsByCode(source: OpenF1Compounds): Map<string, RawOpenF1Stint[]> {
+  const acronyms = acronymsByNumber(source.drivers);
 
   const byCode = new Map<string, RawOpenF1Stint[]>();
   for (const stint of source.stints) {
@@ -352,6 +371,70 @@ export function deriveStints(
     });
   }
   return all;
+}
+
+/** What the timing join takes: OpenF1's `laps` and `drivers` plus the race's own driver codes. */
+export type OpenF1Timing = {
+  drivers: readonly RawOpenF1Driver[];
+  laps: readonly RawOpenF1Lap[];
+  /** Same join as the compounds: the three-letter code, never the jolpica `number` field. */
+  codes: readonly { id: string; code: string }[];
+};
+
+/** Seconds as whole milliseconds. A missing or non-finite figure is no figure at all. */
+function sectorMsOf(seconds: number | null | undefined): number | null {
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+    ? Math.round(seconds * 1000)
+    : null;
+}
+
+/**
+ * Merges OpenF1's per-lap timing into the derived laps: the three sector durations and the
+ * speed-trap reading.
+ *
+ * The match is on **(driver code, lap number)**. Both sources number a car's laps from 1 and
+ * count them the same way: measured on 2025 Australia (session 9693) for NOR, VER and RUS, 56 of
+ * the 57 comparable laps agree to within 60 ms with no offset (mean 5–8 ms), while an offset of
+ * ±1 agrees on at most two and averages ~8 s out. Only lap 1 differs, by 0.3–0.5 s, because the
+ * two sources time the start from different moments. So no offset is applied.
+ *
+ * A car OpenF1 has no rows for, or a lap it has no row for, keeps the schema defaults. Rows are
+ * copied rather than mutated, so the caller's laps stay untouched.
+ */
+export function withTiming(laps: readonly ReplayLap[], timing: OpenF1Timing): ReplayLap[] {
+  const acronyms = acronymsByNumber(timing.drivers);
+  const codes = new Map(
+    timing.codes.map((driver) => [driver.id, driver.code.trim().toUpperCase()]),
+  );
+
+  const byCodeAndLap = new Map<string, RawOpenF1Lap>();
+  for (const row of timing.laps) {
+    if (row.driver_number == null || row.lap_number == null) continue;
+    const code = acronyms.get(row.driver_number);
+    if (code === undefined) continue;
+    byCodeAndLap.set(`${code}:${row.lap_number}`, row);
+  }
+
+  return laps.map((lap) => ({
+    lap: lap.lap,
+    rows: lap.rows.map((row) => {
+      const found = byCodeAndLap.get(`${codes.get(row.driverId) ?? ''}:${lap.lap}`);
+      if (found === undefined) return { ...row };
+      const speed = found.st_speed;
+      return {
+        ...row,
+        sectorMs: [
+          sectorMsOf(found.duration_sector_1),
+          sectorMsOf(found.duration_sector_2),
+          sectorMsOf(found.duration_sector_3),
+        ] satisfies ReplayLapRow['sectorMs'],
+        speedTrapKph:
+          typeof speed === 'number' && Number.isFinite(speed) && speed > 0
+            ? Math.round(speed)
+            : null,
+      };
+    }),
+  }));
 }
 
 /**

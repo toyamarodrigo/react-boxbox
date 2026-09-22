@@ -3,11 +3,13 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { deriveLaps, deriveResults, deriveStints } from '../src/data/replay-derive.ts';
+import { deriveLaps, deriveResults, deriveStints, withTiming } from '../src/data/replay-derive.ts';
 import type {
   OpenF1Compounds,
+  OpenF1Timing,
   RawLap,
   RawOpenF1Driver,
+  RawOpenF1Lap,
   RawOpenF1Stint,
   RawPitStop,
   RawResult,
@@ -18,10 +20,11 @@ import type { ReplaySelection } from '../src/data/replay-list.ts';
 import {
   replayIndexSchema,
   replayRaceSchema,
-  type ReplayCompoundSource,
   type ReplayDriver,
   type ReplayDriverStints,
   type ReplayIndexEntry,
+  type ReplayLap,
+  type ReplayOpenF1Source,
   type ReplayRace,
   type ReplayTeam,
 } from '../src/data/replay-schema.ts';
@@ -213,16 +216,14 @@ function pickMeeting(meetings: readonly OpenF1Meeting[], race: RaceInfo): OpenF1
   );
 }
 
-/** The compound rows for one race: the meeting, then its race session, then drivers and stints. */
-async function fetchCompounds(
+/**
+ * The race session for one race, and its driver list: the join key for everything OpenF1 adds.
+ * Resolved once per race, because compounds and timing both hang off it.
+ */
+async function fetchOpenF1Session(
   season: number,
   info: RaceInfo,
-): Promise<{
-  drivers: RawOpenF1Driver[];
-  stints: RawOpenF1Stint[];
-  meeting: string;
-  url: string;
-}> {
+): Promise<{ sessionKey: number; drivers: RawOpenF1Driver[]; meeting: string }> {
   const meeting = pickMeeting(await openF1Meetings(season), info);
   if (meeting === null) {
     throw new OpenF1Unavailable(`no OpenF1 meeting within 3 days of ${info.date}`);
@@ -237,17 +238,10 @@ async function fetchCompounds(
   }
 
   const drivers = await openF1Request<RawOpenF1Driver>(`/drivers?session_key=${sessionKey}`);
-  const url = `${OPENF1_BASE_URL}/stints?session_key=${sessionKey}`;
-  const stints = await openF1Request<RawOpenF1Stint>(`/stints?session_key=${sessionKey}`);
-  if (stints.length === 0) {
-    throw new OpenF1Unavailable(`no stints published for session ${sessionKey}`);
-  }
-
   return {
+    sessionKey,
     drivers,
-    stints,
     meeting: `${meeting.meeting_name ?? meeting.circuit_short_name ?? '?'} (${meeting.meeting_key}/${sessionKey})`,
-    url,
   };
 }
 
@@ -321,36 +315,72 @@ function driversAndTeams(season: number, results: ApiResult[]) {
   return { drivers, teams: [...teams.values()] };
 }
 
+type OpenF1ForRace = {
+  compounds?: OpenF1Compounds;
+  compoundSource?: ReplayOpenF1Source;
+  timing?: OpenF1Timing;
+  timingSource?: ReplayOpenF1Source;
+  meeting: string;
+};
+
 /**
- * The compounds for a race, when the season has them and OpenF1 answers. Any failure is logged
- * and the race is written with `compound: null` throughout: the stint cuts come from jolpica and
- * do not depend on this.
+ * Everything OpenF1 adds to a race, when the season has it and the API answers: the stint
+ * compounds and the per-lap timing. The two are fetched separately on purpose, so a failure on
+ * one does not lose the other, and any failure at all is logged and the race is written without
+ * that field. Nothing jolpica provides depends on either.
  */
-async function compoundsFor(
+async function openF1For(
   selection: ReplaySelection,
   info: RaceInfo,
   drivers: readonly ReplayDriver[],
   fetchedAt: string,
-): Promise<{ compounds?: OpenF1Compounds; source?: ReplayCompoundSource; meeting: string }> {
+): Promise<OpenF1ForRace> {
   if (selection.season < OPENF1_FROM_SEASON) {
     return { meeting: `none (before ${OPENF1_FROM_SEASON})` };
   }
-  try {
-    const found = await fetchCompounds(selection.season, info);
-    return {
-      compounds: {
-        drivers: found.drivers,
-        stints: found.stints,
-        codes: drivers.map((driver) => ({ id: driver.id, code: driver.code })),
-      },
-      source: { provider: 'openf1', fetchedAt, url: found.url },
-      meeting: found.meeting,
-    };
-  } catch (error) {
+
+  const codes = drivers.map((driver) => ({ id: driver.id, code: driver.code }));
+  const warn = (what: string, error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error);
-    console.warn(`  ! ${raceId(selection)}: no compounds (${reason})`);
+    console.warn(`  ! ${raceId(selection)}: no ${what} (${reason})`);
+  };
+
+  let session: Awaited<ReturnType<typeof fetchOpenF1Session>>;
+  try {
+    session = await fetchOpenF1Session(selection.season, info);
+  } catch (error) {
+    warn('compounds or timing', error);
     return { meeting: 'failed' };
   }
+
+  const found: OpenF1ForRace = { meeting: session.meeting };
+
+  try {
+    const url = `${OPENF1_BASE_URL}/stints?session_key=${session.sessionKey}`;
+    const stints = await openF1Request<RawOpenF1Stint>(`/stints?session_key=${session.sessionKey}`);
+    if (stints.length === 0) {
+      throw new OpenF1Unavailable(`no stints published for session ${session.sessionKey}`);
+    }
+    found.compounds = { drivers: session.drivers, stints, codes };
+    found.compoundSource = { provider: 'openf1', fetchedAt, url };
+  } catch (error) {
+    warn('compounds', error);
+  }
+
+  try {
+    // One request covers the whole race: `laps` is a row per car per lap.
+    const url = `${OPENF1_BASE_URL}/laps?session_key=${session.sessionKey}`;
+    const laps = await openF1Request<RawOpenF1Lap>(`/laps?session_key=${session.sessionKey}`);
+    if (laps.length === 0) {
+      throw new OpenF1Unavailable(`no laps published for session ${session.sessionKey}`);
+    }
+    found.timing = { drivers: session.drivers, laps, codes };
+    found.timingSource = { provider: 'openf1', fetchedAt, url };
+  } catch (error) {
+    warn('timing', error);
+  }
+
+  return found;
 }
 
 /** How much of a race's stint data carries a compound. */
@@ -361,6 +391,21 @@ function compoundCoverage(stints: readonly ReplayDriverStints[]) {
     0,
   );
   return { cars: stints.length, total, known };
+}
+
+/** How many lap rows carry sector times and a speed-trap reading. */
+function timingCoverage(laps: readonly ReplayLap[]) {
+  let rows = 0;
+  let sectors = 0;
+  let speeds = 0;
+  for (const lap of laps) {
+    for (const row of lap.rows) {
+      rows += 1;
+      if (row.sectorMs.some((ms) => ms !== null)) sectors += 1;
+      if (row.speedTrapKph !== null) speeds += 1;
+    }
+  }
+  return { rows, sectors, speeds };
 }
 
 async function buildRace(
@@ -402,10 +447,11 @@ async function buildRace(
     Timings,
   }));
   const { drivers, teams } = driversAndTeams(season, results);
-  const laps = deriveLaps(rawLaps, pitStops);
+  const derived = deriveLaps(rawLaps, pitStops);
   const classification = deriveResults(results);
 
-  const compounds = await compoundsFor(selection, info, drivers, fetchedAt);
+  const openF1 = await openF1For(selection, info, drivers, fetchedAt);
+  const laps = openF1.timing ? withTiming(derived, openF1.timing) : derived;
 
   const race = replayRaceSchema.parse({
     id: raceId(selection),
@@ -419,16 +465,17 @@ async function buildRace(
       provider: 'jolpica-f1',
       fetchedAt,
       url: raceUrl(selection),
-      compounds: compounds.source,
+      compounds: openF1.compoundSource,
+      timing: openF1.timingSource,
     },
     drivers,
     teams,
     laps,
     results: classification,
-    stints: deriveStints(laps, classification, compounds.compounds),
+    stints: deriveStints(laps, classification, openF1.compounds),
   } satisfies ReplayRace);
 
-  return { race, meeting: compounds.meeting };
+  return { race, meeting: openF1.meeting };
 }
 
 function indexEntry(race: ReplayRace): ReplayIndexEntry {
@@ -502,6 +549,7 @@ async function main() {
     bytes: number;
     stints: string;
     compounds: string;
+    timing: string;
     meeting: string;
   }[] = [];
   const races: ReplayRace[] = [];
@@ -516,6 +564,7 @@ async function main() {
     await writeFile(path.join(outDir, `${race.id}.json`), json);
     races.push(race);
     const coverage = compoundCoverage(race.stints);
+    const timed = timingCoverage(race.laps);
     summary.push({
       id: race.id,
       laps: race.totalLaps,
@@ -524,6 +573,7 @@ async function main() {
       bytes: byteLength(json),
       stints: `${coverage.total} over ${coverage.cars} cars`,
       compounds: `${coverage.known}/${coverage.total}`,
+      timing: `${timed.sectors}+${timed.speeds}/${timed.rows}`,
       meeting,
     });
     console.log(`  wrote ${race.id}.json`);
@@ -540,10 +590,13 @@ async function main() {
   await writeFile(path.join(outDir, 'index.json'), indexJson);
 
   const bytes = summary.reduce((total, row) => total + row.bytes, 0) + byteLength(indexJson);
-  console.log('\nrace        laps  drivers  requests     bytes  stints             compounds');
+  // `timing` reads sectors+speedTrap over the race's lap rows.
+  console.log(
+    '\nrace        laps  drivers  requests     bytes  stints             compounds  timing          meeting',
+  );
   for (const row of summary) {
     console.log(
-      `${row.id.padEnd(10)}  ${String(row.laps).padStart(4)}  ${String(row.drivers).padStart(7)}  ${String(row.requests).padStart(8)}  ${String(row.bytes).padStart(8)}  ${row.stints.padEnd(17)}  ${row.compounds.padEnd(9)}  ${row.meeting}`,
+      `${row.id.padEnd(10)}  ${String(row.laps).padStart(4)}  ${String(row.drivers).padStart(7)}  ${String(row.requests).padStart(8)}  ${String(row.bytes).padStart(8)}  ${row.stints.padEnd(17)}  ${row.compounds.padEnd(9)}  ${row.timing.padEnd(14)}  ${row.meeting}`,
     );
   }
   console.log(

@@ -7,8 +7,11 @@ import {
   parseGap,
   parseLapTime,
   tyreCompoundOf,
+  withTiming,
   type OpenF1Compounds,
+  type OpenF1Timing,
   type RawLap,
+  type RawOpenF1Lap,
   type RawOpenF1Stint,
   type RawPitStop,
   type RawResult,
@@ -459,5 +462,98 @@ describe('deriveStints', () => {
   it('has no compounds at all for a season without a compound source', () => {
     const all = deriveStints(laps, results);
     expect(all.flatMap((car) => car.stints).every((stint) => stint.compound === null)).toBe(true);
+  });
+});
+
+describe('withTiming', () => {
+  const laps = deriveLaps(rawLaps, rawPitStops);
+  const rowOf = (all: ReturnType<typeof withTiming>, lap: number, driverId: string) =>
+    all.find((entry) => entry.lap === lap)?.rows.find((row) => row.driverId === driverId);
+
+  const timing = (openF1Laps: RawOpenF1Lap[]): OpenF1Timing => ({
+    // As with the compounds, the car numbers are not jolpica's: the join is on the code.
+    drivers: [
+      { driver_number: 44, name_acronym: 'cha' },
+      { driver_number: 55, name_acronym: 'ALP' },
+    ],
+    laps: openF1Laps,
+    codes: [
+      { id: 'alpha', code: 'ALP' },
+      { id: 'charlie', code: 'CHA' },
+      { id: 'bravo', code: 'BRA' },
+    ],
+  });
+
+  it('merges sectors and the speed trap onto the matching car and lap', () => {
+    const all = withTiming(
+      laps,
+      timing([
+        {
+          driver_number: 55,
+          lap_number: 2,
+          duration_sector_1: 30.384,
+          duration_sector_2: 35.89,
+          duration_sector_3: 34.056,
+          st_speed: 291,
+        },
+      ]),
+    );
+    expect(rowOf(all, 2, 'alpha')?.sectorMs).toEqual([30_384, 35_890, 34_056]);
+    expect(rowOf(all, 2, 'alpha')?.speedTrapKph).toBe(291);
+    // The two sources number a car's laps the same way, so nothing lands on a neighbour.
+    expect(rowOf(all, 1, 'alpha')?.sectorMs).toEqual([null, null, null]);
+    expect(rowOf(all, 3, 'alpha')?.sectorMs).toEqual([null, null, null]);
+  });
+
+  it('leaves a car OpenF1 has no driver for at the defaults', () => {
+    // bravo's code never resolves to a car number, so no row can reach it.
+    const all = withTiming(
+      laps,
+      timing([{ driver_number: 44, lap_number: 1, duration_sector_1: 31, st_speed: 300 }]),
+    );
+    expect(rowOf(all, 1, 'bravo')?.sectorMs).toEqual([null, null, null]);
+    expect(rowOf(all, 1, 'bravo')?.speedTrapKph).toBe(null);
+    expect(rowOf(all, 1, 'charlie')?.sectorMs).toEqual([31_000, null, null]);
+  });
+
+  it('keeps a missing or unusable figure as no figure', () => {
+    const all = withTiming(
+      laps,
+      timing([
+        {
+          driver_number: 55,
+          lap_number: 1,
+          duration_sector_1: 30.5,
+          duration_sector_2: null,
+          duration_sector_3: 0,
+          st_speed: null,
+        },
+      ]),
+    );
+    expect(rowOf(all, 1, 'alpha')?.sectorMs).toEqual([30_500, null, null]);
+    expect(rowOf(all, 1, 'alpha')?.speedTrapKph).toBe(null);
+  });
+
+  it('ignores a lap or a car the race does not have, and a row with no key', () => {
+    const all = withTiming(
+      laps,
+      timing([
+        { driver_number: 55, lap_number: 99, duration_sector_1: 30, st_speed: 300 },
+        { driver_number: 99, lap_number: 1, duration_sector_1: 30, st_speed: 300 },
+        { lap_number: 1, duration_sector_1: 30 },
+        { driver_number: 55, duration_sector_1: 30 },
+      ]),
+    );
+    expect(all.flatMap((lap) => lap.rows).every((row) => row.speedTrapKph === null)).toBe(true);
+    expect(all).toHaveLength(laps.length);
+  });
+
+  it('leaves the laps it was given untouched', () => {
+    const all = withTiming(
+      laps,
+      timing([{ driver_number: 55, lap_number: 1, duration_sector_1: 30, st_speed: 300 }]),
+    );
+    expect(rowOf(all, 1, 'alpha')?.speedTrapKph).toBe(300);
+    expect(rowOf(laps, 1, 'alpha')?.speedTrapKph).toBe(null);
   });
 });

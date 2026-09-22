@@ -1,4 +1,4 @@
-import type { SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
+import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import type { OvertakeMode } from '@/registry/boxbox/ui/overtake-indicator';
 import type { PodiumEntry, PodiumSteps } from '@/registry/boxbox/ui/podium';
 import { formatGap, resultValue } from '@/registry/boxbox/ui/timing-tower';
@@ -9,8 +9,9 @@ import type { ReplayLap, ReplayLapRow, ReplayRace, ReplayStint } from './replay-
  * the same race, lap and elapsed time always give the same rows and markers, so the page can
  * call it on every tick and the tests can call it without a clock.
  *
- * The replay dataset has no sector times and no tyre data, so both are filled with placeholders
- * and the page renders the tower with `showTyre={false}`.
+ * The tower rows carry placeholder sectors and tyres: the page renders it with
+ * `showTyre={false}`, and the real sector times are read through `sectorStatusesAt` for the one
+ * car the viewer follows rather than for every row.
  */
 
 const UNSET_SECTORS: [SectorTime, SectorTime, SectorTime] = [
@@ -604,3 +605,227 @@ export function replayGaps(race: ReplayRace): Map<string, (number | null)[]> {
 
 /** Formats a gap in seconds the way the tower does; re-exported so the page has one source. */
 export { formatGap };
+
+/* ---------------------------------------------------------------------------------------------
+ * Sector times and speed trap
+ *
+ * Both come from OpenF1 as one figure per car per lap, so the page has to place them on the race
+ * clock itself. A sector is complete once the car has run it, which is the lap's start plus the
+ * sectors before it; a speed-trap reading is released at the line, because the source never says
+ * where on the lap the trap sits and the line is the first moment the reading cannot spoil.
+ *
+ * Nothing is ever read from a lap the clock has not reached, and the same rule governs the bests:
+ * `fastest` is the best of the race among everything completed at or before the moment asked
+ * about, `personal` the same for one car. That keeps the replay honest under seeking.
+ * ------------------------------------------------------------------------------------------- */
+
+/** The best sector time per sector so far, in milliseconds; `null` where nobody has one yet. */
+type BestSectors = [number | null, number | null, number | null];
+
+/** One sector completion. `ms` is the sector time; `at` is when the car finished the sector. */
+type SectorEvent = { at: number; driverId: string; sector: number; ms: number };
+
+/** Completions in race-clock order, with the running best after each one. */
+type SectorRuns = { ats: number[]; best: BestSectors[] };
+
+type TimingIndex = {
+  race: SectorRuns;
+  cars: Map<string, SectorRuns>;
+  /** Per car, per lap: the sector times and when each sector is complete. */
+  laps: Map<string, Map<number, { sectorMs: ReplayLapRow['sectorMs']; ends: (number | null)[] }>>;
+  speedAts: number[];
+  /** The best of the race after each reading, in the same order as `speedAts`. */
+  speedBest: { driverId: string; speedKph: number }[];
+  carSpeeds: Map<string, { ats: number[]; kph: number[] }>;
+};
+
+/**
+ * When each sector of a lap is complete, on the race clock. A sector whose own time is missing
+ * has no moment of its own, and a sector after a missing one cannot be placed inside the lap, so
+ * it is held back to the line: later than the truth, never earlier, so it can never spoil.
+ */
+function sectorEnds(lap: DriverLap): (number | null)[] {
+  let running = lap.start;
+  let placed = true;
+  return lap.row.sectorMs.map((ms) => {
+    if (ms === null) {
+      placed = false;
+      return null;
+    }
+    if (!placed) return lap.end;
+    running += ms;
+    // The two sources disagree by a few milliseconds, so a sum may overshoot the car's own line.
+    return Math.min(running, lap.end);
+  });
+}
+
+function sectorRuns(events: readonly SectorEvent[]): SectorRuns {
+  const ats: number[] = [];
+  const best: BestSectors[] = [];
+  const current: (number | null)[] = [null, null, null];
+  for (const event of events) {
+    const held = current[event.sector];
+    if (held == null || event.ms < held) current[event.sector] = event.ms;
+    ats.push(event.at);
+    best.push([current[0] ?? null, current[1] ?? null, current[2] ?? null]);
+  }
+  return { ats, best };
+}
+
+/** Built once per race object, like `indexRace`: the page asks for these ten times a second. */
+const TIMING_INDEXES = new WeakMap<ReplayRace, TimingIndex>();
+
+function indexTiming(race: ReplayRace): TimingIndex {
+  const cached = TIMING_INDEXES.get(race);
+  if (cached) return cached;
+
+  const events: SectorEvent[] = [];
+  const byCar = new Map<string, SectorEvent[]>();
+  const speeds: { at: number; driverId: string; speedKph: number }[] = [];
+  const carSpeeds = new Map<string, { ats: number[]; kph: number[] }>();
+  const laps: TimingIndex['laps'] = new Map();
+
+  for (const [driverId, driverLaps] of indexRace(race)) {
+    const own: SectorEvent[] = [];
+    const ownSpeeds = { ats: [] as number[], kph: [] as number[] };
+    const byLap = new Map<
+      number,
+      { sectorMs: ReplayLapRow['sectorMs']; ends: (number | null)[] }
+    >();
+
+    for (const lap of driverLaps) {
+      const ends = sectorEnds(lap);
+      byLap.set(lap.lap, { sectorMs: lap.row.sectorMs, ends });
+      for (const [sector, ms] of lap.row.sectorMs.entries()) {
+        const at = ends[sector];
+        if (ms === null || at == null) continue;
+        own.push({ at, driverId, sector, ms });
+      }
+      if (lap.row.speedTrapKph !== null) {
+        ownSpeeds.ats.push(lap.end);
+        ownSpeeds.kph.push(lap.row.speedTrapKph);
+        speeds.push({ at: lap.end, driverId, speedKph: lap.row.speedTrapKph });
+      }
+    }
+
+    own.sort((a, b) => a.at - b.at);
+    events.push(...own);
+    byCar.set(driverId, own);
+    carSpeeds.set(driverId, ownSpeeds);
+    laps.set(driverId, byLap);
+  }
+
+  events.sort((a, b) => a.at - b.at);
+  speeds.sort((a, b) => a.at - b.at);
+
+  const speedAts: number[] = [];
+  const speedBest: { driverId: string; speedKph: number }[] = [];
+  let leading: { driverId: string; speedKph: number } | null = null;
+  for (const reading of speeds) {
+    if (leading === null || reading.speedKph > leading.speedKph) {
+      leading = { driverId: reading.driverId, speedKph: reading.speedKph };
+    }
+    speedAts.push(reading.at);
+    speedBest.push(leading);
+  }
+
+  const index: TimingIndex = {
+    race: sectorRuns(events),
+    cars: new Map([...byCar].map(([id, own]) => [id, sectorRuns(own)])),
+    laps,
+    speedAts,
+    speedBest,
+    carSpeeds,
+  };
+  TIMING_INDEXES.set(race, index);
+  return index;
+}
+
+/** How many entries of a list sorted ascending sit at or before `at`. */
+function countAtOrBefore(ats: readonly number[], at: number): number {
+  let low = 0;
+  let high = ats.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if ((ats[mid] ?? 0) <= at) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+const NO_BESTS: BestSectors = [null, null, null];
+
+function bestsAt(runs: SectorRuns | undefined, elapsedMs: number): BestSectors {
+  if (runs === undefined) return NO_BESTS;
+  const count = countAtOrBefore(runs.ats, elapsedMs);
+  return count === 0 ? NO_BESTS : (runs.best[count - 1] ?? NO_BESTS);
+}
+
+/**
+ * The bests count the sector being judged, so the comparison is `<=`: a sector that *is* the best
+ * reads as the best. Two cars on the same time are both shown as the fastest, which is what a
+ * timing screen does with a tie.
+ */
+function sectorStatus(ms: number, raceBest: number | null, carBest: number | null): SectorStatus {
+  if (raceBest !== null && ms <= raceBest) return 'fastest';
+  if (carBest !== null && ms <= carBest) return 'personal';
+  return 'slower';
+}
+
+/**
+ * One car's three sector times on a lap, as the Sector Times component takes them, at a moment of
+ * the race. Seconds, like every other time the components read.
+ *
+ * A sector the car has not finished yet at `elapsedMs` is `unset`, so the panel fills in as the
+ * lap runs rather than showing the lap before the clock reaches it. A sector that is complete is
+ * `fastest` when it is the best of the race so far, `personal` when it is only the car's own
+ * best, else `slower` — each measured against everything completed at or before `elapsedMs`,
+ * this sector included.
+ */
+export function sectorStatusesAt(
+  race: ReplayRace,
+  driverId: string,
+  lap: number,
+  elapsedMs: number,
+): [SectorTime, SectorTime, SectorTime] {
+  const index = indexTiming(race);
+  const found = index.laps.get(driverId)?.get(lap);
+  if (found === undefined) return sectors();
+
+  const raceBest = bestsAt(index.race, elapsedMs);
+  const carBest = bestsAt(index.cars.get(driverId), elapsedMs);
+
+  const times = found.sectorMs.map((ms, sector): SectorTime => {
+    const at = found.ends[sector];
+    if (ms === null || at == null || at > elapsedMs) return { time: null, status: 'unset' };
+    return {
+      time: ms / 1000,
+      status: sectorStatus(ms, raceBest[sector] ?? null, carBest[sector] ?? null),
+    };
+  });
+  return [times[0] ?? UNSET_SECTORS[0], times[1] ?? UNSET_SECTORS[1], times[2] ?? UNSET_SECTORS[2]];
+}
+
+/**
+ * A car's most recent speed-trap reading at `elapsedMs`, in km/h. `null` until it has one: an
+ * older season OpenF1 does not cover never gets one at all.
+ */
+export function speedTrapAt(race: ReplayRace, driverId: string, elapsedMs: number): number | null {
+  const own = indexTiming(race).carSpeeds.get(driverId);
+  if (own === undefined) return null;
+  const count = countAtOrBefore(own.ats, elapsedMs);
+  return count === 0 ? null : (own.kph[count - 1] ?? null);
+}
+
+/** The best speed-trap reading of the race up to `elapsedMs`, and who set it. */
+export function speedTrapBestAt(
+  race: ReplayRace,
+  elapsedMs: number,
+): { driverId: string; code: string; speedKph: number } | null {
+  const index = indexTiming(race);
+  const count = countAtOrBefore(index.speedAts, elapsedMs);
+  const best = count === 0 ? undefined : index.speedBest[count - 1];
+  if (best === undefined) return null;
+  const code = race.drivers.find((driver) => driver.id === best.driverId)?.code ?? best.driverId;
+  return { driverId: best.driverId, code, speedKph: best.speedKph };
+}

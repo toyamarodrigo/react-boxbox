@@ -38,6 +38,19 @@ export const replayLapRowSchema = z.object({
   pitStop: z.number().int().min(1).nullable().default(null),
   overtake: z.boolean(),
   lapsBehind: z.number().int().min(0),
+  /**
+   * The lap's three sector times in whole milliseconds, from OpenF1. A sector the source has no
+   * usable figure for is `null`; a lap it has no row for at all stays `[null, null, null]`.
+   */
+  sectorMs: z
+    .tuple([
+      z.number().int().min(0).nullable(),
+      z.number().int().min(0).nullable(),
+      z.number().int().min(0).nullable(),
+    ])
+    .default([null, null, null]),
+  /** The car's speed-trap reading on this lap, in km/h. */
+  speedTrapKph: z.number().int().min(0).nullable().default(null),
 });
 
 export const replayLapSchema = z.object({
@@ -86,18 +99,26 @@ export const replayResultSchema = z.object({
   lapsBehind: z.number().int().min(0),
 });
 
-/** Where the tyre compounds came from. Absent when a race has none. */
-export const replayCompoundSourceSchema = z.object({
+/**
+ * Where one OpenF1-sourced field came from. Absent when a race has none: each block is filled
+ * on its own, so a race can carry compounds without timing and the other way round.
+ */
+export const replayOpenF1SourceSchema = z.object({
   provider: z.literal('openf1'),
   fetchedAt: z.iso.datetime(),
   url: z.url(),
 });
 
+/** Kept under its original name for the compound block's callers. */
+export const replayCompoundSourceSchema = replayOpenF1SourceSchema;
+
 export const replaySourceSchema = z.object({
   provider: z.literal('jolpica-f1'),
   fetchedAt: z.iso.datetime(),
   url: z.url(),
-  compounds: replayCompoundSourceSchema.optional(),
+  compounds: replayOpenF1SourceSchema.optional(),
+  /** Where the sector times and speed-trap readings came from. */
+  timing: replayOpenF1SourceSchema.optional(),
 });
 
 export const replayRaceSchema = z.object({
@@ -144,7 +165,8 @@ export type ReplayStint = z.infer<typeof replayStintSchema>;
 export type ReplayDriverStints = z.infer<typeof replayDriverStintsSchema>;
 export type ReplayResult = z.infer<typeof replayResultSchema>;
 export type ReplaySource = z.infer<typeof replaySourceSchema>;
-export type ReplayCompoundSource = z.infer<typeof replayCompoundSourceSchema>;
+export type ReplayOpenF1Source = z.infer<typeof replayOpenF1SourceSchema>;
+export type ReplayCompoundSource = ReplayOpenF1Source;
 export type ReplayRace = z.infer<typeof replayRaceSchema>;
 export type ReplayIndexEntry = z.infer<typeof replayIndexEntrySchema>;
 export type ReplayIndex = z.infer<typeof replayIndexSchema>;

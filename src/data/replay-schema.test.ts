@@ -2,9 +2,40 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { generatedReplayFiles, readJson, replayIndexFile } from './replay-fixtures';
-import { replayIndexSchema, replayRaceSchema } from './replay-schema';
+import { replayIndexSchema, replayLapRowSchema, replayRaceSchema } from './replay-schema';
 
 const files = generatedReplayFiles();
+
+describe('replayLapRowSchema', () => {
+  /** A row as the dataset carried it before the timing fields existed. */
+  const row = {
+    driverId: 'alpha',
+    position: 1,
+    lapTimeMs: 90_000,
+    cumulativeMs: 90_000,
+    gapToLeaderMs: 0,
+    intervalMs: null,
+    inPit: false,
+    overtake: false,
+    lapsBehind: 0,
+  };
+
+  it('defaults the timing fields, so a race built before them still parses', () => {
+    const parsed = replayLapRowSchema.parse(row);
+    expect(parsed.sectorMs).toEqual([null, null, null]);
+    expect(parsed.speedTrapKph).toBe(null);
+  });
+
+  it('keeps the timing fields it is given', () => {
+    const parsed = replayLapRowSchema.parse({
+      ...row,
+      sectorMs: [30_384, null, 34_056],
+      speedTrapKph: 291,
+    });
+    expect(parsed.sectorMs).toEqual([30_384, null, 34_056]);
+    expect(parsed.speedTrapKph).toBe(291);
+  });
+});
 
 describe('generated replay dataset', () => {
   if (files.length === 0) {
@@ -40,6 +71,12 @@ describe('generated replay dataset', () => {
         expect(new Set(lap.rows.map((row) => row.driverId)).size).toBe(lap.rows.length);
         for (const row of lap.rows) expect(driverIds.has(row.driverId)).toBe(true);
       }
+
+      // Timing is a second source: a race has it for every lap row or for none, never a stray
+      // field without the provenance to explain it.
+      const timed = race.laps.flatMap((lap) => lap.rows).filter((row) => row.speedTrapKph !== null);
+      if (race.source.timing === undefined) expect(timed).toHaveLength(0);
+      else expect(timed.length).toBeGreaterThan(0);
     },
   );
 

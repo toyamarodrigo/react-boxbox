@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ReplayIndex, ReplayLap, ReplayRace } from './replay-schema';
+import type { ReplayIndex, ReplayLap, ReplayLapRow, ReplayRace } from './replay-schema';
 
 /**
  * Test-only access to the dataset written by `bun run replays:build`. The tests that use it skip
@@ -31,6 +31,26 @@ export function readJson(file: string): unknown {
 
 export const replayIndexFile = path.join(replayDir, 'index.json');
 
+/** What a fixture row may say about its timing; anything left out is derived from the lap time. */
+type FixtureTiming = Partial<Pick<ReplayLapRow, 'sectorMs' | 'speedTrapKph'>>;
+
+/**
+ * A fixture lap's sectors are the lap time split 30/35/35, with the rounding remainder in S3 so
+ * the three always sum to it, and the speed trap falls as the lap time rises. Derived rather than
+ * tabulated, so the numbers stay consistent with the lap times a test asserts on.
+ */
+function fixtureTiming(lapTimeMs: number, override: FixtureTiming): Required<FixtureTiming> {
+  const s1 = Math.round(lapTimeMs * 0.3);
+  const s2 = Math.round(lapTimeMs * 0.35);
+  return {
+    sectorMs: override.sectorMs ?? [s1, s2, lapTimeMs - s1 - s2],
+    speedTrapKph:
+      override.speedTrapKph === undefined
+        ? 340 - Math.round(lapTimeMs / 1000)
+        : override.speedTrapKph,
+  };
+}
+
 /**
  * A hand-written race small enough to reason about: four cars, three laps, one car a lap down
  * and one retirement on the last lap. The numbers are round so a test can assert on them
@@ -41,11 +61,20 @@ export const replayIndexFile = path.join(replayDir, 'index.json');
 export function testReplayRace(): ReplayRace {
   const lap = (
     number: number,
-    rows: [string, number, number, number, number, number | null, number][],
+    rows: [string, number, number, number, number, number | null, number, FixtureTiming?][],
   ): ReplayLap => ({
     lap: number,
     rows: rows.map(
-      ([driverId, position, lapTimeMs, cumulativeMs, gapToLeaderMs, intervalMs, lapsBehind]) => ({
+      ([
+        driverId,
+        position,
+        lapTimeMs,
+        cumulativeMs,
+        gapToLeaderMs,
+        intervalMs,
+        lapsBehind,
+        timing = {},
+      ]) => ({
         driverId,
         position,
         lapTimeMs,
@@ -57,6 +86,7 @@ export function testReplayRace(): ReplayRace {
         pitStop: null,
         overtake: intervalMs !== null && intervalMs < 1500 && position > 1,
         lapsBehind,
+        ...fixtureTiming(lapTimeMs, timing),
       }),
     ),
   });
@@ -101,8 +131,28 @@ export function testReplayRace(): ReplayRace {
       lap(2, [
         ['bravo', 1, 98_000, 199_000, 0, null, 0],
         ['alpha', 2, 100_000, 200_000, 1000, 1000, 0],
-        ['charlie', 3, 160_000, 320_000, 121_000, 120_000, 1],
-        ['delta', 4, 161_000, 326_000, 127_000, 6000, 1],
+        // Charlie loses a middle sector, and delta has no timing at all: the two gaps OpenF1
+        // leaves behind, a sector it never published and a car it has no rows for.
+        [
+          'charlie',
+          3,
+          160_000,
+          320_000,
+          121_000,
+          120_000,
+          1,
+          { sectorMs: [52_000, null, 108_000] },
+        ],
+        [
+          'delta',
+          4,
+          161_000,
+          326_000,
+          127_000,
+          6000,
+          1,
+          { sectorMs: [null, null, null], speedTrapKph: null },
+        ],
       ]),
       // Delta retired, so it is simply absent from the last lap.
       lap(3, [
