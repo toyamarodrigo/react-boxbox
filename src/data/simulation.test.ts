@@ -150,4 +150,33 @@ describe('race simulation', () => {
     }
     expect(seen.has('red')).toBe(false);
   });
+
+  it('traps a speed for every car from the first lap and keeps the best of the session', () => {
+    const grid20 = run(5, 0);
+    expect(Object.values(grid20.speedTrap.byDriver).every((speed) => speed === null)).toBe(true);
+    expect(grid20.speedTrap.best).toBeNull();
+
+    let best = 0;
+    for (let tick = 1; tick <= 30; tick++) {
+      const state = run(5, tick);
+      const readings = state.rows.map((row) => state.speedTrap.byDriver[row.driverId]);
+      expect(readings).toHaveLength(20);
+      // Only a car in the pit lane misses the trap, so a lap is never entirely blank.
+      const taken = readings.filter((speed): speed is number => speed !== null);
+      expect(taken.length).toBeGreaterThan(15);
+      for (const speed of taken) {
+        expect(speed).toBeGreaterThanOrEqual(310);
+        expect(speed).toBeLessThanOrEqual(345);
+        expect(Number.isInteger(speed)).toBe(true);
+      }
+      best = Math.max(best, ...taken);
+      expect(state.speedTrap.best?.speed).toBe(best);
+      expect(state.speedTrap.byDriver[state.speedTrap.best!.driverId]).not.toBeUndefined();
+    }
+  });
+
+  it('keeps the trap seeded, so the same race reads the same speeds', () => {
+    expect(run(8, 12).speedTrap).toEqual(run(8, 12).speedTrap);
+    expect(run(8, 12).speedTrap.byDriver).not.toEqual(run(8, 13).speedTrap.byDriver);
+  });
 });

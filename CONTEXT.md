@@ -43,3 +43,13 @@ _Avoid_: Pit period
 **Gap chart**:
 The race drawn as every car's gap to the leader, lap by lap, with the leader on zero along the top. It only draws the laps the leader has finished.
 _Avoid_: Race trace, delta chart, position chart
+
+### Telemetry
+
+**Speed trap**:
+The speed one car was measured at as it crossed the trap on a lap, and the card that shows it against the best of the session. It comes from the simulator only.
+_Avoid_: Top speed, radar, speed gun
+
+**Gauge**:
+The engine widget: revolutions drawn as an arc with the gear in the middle. Fed by a fictional engine model, never by telemetry.
+_Avoid_: Rev counter, tachometer, dial

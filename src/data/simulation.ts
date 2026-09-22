@@ -16,6 +16,11 @@ export type RaceState = {
   rows: TimingRow[];
   sessionBest: { sectors: [number | null, number | null, number | null]; lap: number | null };
   personalBestSectors: Record<string, [number | null, number | null, number | null]>;
+  /** One speed trap reading per car for the lap just run, in km/h, and the best of the session. */
+  speedTrap: {
+    byDriver: Record<string, number | null>;
+    best: { driverId: string; speed: number } | null;
+  };
 };
 
 export function createSeededRng(seed: number): Rng {
@@ -35,6 +40,39 @@ const compounds: TyreCompound[] = ['S', 'M', 'H', 'I', 'W'];
 // driver burns it at their own rate.
 const initialWear = (age: number, rng: Rng) => Math.min(100, round(age * 3 + rng() * 10));
 const nextWear = (wear: number, rng: Rng) => Math.min(100, round(wear + 1.5 + rng() * 2));
+
+// Speed trap readings sit in a plausible band, with a fixed bias per car so the quick ones keep
+// turning up at the top of the sheet instead of the trap being a lottery every lap.
+const SPEED_TRAP_FLOOR = 310;
+const SPEED_TRAP_SPAN = 30;
+const speedTrapBias = (driverId: string) => {
+  let hash = 0;
+  for (let index = 0; index < driverId.length; index++) {
+    hash = (hash * 31 + driverId.charCodeAt(index)) % 997;
+  }
+  return hash % 6;
+};
+
+/** A reading per car for the lap just run, and the session best carried forward. */
+function nextSpeedTrap(
+  previous: RaceState['speedTrap'],
+  rows: readonly TimingRow[],
+  rng: Rng,
+): RaceState['speedTrap'] {
+  const byDriver: Record<string, number | null> = {};
+  let best = previous.best;
+  for (const row of rows) {
+    // A car in the pit lane on this lap never crosses the trap.
+    const speed = row.inPit
+      ? null
+      : Math.round(SPEED_TRAP_FLOOR + speedTrapBias(row.driverId) + rng() * SPEED_TRAP_SPAN);
+    byDriver[row.driverId] = speed;
+    if (speed !== null && (best === null || speed > best.speed)) {
+      best = { driverId: row.driverId, speed };
+    }
+  }
+  return { byDriver, best };
+}
 
 export function createInitialRace(grid: Grid, rng: Rng): RaceState {
   const rows = grid.drivers.map((driver, index): TimingRow => {
@@ -71,6 +109,11 @@ export function createInitialRace(grid: Grid, rng: Rng): RaceState {
     rows,
     sessionBest: { sectors: [null, null, null], lap: null },
     personalBestSectors: {},
+    // Nobody has crossed the trap on the grid.
+    speedTrap: {
+      byDriver: Object.fromEntries(rows.map((row) => [row.driverId, null])),
+      best: null,
+    },
   };
 }
 
@@ -192,6 +235,8 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
     ranked[0]?.lastLapTime != null
       ? Math.round(ranked[0].lastLapTime * 1000)
       : Math.round(90_000 + (rng() - 0.5) * 6000);
+  // Last of the seeded draws, so adding the trap left every other figure of the lap untouched.
+  const speedTrap = nextSpeedTrap(state.speedTrap, ranked, rng);
   return {
     lap: state.lap + 1,
     totalLaps: state.totalLaps,
@@ -200,5 +245,6 @@ export function advanceRace(state: RaceState, rng: Rng): RaceState {
     rows: ranked,
     sessionBest: { sectors: sessionSectors, lap: sessionLap },
     personalBestSectors,
+    speedTrap,
   };
 }

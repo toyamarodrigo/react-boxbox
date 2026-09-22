@@ -14,6 +14,8 @@ import podium from './podium/meta';
 import trackMap from './track-map/meta';
 import stintBar from './stint-bar/meta';
 import gapChart from './gap-chart/meta';
+import speedTrap from './speed-trap/meta';
+import gauge from './gauge/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -31,6 +33,8 @@ export const manifest: readonly ComponentMeta[] = [
   trackMap,
   stintBar,
   gapChart,
+  speedTrap,
+  gauge,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -110,6 +114,14 @@ export const contentModules = {
   'gap-chart': {
     controls: () => import('./gap-chart/controls'),
     demo: () => import('./gap-chart/demo'),
+  },
+  'speed-trap': {
+    controls: () => import('./speed-trap/controls'),
+    demo: () => import('./speed-trap/demo'),
+  },
+  gauge: {
+    controls: () => import('./gauge/controls'),
+    demo: () => import('./gauge/demo'),
   },
 } satisfies Record<
   string,

@@ -15,4 +15,6 @@ export const contentSlugs = [
   'track-map',
   'stint-bar',
   'gap-chart',
+  'speed-trap',
+  'gauge',
 ] as const;

@@ -499,6 +499,42 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "speed-trap",
+      "type": "registry:ui",
+      "title": "Speed Trap",
+      "description": "One car's speed trap reading in big figures, with the best of the session under it and a flash when the record changes hands.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/speed-trap.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "gauge",
+      "type": "registry:ui",
+      "title": "Gauge",
+      "description": "Revolutions as an arc round the gear the car is in, turning red past the redline.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/gauge.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
