@@ -13,6 +13,7 @@ import overtakeIndicator from './overtake-indicator/meta';
 import podium from './podium/meta';
 import trackMap from './track-map/meta';
 import stintBar from './stint-bar/meta';
+import gapChart from './gap-chart/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -29,6 +30,7 @@ export const manifest: readonly ComponentMeta[] = [
   podium,
   trackMap,
   stintBar,
+  gapChart,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -104,6 +106,10 @@ export const contentModules = {
   'stint-bar': {
     controls: () => import('./stint-bar/controls'),
     demo: () => import('./stint-bar/demo'),
+  },
+  'gap-chart': {
+    controls: () => import('./gap-chart/controls'),
+    demo: () => import('./gap-chart/demo'),
   },
 } satisfies Record<
   string,

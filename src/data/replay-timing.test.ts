@@ -8,8 +8,10 @@ import {
   followedDriverId,
   formatRaceTime,
   leaderCumulative,
+  leaderLapsCompleted,
   overtakeModeFor,
   positionsSinceStart,
+  replayGaps,
   replayLiveRows,
   replayPitStops,
   replayPodium,
@@ -467,5 +469,34 @@ describe('stintAt', () => {
     expect(stintAt(stints, 0)).toBeUndefined();
     expect(stintAt(undefined, 1)).toBeUndefined();
     expect(stintAt([], 1)).toBeUndefined();
+  });
+});
+
+describe('leaderLapsCompleted', () => {
+  it('counts only the laps the leader has finished', () => {
+    expect(leaderLapsCompleted(race, 0)).toBe(0);
+    expect(leaderLapsCompleted(race, 99_999)).toBe(0);
+    expect(leaderLapsCompleted(race, 100_000)).toBe(1);
+    expect(leaderLapsCompleted(race, 250_000)).toBe(2);
+    expect(leaderLapsCompleted(race, 297_000)).toBe(3);
+    expect(leaderLapsCompleted(race, 9_999_999)).toBe(3);
+  });
+});
+
+describe('replayGaps', () => {
+  const gaps = replayGaps(race);
+
+  it('reads the gap to the leader in seconds, lap by lap', () => {
+    expect(gaps.get('alpha')).toEqual([0, 1, 2]);
+    expect(gaps.get('bravo')).toEqual([1, 0, 0]);
+  });
+
+  it('leaves a lap a car did not run with no time at all', () => {
+    // Delta retired after lap two, so its last lap is a hole rather than a joined line.
+    expect(gaps.get('delta')).toEqual([65, 127, null]);
+  });
+
+  it('keeps the dataset gap of a lapped car, which is where it belongs on the chart', () => {
+    expect(gaps.get('charlie')).toEqual([60, 121, 181]);
   });
 });

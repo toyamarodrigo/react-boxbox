@@ -4,10 +4,12 @@ import {
   languageOf,
   resolveBundle,
   rewriteImports,
+  shadcnImportPath,
   targetPath,
   themeCss,
 } from './registry-bundle';
 import type { RegistryItem } from './registry-bundle';
+import type { ManualBundle } from './registry-items';
 import { manualBundle, registryItems } from './registry-items';
 
 function itemMap(items: RegistryItem[]) {
@@ -79,6 +81,20 @@ const fixture = itemMap([
         path: 'registry/boxbox/ui/overtake-indicator.tsx',
         type: 'registry:ui',
         content: 'export {};',
+      },
+    ],
+  },
+  {
+    name: 'gap-chart',
+    type: 'registry:ui',
+    dependencies: ['recharts'],
+    // `chart` is shadcn's own item, not one of ours: it is installed, never bundled.
+    registryDependencies: ['chart', '@boxbox/boxbox-theme'],
+    files: [
+      {
+        path: 'registry/boxbox/ui/gap-chart.tsx',
+        type: 'registry:ui',
+        content: "import { ChartContainer } from '@/components/ui/chart';\n",
       },
     ],
   },
@@ -176,6 +192,19 @@ describe('resolveBundle', () => {
     expect(resolveBundle('timing-tower', fixture).npmDependencies).toEqual(['motion']);
   });
 
+  it('records a plain shadcn item as something to install, not a file to copy', () => {
+    const bundle = resolveBundle('gap-chart', fixture);
+
+    expect(bundle.shadcnItems).toEqual(['chart']);
+    expect(bundle.npmDependencies).toEqual(['recharts']);
+    expect(bundle.files.map((file) => file.name)).toEqual(['gap-chart.tsx']);
+    expect(shadcnImportPath('chart')).toBe('@/components/ui/chart');
+  });
+
+  it('leaves the rest of the registry with no shadcn items to install', () => {
+    expect(resolveBundle('timing-tower', fixture).shadcnItems).toEqual([]);
+  });
+
   it('keeps theme items out of the file list but records them', () => {
     const bundle = resolveBundle('timing-tower', fixture);
     expect(bundle.themeItems).toEqual(['boxbox-theme']);
@@ -193,6 +222,7 @@ describe('resolveBundle', () => {
       files: [],
       npmDependencies: [],
       themeItems: [],
+      shadcnItems: [],
     });
   });
 });
@@ -241,6 +271,25 @@ describe('languageOf', () => {
   });
 });
 
+/**
+ * Every `@/` import a bundle carries has to land somewhere the reader will have: another bundled
+ * file, the `cn` helper shadcn always installs, or a shadcn item the first step tells them to add.
+ */
+function expectImportsResolve(bundle: ManualBundle) {
+  const targets = new Set(bundle.files.map((file) => file.targetPath));
+  const installed = new Set(bundle.shadcnItems.map(shadcnImportPath));
+
+  for (const file of bundle.files) {
+    expect(file.content).not.toContain('@/registry/');
+    for (const match of file.content.matchAll(/from '(@\/[^']+)'/g)) {
+      const specifier = match[1] ?? '';
+      if (specifier === '@/lib/utils' || installed.has(specifier)) continue;
+      const resolved = specifier.replace('@/', '');
+      expect([...targets].some((target) => target.replace(/\.tsx?$/, '') === resolved)).toBe(true);
+    }
+  }
+}
+
 describe('the built registry', () => {
   it('bundles timing-tower from public/r with no unresolvable imports left', () => {
     const bundle = manualBundle('timing-tower');
@@ -257,20 +306,18 @@ describe('the built registry', () => {
     expect(bundle.themeItems).toEqual(['boxbox-theme']);
     expect(bundle.themeCss).toContain('@theme inline {');
 
-    const targets = new Set(bundle.files.map((file) => file.targetPath));
-    for (const file of bundle.files) {
-      expect(file.content).not.toContain('@/registry/');
-      // Every local import either lands on another bundled file or on the
-      // `cn` helper shadcn already installs.
-      for (const match of file.content.matchAll(/from '(@\/[^']+)'/g)) {
-        const specifier = match[1] ?? '';
-        if (specifier === '@/lib/utils') continue;
-        const resolved = specifier.replace('@/', '');
-        expect([...targets].some((target) => target.replace(/\.tsx?$/, '') === resolved)).toBe(
-          true,
-        );
-      }
-    }
+    expectImportsResolve(bundle);
+  });
+
+  it('bundles gap-chart with the shadcn chart item as a first install', () => {
+    const bundle = manualBundle('gap-chart');
+
+    expect(bundle.files.map((file) => file.targetPath)).toEqual(['components/ui/gap-chart.tsx']);
+    expect(bundle.npmDependencies).toEqual(['recharts']);
+    expect(bundle.shadcnItems).toEqual(['chart']);
+    // The chart wrapper is the one import no bundled file carries; the CLI writes it.
+    expect(bundle.files[0]?.content).toContain("from '@/components/ui/chart'");
+    expectImportsResolve(bundle);
   });
 
   it('exposes every built item except the index', () => {

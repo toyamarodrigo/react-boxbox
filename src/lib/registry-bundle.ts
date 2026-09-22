@@ -41,9 +41,22 @@ export type RegistryBundle = {
   npmDependencies: string[];
   /** Names of the `registry:theme` items the component pulls in. */
   themeItems: string[];
+  /**
+   * Plain shadcn items the component imports, such as `chart`. They are not in this registry,
+   * so their files cannot be bundled: the reader installs them with the shadcn CLI first.
+   */
+  shadcnItems: string[];
 };
 
 const NAMESPACE = '@boxbox/';
+
+/**
+ * Where the shadcn CLI writes a plain item of its own registry, and so what a bundled file's
+ * import of one resolves to: `chart` → `@/components/ui/chart`.
+ */
+export function shadcnImportPath(item: string): string {
+  return `@/components/ui/${item}`;
+}
 
 /** Items that contribute tokens or fonts rather than files to copy. */
 const TOKEN_ONLY_TYPES = new Set(['registry:theme', 'registry:font']);
@@ -103,11 +116,20 @@ export function resolveBundle(name: string, items: Map<string, RegistryItem>): R
   const files: BundleFile[] = [];
   const npmDependencies: string[] = [];
   const themeItems: string[] = [];
+  const shadcnItems: string[] = [];
+  const seenShadcn = new Set<string>();
   const seenTargets = new Set<string>();
 
   for (const item of sorted) {
     for (const dependency of item.dependencies ?? []) {
       if (!npmDependencies.includes(dependency)) npmDependencies.push(dependency);
+    }
+    for (const dependency of item.registryDependencies ?? []) {
+      // Anything not in this namespace and not a URL is a plain item of shadcn's own registry.
+      if (dependency.startsWith(NAMESPACE) || dependency.includes('/')) continue;
+      if (seenShadcn.has(dependency)) continue;
+      seenShadcn.add(dependency);
+      shadcnItems.push(dependency);
     }
     if (item.type === 'registry:theme') themeItems.push(item.name);
     if (TOKEN_ONLY_TYPES.has(item.type)) continue;
@@ -124,7 +146,7 @@ export function resolveBundle(name: string, items: Map<string, RegistryItem>): R
     }
   }
 
-  return { files, npmDependencies, themeItems };
+  return { files, npmDependencies, themeItems, shadcnItems };
 }
 
 /** `var(--tyre-soft)` → `tyre-soft`. Anything else is left as-is. */

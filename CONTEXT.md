@@ -39,3 +39,7 @@ _Avoid_: Run, tyre phase
 **Pit window**:
 The stretch of race time a car spends in the pit lane during one stop.
 _Avoid_: Pit period
+
+**Gap chart**:
+The race drawn as every car's gap to the leader, lap by lap, with the leader on zero along the top. It only draws the laps the leader has finished.
+_Avoid_: Race trace, delta chart, position chart

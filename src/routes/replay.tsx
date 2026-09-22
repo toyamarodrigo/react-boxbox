@@ -14,8 +14,10 @@ import {
   emphasiseMarker,
   followedDriverId,
   formatRaceTime,
+  leaderLapsCompleted,
   overtakeModeFor,
   positionsSinceStart,
+  replayGaps,
   replayPodium,
   stintAt,
 } from '../data/replay-timing';
@@ -25,6 +27,8 @@ import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
+import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
+import { GapChart } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
@@ -604,8 +608,28 @@ function StrategyPanel({
   const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
   // Nothing is measured while the panel is closed: this runs on every tick when it is open.
   const cars = useMemo(
-    () => (open ? carLapsAt(race, replay.elapsedMs, pit) : undefined),
-    [open, race, replay.elapsedMs, pit],
+    () => (open && tab === 'strategy' ? carLapsAt(race, replay.elapsedMs, pit) : undefined),
+    [open, tab, race, replay.elapsedMs, pit],
+  );
+
+  /**
+   * One line per car, in the grid's own order rather than the running order, so the series the
+   * memoised chart is handed only changes when the race does.
+   */
+  const gapSeries = useMemo<GapChartSeries[]>(() => {
+    const gaps = replayGaps(race);
+    return race.drivers.map((driver) => ({
+      id: driver.id,
+      code: driver.code,
+      color: teams.get(driver.teamId)?.color,
+      gaps: gaps.get(driver.id) ?? [],
+    }));
+  }, [race, teams]);
+
+  // The chart may only show laps the leader has finished, so it never gives the result away.
+  const gapLaps = useMemo(
+    () => (open && tab === 'gaps' ? leaderLapsCompleted(race, replay.elapsedMs) : 0),
+    [open, tab, race, replay.elapsedMs],
   );
 
   return (
@@ -663,8 +687,17 @@ function StrategyPanel({
                   </ul>
                 </TabsContent>
                 <TabsContent value="gaps">
-                  <p className="py-2 text-xs text-muted-foreground">
-                    Gap chart arrives with the next delivery.
+                  <GapChart
+                    series={gapSeries}
+                    totalLaps={race.totalLaps}
+                    currentLap={gapLaps}
+                    emphasisedId={followedId}
+                    onSeriesClick={onFollow}
+                    className="h-64 md:h-80"
+                  />
+                  <p className="pt-2 text-xs text-muted-foreground">
+                    Gaps are the dataset's own, measured at the line. Click a line to follow that
+                    driver.
                   </p>
                 </TabsContent>
               </Tabs>

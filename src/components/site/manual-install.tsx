@@ -81,65 +81,115 @@ export function ManualInstall({
     );
   }
 
+  // Built as a list so the numbers stay in order whichever steps a component needs.
+  const steps: { title: string; body: React.ReactNode }[] = [];
+
+  if (bundle.shadcnItems.length > 0) {
+    steps.push({
+      title: 'Add the shadcn components it builds on',
+      body: (
+        <>
+          <p className="text-sm text-muted-foreground">
+            These come from shadcn's own registry, so the CLI installs them rather than this page.
+          </p>
+          <CodeBlock
+            code={`bunx shadcn@latest add ${bundle.shadcnItems.join(' ')}`}
+            language="bash"
+          />
+        </>
+      ),
+    });
+  }
+
+  if (installCommand) {
+    steps.push({
+      title: 'Install the dependencies',
+      body: (
+        <>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>Package manager</span>
+            {managerSelect}
+          </div>
+          <CodeBlock code={installCommand} language="bash" />
+        </>
+      ),
+    });
+  }
+
+  if (bundle.themeCss) {
+    steps.push({
+      title: 'Add the theme tokens',
+      body: (
+        <>
+          <p className="text-sm text-muted-foreground">
+            Paste these into your global stylesheet, next to the tokens shadcn already wrote.
+          </p>
+          <CodeBlock code={bundle.themeCss} language="css" />
+        </>
+      ),
+    });
+  }
+
+  steps.push({
+    title: 'Copy the files',
+    body: (
+      <>
+        <div className="flex flex-wrap items-center gap-3">
+          <CopyAllButton text={bundleToText(bundle.files)} />
+          <span className="text-sm text-muted-foreground">
+            {bundle.files.length} file{bundle.files.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <Tabs defaultValue={first.targetPath}>
+          {/* Six file tabs do not fit 375px; the list scrolls instead of
+              widening the page. */}
+          <div className="-mx-1 max-w-full overflow-x-auto px-1">
+            <TabsList>
+              {bundle.files.map((file) => (
+                <TabsTrigger key={file.targetPath} value={file.targetPath} className="font-mono">
+                  {file.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          {bundle.files.map((file) => (
+            <TabsContent key={file.targetPath} value={file.targetPath} className="space-y-2">
+              <p className="font-mono text-xs text-muted-foreground">{file.targetPath}</p>
+              <CodeBlock code={file.content} language={languageOf(file.targetPath)} />
+            </TabsContent>
+          ))}
+        </Tabs>
+      </>
+    ),
+  });
+
+  steps.push({
+    title: 'Check your cn helper',
+    body: (
+      <>
+        <p className="text-sm text-muted-foreground">
+          Every file imports <code className="font-mono">cn</code> from{' '}
+          <code className="font-mono">@/lib/utils</code>, which shadcn installs. If your project has
+          no such file, create it:
+        </p>
+        <CodeBlock code={cnFallback} language="ts" />
+      </>
+    ),
+  });
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
         The files below are the registry sources with their imports already rewritten for a standard
-        shadcn project. No CLI needed.
+        shadcn project.
+        {bundle.shadcnItems.length === 0 && ' No CLI needed.'}
       </p>
       <ol className="space-y-8">
-        {installCommand && (
-          <Step number="01" title="Install the dependencies">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Package manager</span>
-              {managerSelect}
-            </div>
-            <CodeBlock code={installCommand} language="bash" />
+        {steps.map((step, index) => (
+          <Step key={step.title} number={String(index + 1).padStart(2, '0')} title={step.title}>
+            {step.body}
           </Step>
-        )}
-        {bundle.themeCss && (
-          <Step number="02" title="Add the theme tokens">
-            <p className="text-sm text-muted-foreground">
-              Paste these into your global stylesheet, next to the tokens shadcn already wrote.
-            </p>
-            <CodeBlock code={bundle.themeCss} language="css" />
-          </Step>
-        )}
-        <Step number="03" title="Copy the files">
-          <div className="flex flex-wrap items-center gap-3">
-            <CopyAllButton text={bundleToText(bundle.files)} />
-            <span className="text-sm text-muted-foreground">
-              {bundle.files.length} file{bundle.files.length === 1 ? '' : 's'}
-            </span>
-          </div>
-          <Tabs defaultValue={first.targetPath}>
-            {/* Six file tabs do not fit 375px; the list scrolls instead of
-                widening the page. */}
-            <div className="-mx-1 max-w-full overflow-x-auto px-1">
-              <TabsList>
-                {bundle.files.map((file) => (
-                  <TabsTrigger key={file.targetPath} value={file.targetPath} className="font-mono">
-                    {file.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-            {bundle.files.map((file) => (
-              <TabsContent key={file.targetPath} value={file.targetPath} className="space-y-2">
-                <p className="font-mono text-xs text-muted-foreground">{file.targetPath}</p>
-                <CodeBlock code={file.content} language={languageOf(file.targetPath)} />
-              </TabsContent>
-            ))}
-          </Tabs>
-        </Step>
-        <Step number="04" title="Check your cn helper">
-          <p className="text-sm text-muted-foreground">
-            Every file imports <code className="font-mono">cn</code> from{' '}
-            <code className="font-mono">@/lib/utils</code>, which shadcn installs. If your project
-            has no such file, create it:
-          </p>
-          <CodeBlock code={cnFallback} language="ts" />
-        </Step>
+        ))}
       </ol>
     </div>
   );

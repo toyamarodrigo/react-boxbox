@@ -485,6 +485,20 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "gap-chart",
+      "type": "registry:ui",
+      "title": "Gap Chart",
+      "description": "Gap to the leader across the race, the leader pinned to zero along the top, with the followed car drawn in colour over the field.",
+      "dependencies": ["recharts"],
+      "registryDependencies": ["chart", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/gap-chart.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

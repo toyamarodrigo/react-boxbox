@@ -565,5 +565,42 @@ export function leaderCumulative(race: ReplayRace, lap: number): number {
   return 0;
 }
 
+/**
+ * How many laps the leader has completed at `elapsedMs`. That is the lap the gap chart may draw
+ * up to: gaps are measured at the line, and a lap nobody has finished has none.
+ */
+export function leaderLapsCompleted(race: ReplayRace, elapsedMs: number): number {
+  let completed = 0;
+  for (let lap = 1; lap <= race.laps.length; lap++) {
+    if (leaderCumulative(race, lap) > elapsedMs) break;
+    completed = lap;
+  }
+  return completed;
+}
+
+/**
+ * Every car's gap to the leader in seconds at the end of each lap, by driver id: index `i` is the
+ * gap after lap `i + 1`.
+ *
+ * `null` is a lap the car has no comparable time for — it was out, or the source never timed it —
+ * and the chart breaks the line there rather than joining across it. A lapped car keeps the gap
+ * the dataset gives it, which includes the lap it is down; that is what puts it off the bottom of
+ * the chart, which is where it belongs.
+ */
+export function replayGaps(race: ReplayRace): Map<string, (number | null)[]> {
+  const laps = race.laps.length;
+  const gaps = new Map<string, (number | null)[]>(
+    race.drivers.map((driver) => [driver.id, Array.from({ length: laps }, () => null)]),
+  );
+  for (const [index, lap] of race.laps.entries()) {
+    for (const row of lap.rows) {
+      const own = gaps.get(row.driverId);
+      if (own === undefined || row.gapToLeaderMs === null) continue;
+      own[index] = row.gapToLeaderMs / 1000;
+    }
+  }
+  return gaps;
+}
+
 /** Formats a gap in seconds the way the tower does; re-exported so the page has one source. */
 export { formatGap };

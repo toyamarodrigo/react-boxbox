@@ -3,6 +3,7 @@ import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testReplayIndex, testReplayRace } from '../data/replay-fixtures';
 import { clearReplayCache } from '../data/use-replay-data';
+import { stubElementSize } from '../test/chart-size';
 import { getRouter } from '../router';
 
 const index = testReplayIndex();
@@ -408,19 +409,60 @@ describe('replay page, strategy panel', () => {
     expect(followedRow()).toHaveAttribute('data-driver', 'bravo');
   });
 
-  it('keeps a place for the gap chart until the next delivery', async () => {
-    renderReplay();
-    await screen.findByRole('heading', { name: race.name });
+  it('swaps the strategy bars for the gap chart on the Gaps tab', async () => {
+    const restoreSize = stubElementSize();
+    try {
+      renderReplay('/replay?driver=CHA');
+      await screen.findByRole('heading', { name: race.name });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
-    await waitFor(() => expect(strategyLines()).toHaveLength(4));
-    expect(screen.getByRole('tab', { name: 'Strategy' })).toHaveAttribute('aria-selected', 'true');
+      fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+      await waitFor(() => expect(strategyLines()).toHaveLength(4));
+      expect(screen.getByRole('tab', { name: 'Strategy' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
 
-    // Radix switches a tab on mousedown, not on the click that follows it.
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Gaps' }));
-    await waitFor(() =>
-      expect(screen.getByText('Gap chart arrives with the next delivery.')).toBeInTheDocument(),
-    );
-    expect(strategyLines()).toHaveLength(0);
+      // Radix switches a tab on mousedown, not on the click that follows it.
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Gaps' }));
+      const chart = await screen.findByRole('img', { name: /Gap to the leader/ });
+      expect(strategyLines()).toHaveLength(0);
+
+      // Nothing is drawn before the leader has finished a lap: the chart never runs ahead of the
+      // race, and it picks the followed driver out of the field.
+      expect(chart).toHaveAttribute('data-laps', '0');
+      expect(chart).toHaveAttribute('data-emphasised', 'charlie');
+      expect(chart).toHaveAccessibleName('Gap to the leader. No laps completed of 3.');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+      await waitFor(() => expect(chart).toHaveAttribute('data-laps', '1'));
+      expect(chart).toHaveAccessibleName(
+        'Gap to the leader over 1 of 3 laps, 4 cars. CHA 60.0 seconds behind at lap 1.',
+      );
+      expect(document.querySelectorAll('.recharts-line')).toHaveLength(4);
+    } finally {
+      restoreSize();
+    }
+  });
+
+  it('follows the driver whose gap line is clicked', async () => {
+    const restoreSize = stubElementSize();
+    try {
+      const router = renderReplay();
+      await screen.findByRole('heading', { name: race.name });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Gaps' }));
+      await screen.findByRole('img', { name: /Gap to the leader/ });
+      // Two laps, so every line has two points and a drawn curve to click.
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+
+      // The lines are drawn in the grid's order, so the first curve is alpha's.
+      const curve = await waitFor(() => document.querySelector('.recharts-line-curve')!);
+      fireEvent.click(curve);
+      await waitFor(() => expect(searchOf(router).driver).toBe('ALP'));
+    } finally {
+      restoreSize();
+    }
   });
 });

@@ -14,4 +14,5 @@ export const contentSlugs = [
   'podium',
   'track-map',
   'stint-bar',
+  'gap-chart',
 ] as const;
