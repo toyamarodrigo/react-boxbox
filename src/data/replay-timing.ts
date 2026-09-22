@@ -373,13 +373,20 @@ export function replayLiveRows(
   };
 
   const leaderId = order[0]?.[0];
+  // On the grid nobody has a gap yet; a column of +0.000 would read as a timing screen glitch.
+  const started = (order[0]?.[1].distance ?? 0) > 0;
   const rows: TimingRow[] = order.map(([driverId, car], i) => {
     const position = i + 1;
     const laps = index.get(driverId) ?? [];
     const leader = order[0]?.[1];
     const lapsBehind = leader ? Math.floor(leader.distance - car.distance) : 0;
-    const gapToLeader = i === 0 ? 0 : timeBehind(measured.get(driverId), leaderId);
-    const interval = i === 0 ? null : timeBehind(measured.get(driverId), order[i - 1]?.[0]);
+    const gapToLeader = !started
+      ? null
+      : i === 0
+        ? 0
+        : timeBehind(measured.get(driverId), leaderId);
+    const interval =
+      !started || i === 0 ? null : timeBehind(measured.get(driverId), order[i - 1]?.[0]);
     const lastLap = laps.find((item) => item.lap === car.lap - 1);
 
     return {
@@ -394,7 +401,13 @@ export function replayLiveRows(
       inPit: car.inPit,
       lapped: lapsBehind > 0,
       lapsBehind,
-      drs: interval !== null && interval < OVERTAKE_WITHIN_MS && !car.inPit && position > 1,
+      // No aid on the opening lap, as the rules have it; interpolation there would fake it anyway.
+      drs:
+        interval !== null &&
+        interval < OVERTAKE_WITHIN_MS &&
+        !car.inPit &&
+        position > 1 &&
+        car.lap > 1,
       positionChange: reference === null ? 0 : (reference.get(driverId) ?? position) - position,
     };
   });

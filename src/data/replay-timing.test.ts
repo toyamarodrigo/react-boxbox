@@ -22,9 +22,15 @@ describe('replayLiveRows', () => {
     expect(rows.map((row) => row.driverId)).toEqual(['alpha', 'bravo', 'charlie', 'delta']);
     expect(rows.map((row) => row.position)).toEqual([1, 2, 3, 4]);
 
+    // Nobody has a gap on the grid, and the aid is off for the opening lap.
     const leader = rows[0];
-    expect(leader?.gapToLeader).toBe(0);
+    expect(leader?.gapToLeader).toBeNull();
     expect(leader?.interval).toBeNull();
+    expect(rows[1]?.gapToLeader).toBeNull();
+    expect(rows[1]?.interval).toBeNull();
+    expect(rows.every((row) => row.drs === false)).toBe(true);
+    expect(replayLiveRows(race, 50_000).every((row) => row.drs === false)).toBe(true);
+    expect(replayLiveRows(race, 50_000)[1]?.gapToLeader).toBeCloseTo(0.5, 2);
     expect(leader?.lastLapTime).toBeNull();
     expect(leader?.bestLapTime).toBeNull();
     expect(leader?.positionChange).toBe(0);
