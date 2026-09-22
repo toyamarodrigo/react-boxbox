@@ -1,16 +1,18 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
-import { type ReplayRace, replayRaceSchema } from './replay-schema';
+import { type ReplayRace, type ReplayRaceControl, replayRaceSchema } from './replay-schema';
 import {
   carLapsAt,
   emphasiseMarker,
+  flaggedSectorsAt,
   followedDriverId,
   formatRaceTime,
   leaderCumulative,
   leaderLapsCompleted,
   overtakeModeFor,
   positionsSinceStart,
+  raceControlUpTo,
   replayGaps,
   replayLiveRows,
   replayPitStops,
@@ -22,9 +24,25 @@ import {
   speedTrapAt,
   speedTrapBestAt,
   stintAt,
+  trackStatusAt,
 } from './replay-timing';
 
 const race = testReplayRace();
+
+/** A race-control message with only the fields a case cares about. */
+const message = (
+  atMs: number,
+  fields: Partial<ReplayRaceControl> & { message: string },
+): ReplayRaceControl => ({
+  atMs,
+  lap: 1,
+  flag: null,
+  category: 'Flag',
+  scope: null,
+  sector: null,
+  driverId: null,
+  ...fields,
+});
 
 describe('replayLiveRows', () => {
   it('lists the grid in drivers order at the start, with placeholders for what the data lacks', () => {
@@ -638,6 +656,196 @@ describe('speedTrapAt and speedTrapBestAt', () => {
       expect(now).toBeGreaterThanOrEqual(best);
       best = now;
     }
+  });
+});
+
+describe('trackStatusAt', () => {
+  it('is green before the first message and while nothing is flying', () => {
+    expect(trackStatusAt(race, 0)).toBe('green');
+    // A local flag in one sector is not the flag over the track.
+    expect(trackStatusAt(race, 35_000)).toBe('green');
+  });
+
+  it('flies the virtual safety car between its own two messages', () => {
+    expect(trackStatusAt(race, 59_999)).toBe('green');
+    expect(trackStatusAt(race, 60_000)).toBe('vsc');
+    expect(trackStatusAt(race, 119_999)).toBe('vsc');
+    expect(trackStatusAt(race, 120_000)).toBe('green');
+  });
+
+  it('reads a track-wide flag, and never a driver’s own', () => {
+    // The black-and-white flag for one car at 210s changes nothing over the track.
+    expect(trackStatusAt(race, 210_000)).toBe('green');
+    expect(trackStatusAt(race, 250_000)).toBe('double-yellow');
+    expect(trackStatusAt(race, 280_000)).toBe('green');
+  });
+
+  it('keeps the safety car above the flag under it, until its ending message', () => {
+    const under = {
+      ...race,
+      raceControl: [
+        message(10_000, { flag: 'YELLOW', scope: 'Track', message: 'YELLOW IN TRACK' }),
+        message(20_000, { category: 'SafetyCar', message: 'SAFETY CAR DEPLOYED' }),
+        message(30_000, { category: 'SafetyCar', message: 'SAFETY CAR IN THIS LAP' }),
+        message(40_000, { flag: 'GREEN', scope: 'Track', message: 'GREEN LIGHT - TRACK CLEAR' }),
+      ],
+    };
+    expect(trackStatusAt(under, 10_000)).toBe('yellow');
+    expect(trackStatusAt(under, 25_000)).toBe('sc');
+    // The car has come in, but the flags are still yellow until the green.
+    expect(trackStatusAt(under, 35_000)).toBe('yellow');
+    expect(trackStatusAt(under, 40_000)).toBe('green');
+  });
+
+  it('leaves a wording it does not know exactly as it was', () => {
+    const unknown = {
+      ...race,
+      raceControl: [
+        message(10_000, { flag: 'YELLOW', scope: 'Track', message: 'YELLOW IN TRACK' }),
+        message(20_000, { category: 'SafetyCar', message: 'SAFETY CAR WILL USE STANDING START' }),
+        message(30_000, { flag: 'BLUE', scope: 'Driver', message: 'BLUE FLAG FOR CAR 3 (CHA)' }),
+        message(40_000, { category: 'Other', message: 'TRACK SURFACE SLIPPERY' }),
+      ],
+    };
+    for (const at of [20_000, 30_000, 40_000]) expect(trackStatusAt(unknown, at)).toBe('yellow');
+  });
+
+  it('is green for the whole of a race with no messages at all', () => {
+    const quiet = { ...race, raceControl: [] };
+    expect(trackStatusAt(quiet, 0)).toBe('green');
+    expect(trackStatusAt(quiet, 999_999)).toBe('green');
+  });
+});
+
+describe('flaggedSectorsAt', () => {
+  it('paints a flagged sector as its slice of the lap', () => {
+    // The race's own messages mention sector 4 at most, so a sector is a quarter of the lap.
+    expect(flaggedSectorsAt(race, 30_000)).toEqual([{ start: 0.25, end: 0.5, status: 'yellow' }]);
+  });
+
+  it('merges neighbouring zones of the same status into one arc', () => {
+    expect(flaggedSectorsAt(race, 35_000)).toEqual([{ start: 0.25, end: 0.75, status: 'yellow' }]);
+  });
+
+  it('closes a zone on its own clear and every zone on a green', () => {
+    expect(flaggedSectorsAt(race, 150_000)).toEqual([{ start: 0.5, end: 0.75, status: 'yellow' }]);
+    expect(flaggedSectorsAt(race, 280_000)).toEqual([]);
+  });
+
+  it('has nothing flagged before the first message, as the same empty list every time', () => {
+    expect(flaggedSectorsAt(race, 0)).toEqual([]);
+    // Identity, not just emptiness: a consumer comparing props must not see a new array a tick.
+    expect(flaggedSectorsAt(race, 0)).toBe(flaggedSectorsAt(race, 20_000));
+  });
+
+  it('joins a zone that straddles the start line into one', () => {
+    const across = {
+      ...race,
+      raceControl: [
+        message(10_000, {
+          flag: 'YELLOW',
+          scope: 'Sector',
+          sector: 1,
+          message: 'YELLOW IN TRACK SECTOR 1',
+        }),
+        message(20_000, {
+          flag: 'YELLOW',
+          scope: 'Sector',
+          sector: 4,
+          message: 'YELLOW IN TRACK SECTOR 4',
+        }),
+      ],
+    };
+    // Sector 4 runs into sector 1 over the line, which the map draws as one wrapping arc.
+    expect(flaggedSectorsAt(across, 20_000)).toEqual([
+      { start: 0.75, end: 0.25, status: 'yellow' },
+    ]);
+  });
+});
+
+describe('raceControlUpTo', () => {
+  it('lists the messages up to now, newest first', () => {
+    expect(raceControlUpTo(race, 0).map((entry) => entry.message)).toEqual([
+      'GREEN LIGHT - PIT EXIT OPEN',
+    ]);
+    const atVsc = raceControlUpTo(race, 60_000);
+    expect(atVsc).toHaveLength(5);
+    expect(atVsc[0]?.message).toBe('VSC DEPLOYED');
+    expect(atVsc.at(-1)?.message).toBe('GREEN LIGHT - PIT EXIT OPEN');
+  });
+
+  it('never reads a message from the future', () => {
+    for (const at of [0, 45_000, 199_000, 297_000]) {
+      expect(raceControlUpTo(race, at).every((entry) => entry.atMs <= at)).toBe(true);
+    }
+    expect(raceControlUpTo(race, 999_999)).toHaveLength(race.raceControl.length);
+  });
+
+  it('names the car a driver-scoped message is addressed to', () => {
+    const latest = raceControlUpTo(race, 210_000)[0];
+    expect(latest?.driverId).toBe('charlie');
+    expect(latest?.scope).toBe('Driver');
+  });
+
+  it('has nothing for a race with no messages at all', () => {
+    expect(raceControlUpTo({ ...race, raceControl: [] }, 999_999)).toEqual([]);
+  });
+});
+
+describe('race control on the generated dataset', () => {
+  const files = generatedReplayFiles();
+  if (files.length === 0) {
+    it.skip('is not generated yet, so the dataset checks are skipped', () => {});
+    return;
+  }
+
+  it.each(files.map((file) => [path.basename(file), file] as const))(
+    '%s reads the feed and the flags only up to the clock',
+    (_name, file) => {
+      const real = replayRaceSchema.parse(readJson(file));
+      const end = leaderCumulative(real, real.totalLaps);
+      for (const step of Array.from({ length: 21 }, (_, index) => Math.round((end * index) / 20))) {
+        const feed = raceControlUpTo(real, step);
+        expect(feed.every((entry) => entry.atMs <= step)).toBe(true);
+        // Newest first, so every message is at or after the one under it.
+        for (const [index, entry] of feed.entries()) {
+          if (index > 0) expect(entry.atMs).toBeLessThanOrEqual(feed[index - 1]?.atMs ?? 0);
+        }
+        for (const sector of flaggedSectorsAt(real, step)) {
+          expect(sector.start).toBeGreaterThanOrEqual(0);
+          expect(sector.end).toBeLessThanOrEqual(1);
+          expect(sector.status).not.toBe('green');
+        }
+      }
+    },
+  );
+
+  it('flies the virtual safety car over the 2026 Spanish Grand Prix window', () => {
+    const file = files.find((entry) => path.basename(entry) === '2026-14.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+
+    const deployed = real.raceControl.find((entry) => entry.message.includes('VSC DEPLOYED'));
+    const ending = real.raceControl.find((entry) => entry.message.includes('VSC ENDING'));
+    expect(deployed?.lap).toBe(14);
+    expect(ending?.lap).toBe(15);
+    if (!deployed || !ending) return;
+
+    expect(trackStatusAt(real, deployed.atMs - 1)).not.toBe('vsc');
+    expect(trackStatusAt(real, deployed.atMs)).toBe('vsc');
+    expect(trackStatusAt(real, (deployed.atMs + ending.atMs) / 2)).toBe('vsc');
+    expect(trackStatusAt(real, ending.atMs)).toBe('green');
+  });
+
+  it('has no race control at all for a race OpenF1 does not cover', () => {
+    const file = files.find((entry) => path.basename(entry) === '2021-22.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+    expect(real.raceControl).toEqual([]);
+    expect(real.source.raceControl).toBeUndefined();
+    expect(trackStatusAt(real, Number.MAX_SAFE_INTEGER)).toBe('green');
+    expect(flaggedSectorsAt(real, Number.MAX_SAFE_INTEGER)).toEqual([]);
+    expect(raceControlUpTo(real, Number.MAX_SAFE_INTEGER)).toEqual([]);
   });
 });
 

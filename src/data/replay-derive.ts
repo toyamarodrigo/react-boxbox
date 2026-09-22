@@ -3,6 +3,7 @@ import type {
   ReplayFinishStatus,
   ReplayLap,
   ReplayLapRow,
+  ReplayRaceControl,
   ReplayResult,
   ReplayStint,
   ReplayTyreCompound,
@@ -197,6 +198,8 @@ export type RawOpenF1Stint = {
 export type RawOpenF1Lap = {
   driver_number?: number | null;
   lap_number?: number | null;
+  /** When the car started the lap, as wall clock. Lap 1's is the only clock the race has. */
+  date_start?: string | null;
   duration_sector_1?: number | null;
   duration_sector_2?: number | null;
   duration_sector_3?: number | null;
@@ -435,6 +438,99 @@ export function withTiming(laps: readonly ReplayLap[], timing: OpenF1Timing): Re
       };
     }),
   }));
+}
+
+/** One row of OpenF1's `race_control`: one message, with whatever of the fields applies to it. */
+export type RawOpenF1RaceControl = {
+  date?: string | null;
+  lap_number?: number | null;
+  category?: string | null;
+  flag?: string | null;
+  scope?: string | null;
+  /** A marshalling sector, of which a circuit has twenty-odd. Not a timing sector. */
+  sector?: number | null;
+  driver_number?: number | null;
+  message?: string | null;
+};
+
+/** What the race-control join takes: the messages, the laps that date the start, and the codes. */
+export type OpenF1RaceControl = {
+  drivers: readonly RawOpenF1Driver[];
+  messages: readonly RawOpenF1RaceControl[];
+  /** The same `laps` payload the timing uses: lap 1 is where the race's own clock starts. */
+  laps: readonly RawOpenF1Lap[];
+  /** Same join as everything else OpenF1 adds: the three-letter code. */
+  codes: readonly { id: string; code: string }[];
+};
+
+/**
+ * When the race started, as wall clock, from the earliest `date_start` of anybody's lap 1.
+ *
+ * The cars start together, so the earliest of them is the moment the lights went out to within the
+ * width of the grid. It is the only clock the two sources share: jolpica's times are relative to
+ * that moment and OpenF1's race-control messages carry a wall-clock date. `null` when the payload
+ * dates no first lap, which leaves the messages unplaceable.
+ */
+export function raceStartMs(laps: readonly RawOpenF1Lap[]): number | null {
+  let earliest: number | null = null;
+  for (const lap of laps) {
+    if (lap.lap_number !== 1 || lap.date_start == null) continue;
+    const at = Date.parse(lap.date_start);
+    if (!Number.isFinite(at)) continue;
+    if (earliest === null || at < earliest) earliest = at;
+  }
+  return earliest;
+}
+
+/**
+ * Race control's messages on the replay clock, oldest first, with a count of what was dropped.
+ *
+ * A message is dropped when its time cannot be resolved — the race has no dated first lap, the row
+ * has no parseable `date`, or the date lands before the start, which is everything race control
+ * said on the formation lap and in the hours before it. Dropping at build time keeps the page's
+ * helpers free of "is this one real" checks, and the count is reported by the build so a race that
+ * loses an unreasonable share of its messages is noticed.
+ *
+ * `driverId` is this project's own id, resolved car number → OpenF1 acronym → driver code, the
+ * same chain as the compounds and the timing. A number the session's driver list does not carry,
+ * or a message that names no car, leaves it null.
+ */
+export function deriveRaceControl(source: OpenF1RaceControl): {
+  messages: ReplayRaceControl[];
+  dropped: number;
+} {
+  const startMs = raceStartMs(source.laps);
+  if (startMs === null) return { messages: [], dropped: source.messages.length };
+
+  const acronyms = acronymsByNumber(source.drivers);
+  const idsByCode = new Map(
+    source.codes.map((driver) => [driver.code.trim().toUpperCase(), driver.id]),
+  );
+
+  const messages: ReplayRaceControl[] = [];
+  let dropped = 0;
+  for (const row of source.messages) {
+    const text = row.message?.trim() ?? '';
+    const at = row.date == null ? Number.NaN : Date.parse(row.date);
+    if (text === '' || !Number.isFinite(at) || at < startMs) {
+      dropped += 1;
+      continue;
+    }
+    const code = row.driver_number == null ? undefined : acronyms.get(row.driver_number);
+    messages.push({
+      atMs: Math.round(at - startMs),
+      lap: typeof row.lap_number === 'number' && row.lap_number >= 0 ? row.lap_number : null,
+      flag: row.flag?.trim() || null,
+      category: row.category?.trim() || 'Other',
+      scope: row.scope?.trim() || null,
+      sector: typeof row.sector === 'number' && row.sector >= 1 ? row.sector : null,
+      driverId: (code === undefined ? undefined : idsByCode.get(code)) ?? null,
+      message: text,
+    });
+  }
+
+  messages.sort((a, b) => a.atMs - b.atMs);
+  return { messages, dropped };
 }
 
 /**

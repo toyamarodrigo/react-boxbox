@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveLaps,
+  deriveRaceControl,
   deriveResults,
   deriveStints,
   finishStatusOf,
   parseGap,
   parseLapTime,
+  raceStartMs,
   tyreCompoundOf,
   withTiming,
   type OpenF1Compounds,
+  type OpenF1RaceControl,
   type OpenF1Timing,
   type RawLap,
   type RawOpenF1Lap,
+  type RawOpenF1RaceControl,
   type RawOpenF1Stint,
   type RawPitStop,
   type RawResult,
@@ -555,5 +559,117 @@ describe('withTiming', () => {
     );
     expect(rowOf(all, 1, 'alpha')?.speedTrapKph).toBe(300);
     expect(rowOf(laps, 1, 'alpha')?.speedTrapKph).toBe(null);
+  });
+});
+
+describe('raceStartMs', () => {
+  it('takes the earliest first lap of anybody, which is when the lights went out', () => {
+    expect(
+      raceStartMs([
+        { driver_number: 55, lap_number: 1, date_start: '2026-09-13T13:00:04.500Z' },
+        { driver_number: 44, lap_number: 1, date_start: '2026-09-13T13:00:03.000Z' },
+        { driver_number: 44, lap_number: 2, date_start: '2026-09-13T13:01:40.000Z' },
+      ]),
+    ).toBe(Date.parse('2026-09-13T13:00:03.000Z'));
+  });
+
+  it('has no start to offer when no first lap is dated', () => {
+    expect(raceStartMs([])).toBe(null);
+    expect(
+      raceStartMs([{ driver_number: 1, lap_number: 2, date_start: '2026-09-13T13:01:00Z' }]),
+    ).toBe(null);
+    expect(raceStartMs([{ driver_number: 1, lap_number: 1, date_start: 'not a date' }])).toBe(null);
+  });
+});
+
+describe('deriveRaceControl', () => {
+  const source = (messages: RawOpenF1RaceControl[]): OpenF1RaceControl => ({
+    // As everywhere else OpenF1 joins, the car number is read through the code.
+    drivers: [
+      { driver_number: 44, name_acronym: 'cha' },
+      { driver_number: 55, name_acronym: 'ALP' },
+    ],
+    messages,
+    laps: [{ driver_number: 55, lap_number: 1, date_start: '2026-09-13T13:00:00.000Z' }],
+    codes: [
+      { id: 'alpha', code: 'ALP' },
+      { id: 'charlie', code: 'CHA' },
+    ],
+  });
+
+  it('places each message on the replay clock and names the car it is addressed to', () => {
+    const { messages, dropped } = deriveRaceControl(
+      source([
+        {
+          date: '2026-09-13T13:02:00.000Z',
+          lap_number: 2,
+          category: 'Flag',
+          flag: 'BLACK AND WHITE',
+          scope: 'Driver',
+          driver_number: 44,
+          message: 'BLACK AND WHITE FLAG FOR CAR 44 (CHA) - TRACK LIMITS',
+        },
+        {
+          date: '2026-09-13T13:01:00.000Z',
+          lap_number: 1,
+          category: 'Flag',
+          flag: 'YELLOW',
+          scope: 'Sector',
+          sector: 23,
+          message: 'YELLOW IN TRACK SECTOR 23',
+        },
+      ]),
+    );
+
+    expect(dropped).toBe(0);
+    // Oldest first, whatever order the source sent them in.
+    expect(messages.map((entry) => entry.atMs)).toEqual([60_000, 120_000]);
+    expect(messages[0]?.sector).toBe(23);
+    expect(messages[0]?.driverId).toBe(null);
+    expect(messages[1]?.driverId).toBe('charlie');
+    expect(messages[1]?.lap).toBe(2);
+  });
+
+  it('drops a message it cannot time, and says how many', () => {
+    const { messages, dropped } = deriveRaceControl(
+      source([
+        // Before the start: the formation lap, and everything the session said before it.
+        { date: '2026-09-13T12:30:00.000Z', category: 'Other', message: 'PIT EXIT OPEN' },
+        { date: 'not a date', category: 'Other', message: 'CAR 44 TIME DELETED' },
+        { category: 'Other', message: 'NO DATE AT ALL' },
+        { date: '2026-09-13T13:00:30.000Z', category: 'Other', message: '   ' },
+        { date: '2026-09-13T13:00:30.000Z', category: 'Flag', message: 'GREEN LIGHT' },
+      ]),
+    );
+    expect(messages.map((entry) => entry.message)).toEqual(['GREEN LIGHT']);
+    expect(dropped).toBe(4);
+  });
+
+  it('drops every message when the race has no dated first lap to start from', () => {
+    const { messages, dropped } = deriveRaceControl({
+      ...source([
+        { date: '2026-09-13T13:01:00.000Z', category: 'Other', message: 'SESSION STARTED' },
+      ]),
+      laps: [],
+    });
+    expect(messages).toEqual([]);
+    expect(dropped).toBe(1);
+  });
+
+  it('keeps an unknown car number nameless rather than guessing at it', () => {
+    const { messages } = deriveRaceControl(
+      source([
+        {
+          date: '2026-09-13T13:01:00.000Z',
+          category: 'Flag',
+          flag: 'BLUE',
+          scope: 'Driver',
+          driver_number: 99,
+          message: 'BLUE FLAG FOR CAR 99',
+        },
+      ]),
+    );
+    expect(messages[0]?.driverId).toBe(null);
+    expect(messages[0]?.flag).toBe('BLUE');
   });
 });

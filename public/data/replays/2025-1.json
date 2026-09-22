@@ -8,17 +8,22 @@
   "totalLaps": 57,
   "source": {
     "provider": "jolpica-f1",
-    "fetchedAt": "2026-09-22T19:57:11.807Z",
+    "fetchedAt": "2026-09-22T22:39:28.078Z",
     "url": "https://api.jolpi.ca/ergast/f1/2025/1.json",
     "compounds": {
       "provider": "openf1",
-      "fetchedAt": "2026-09-22T19:57:11.807Z",
+      "fetchedAt": "2026-09-22T22:39:28.078Z",
       "url": "https://api.openf1.org/v1/stints?session_key=9693"
     },
     "timing": {
       "provider": "openf1",
-      "fetchedAt": "2026-09-22T19:57:11.807Z",
+      "fetchedAt": "2026-09-22T22:39:28.078Z",
       "url": "https://api.openf1.org/v1/laps?session_key=9693"
+    },
+    "raceControl": {
+      "provider": "openf1",
+      "fetchedAt": "2026-09-22T22:39:28.078Z",
+      "url": "https://api.openf1.org/v1/race_control?session_key=9693"
     }
   },
   "drivers": [
@@ -15179,6 +15184,988 @@
           "compound": "I"
         }
       ]
+    }
+  ],
+  "raceControl": [
+    {
+      "atMs": 0,
+      "lap": 1,
+      "flag": null,
+      "category": "SessionStatus",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SESSION STARTED"
+    },
+    {
+      "atMs": 27,
+      "lap": 1,
+      "flag": "GREEN",
+      "category": "Flag",
+      "scope": "Track",
+      "sector": null,
+      "driverId": null,
+      "message": "GREEN LIGHT - PIT EXIT OPEN"
+    },
+    {
+      "atMs": 64027,
+      "lap": 1,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 8,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 8"
+    },
+    {
+      "atMs": 68027,
+      "lap": 1,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR DEPLOYED"
+    },
+    {
+      "atMs": 115027,
+      "lap": 1,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 8,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 8"
+    },
+    {
+      "atMs": 155027,
+      "lap": 2,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 20,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 20"
+    },
+    {
+      "atMs": 179027,
+      "lap": 2,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR THROUGH THE PIT LANE"
+    },
+    {
+      "atMs": 361027,
+      "lap": 3,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "RECOVERY VEHICLE ON TRACK AT TURN 14"
+    },
+    {
+      "atMs": 470027,
+      "lap": 4,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "RECOVERY VEHICLE ON TRACK BEFORE TURN 6"
+    },
+    {
+      "atMs": 697027,
+      "lap": 5,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR WILL USE START/FINISH STRAIGHT"
+    },
+    {
+      "atMs": 702027,
+      "lap": 5,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 20,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 20"
+    },
+    {
+      "atMs": 728027,
+      "lap": 5,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 8,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 8"
+    },
+    {
+      "atMs": 931027,
+      "lap": 7,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR IN THIS LAP"
+    },
+    {
+      "atMs": 1009027,
+      "lap": 7,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Track",
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK CLEAR"
+    },
+    {
+      "atMs": 1078027,
+      "lap": 8,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "INCIDENT INVOLVING CAR 14 (ALO) NOTED - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 1152027,
+      "lap": 9,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "INCIDENT INVOLVING CAR 22 (TSU) NOTED - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 1158027,
+      "lap": 9,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 14 (ALO) UNDER INVESTIGATION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 1218027,
+      "lap": 10,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 22 (TSU) UNDER INVESTIGATION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 1423027,
+      "lap": 12,
+      "flag": null,
+      "category": "Drs",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "DRS ENABLED"
+    },
+    {
+      "atMs": 1939027,
+      "lap": 17,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 12 (ANT) TIME 1:37.326 DELETED - TRACK LIMITS AT TURN 4 LAP 16 15:48:48"
+    },
+    {
+      "atMs": 1962027,
+      "lap": 18,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK SURFACE SLIPPERY IN TRACK SECTOR 15"
+    },
+    {
+      "atMs": 1972027,
+      "lap": 18,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 15,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 15"
+    },
+    {
+      "atMs": 1977027,
+      "lap": 18,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK SURFACE SLIPPERY IN TRACK SECTOR 12"
+    },
+    {
+      "atMs": 1988027,
+      "lap": 18,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 12,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 12"
+    },
+    {
+      "atMs": 2002027,
+      "lap": 18,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "INCIDENT INVOLVING CAR 23 (ALB) NOTED - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2008027,
+      "lap": 18,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "INCIDENT INVOLVING CAR 44 (HAM) NOTED - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2020027,
+      "lap": 18,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK SURFACE SLIPPERY IN TRACK SECTOR 13"
+    },
+    {
+      "atMs": 2021027,
+      "lap": 18,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK SURFACE SLIPPERY IN TRACK SECTOR 1"
+    },
+    {
+      "atMs": 2027027,
+      "lap": 18,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 1,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 1"
+    },
+    {
+      "atMs": 2028027,
+      "lap": 18,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 13,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 13"
+    },
+    {
+      "atMs": 2069027,
+      "lap": 19,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 23 (ALB) UNDER INVESTIGATION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2073027,
+      "lap": 19,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK SURFACE SLIPPERY IN TRACK SECTOR 15"
+    },
+    {
+      "atMs": 2073027,
+      "lap": 19,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 15,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 15"
+    },
+    {
+      "atMs": 2077027,
+      "lap": 19,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 44 (HAM) UNDER INVESTIGATION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2137027,
+      "lap": 20,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 14 (ALO) NO FURTHER ACTION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2149027,
+      "lap": 20,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 22 (TSU) NO FURTHER ACTION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2158027,
+      "lap": 20,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 23 (ALB) NO FURTHER ACTION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2168027,
+      "lap": 20,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 44 (HAM) NO FURTHER ACTION - SAFETY CAR INFRINGEMENT"
+    },
+    {
+      "atMs": 2965027,
+      "lap": 29,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "bearman",
+      "message": "WAVED BLUE FLAG FOR CAR 87 (BEA) TIMED AT 16:07:48"
+    },
+    {
+      "atMs": 3014027,
+      "lap": 29,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "ocon",
+      "message": "WAVED BLUE FLAG FOR CAR 31 (OCO) TIMED AT 16:08:36"
+    },
+    {
+      "atMs": 3024027,
+      "lap": 30,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 30 (LAW) TIME 1:31.084 DELETED - TRACK LIMITS AT TURN 6 LAP 28 16:07:39"
+    },
+    {
+      "atMs": 3278027,
+      "lap": 32,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "lawson",
+      "message": "WAVED BLUE FLAG FOR CAR 30 (LAW) TIMED AT 16:13:00"
+    },
+    {
+      "atMs": 3315027,
+      "lap": 33,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "lawson",
+      "message": "WAVED BLUE FLAG FOR CAR 30 (LAW) TIMED AT 16:13:37"
+    },
+    {
+      "atMs": 3319027,
+      "lap": 33,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 81 (PIA) TIME 1:29.379 DELETED - TRACK LIMITS AT TURN 6 LAP 32 16:12:17"
+    },
+    {
+      "atMs": 3383027,
+      "lap": 34,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "bearman",
+      "message": "WAVED BLUE FLAG FOR CAR 87 (BEA) TIMED AT 16:14:46"
+    },
+    {
+      "atMs": 3386027,
+      "lap": 34,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 10,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 10"
+    },
+    {
+      "atMs": 3406027,
+      "lap": 34,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR DEPLOYED"
+    },
+    {
+      "atMs": 3779027,
+      "lap": 37,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "RECOVERY VEHICLE ON TRACK AT TURN 8"
+    },
+    {
+      "atMs": 3970027,
+      "lap": 38,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 8,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 8"
+    },
+    {
+      "atMs": 3973027,
+      "lap": 38,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 9,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 9"
+    },
+    {
+      "atMs": 3999027,
+      "lap": 38,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 8,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 8"
+    },
+    {
+      "atMs": 4180027,
+      "lap": 39,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 9,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 9"
+    },
+    {
+      "atMs": 4182027,
+      "lap": 39,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 10,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 10"
+    },
+    {
+      "atMs": 4212027,
+      "lap": 40,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "LAPPED CARS MAY NOW OVERTAKE THE SAFETY CAR: 5, 31, 87, 30"
+    },
+    {
+      "atMs": 4305027,
+      "lap": 40,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "INCIDENT INVOLVING CARS 5 (BOR) AND 30 (LAW) NOTED - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 4347027,
+      "lap": 41,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR IN THIS LAP"
+    },
+    {
+      "atMs": 4358027,
+      "lap": 41,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CARS 5 (BOR) AND 30 (LAW) UNDER INVESTIGATION - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 4442027,
+      "lap": 41,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Track",
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK CLEAR"
+    },
+    {
+      "atMs": 4542027,
+      "lap": 43,
+      "flag": null,
+      "category": "Drs",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "DRS ENABLED"
+    },
+    {
+      "atMs": 4614027,
+      "lap": 43,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 5 (BOR) - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 4705027,
+      "lap": 44,
+      "flag": "YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "YELLOW IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 4731027,
+      "lap": 45,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK SURFACE SLIPPERY IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4752027,
+      "lap": 45,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 4754027,
+      "lap": 45,
+      "flag": "YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 18,
+      "driverId": null,
+      "message": "YELLOW IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4789027,
+      "lap": 45,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 4790027,
+      "lap": 45,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 18,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4811027,
+      "lap": 46,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 81 (PIA) LAP DELETED - TRACK LIMITS AT TURN 12 LAP 44 16:36:38"
+    },
+    {
+      "atMs": 4822027,
+      "lap": 46,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 4 (NOR) TIME 1:45.587 DELETED - TRACK LIMITS AT TURN 12 LAP 44 16:36:36"
+    },
+    {
+      "atMs": 4834027,
+      "lap": 46,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "bearman",
+      "message": "WAVED BLUE FLAG FOR CAR 87 (BEA) TIMED AT 16:38:56"
+    },
+    {
+      "atMs": 4843027,
+      "lap": 46,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "bearman",
+      "message": "WAVED BLUE FLAG FOR CAR 87 (BEA) TIMED AT 16:39:06"
+    },
+    {
+      "atMs": 4906027,
+      "lap": 46,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "piastri",
+      "message": "WAVED BLUE FLAG FOR CAR 81 (PIA) TIMED AT 16:40:09"
+    },
+    {
+      "atMs": 4923027,
+      "lap": 47,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "bearman",
+      "message": "WAVED BLUE FLAG FOR CAR 87 (BEA) TIMED AT 16:40:25"
+    },
+    {
+      "atMs": 4930027,
+      "lap": 47,
+      "flag": "BLUE",
+      "category": "Flag",
+      "scope": "Driver",
+      "sector": null,
+      "driverId": "piastri",
+      "message": "WAVED BLUE FLAG FOR CAR 81 (PIA) TIMED AT 16:40:33"
+    },
+    {
+      "atMs": 4934027,
+      "lap": 47,
+      "flag": "YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 18,
+      "driverId": null,
+      "message": "YELLOW IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4938027,
+      "lap": 47,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 4939027,
+      "lap": 47,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 18,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4942027,
+      "lap": 47,
+      "flag": "YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "YELLOW IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 4951027,
+      "lap": 47,
+      "flag": "YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 18,
+      "driverId": null,
+      "message": "YELLOW IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4952027,
+      "lap": 47,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 18,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 18"
+    },
+    {
+      "atMs": 4953027,
+      "lap": 47,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 4957027,
+      "lap": 47,
+      "flag": "DOUBLE YELLOW",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 2,
+      "driverId": null,
+      "message": "DOUBLE YELLOW IN TRACK SECTOR 2"
+    },
+    {
+      "atMs": 4959027,
+      "lap": 47,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "DRS DISABLED IN ZONE 3"
+    },
+    {
+      "atMs": 4963027,
+      "lap": 47,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR DEPLOYED"
+    },
+    {
+      "atMs": 5065027,
+      "lap": 48,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 22 (TSU) TIME 1:35.983 DELETED - TRACK LIMITS AT TURN 12 LAP 45 16:38:17"
+    },
+    {
+      "atMs": 5199027,
+      "lap": 49,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: PENALTY SERVED - 5 SECOND TIME PENALTY FOR CAR 5 (BOR) - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 5289027,
+      "lap": 49,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 22 (TSU) TIME 2:33.312 DELETED - TRACK LIMITS AT TURN 4 LAP 47 16:40:53"
+    },
+    {
+      "atMs": 5305027,
+      "lap": 49,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 2,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 2"
+    },
+    {
+      "atMs": 5317027,
+      "lap": 50,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Sector",
+      "sector": 19,
+      "driverId": null,
+      "message": "CLEAR IN TRACK SECTOR 19"
+    },
+    {
+      "atMs": 5321027,
+      "lap": 50,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "LAPPED CAR MAY NOW OVERTAKE THE SAFETY CAR: 87"
+    },
+    {
+      "atMs": 5479027,
+      "lap": 51,
+      "flag": null,
+      "category": "SafetyCar",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SAFETY CAR IN THIS LAP"
+    },
+    {
+      "atMs": 5574027,
+      "lap": 51,
+      "flag": "CLEAR",
+      "category": "Flag",
+      "scope": "Track",
+      "sector": null,
+      "driverId": null,
+      "message": "TRACK CLEAR"
+    },
+    {
+      "atMs": 5828027,
+      "lap": 54,
+      "flag": null,
+      "category": "Drs",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "DRS ENABLED"
+    },
+    {
+      "atMs": 5996027,
+      "lap": 56,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "CAR 10 (GAS) TIME 1:34.967 DELETED - TRACK LIMITS AT TURN 1 LAP 54 16:54:53"
+    },
+    {
+      "atMs": 6009027,
+      "lap": 56,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "INCIDENT INVOLVING CAR 12 (ANT) NOTED - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 6039027,
+      "lap": 56,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 12 (ANT) UNDER INVESTIGATION - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 6087027,
+      "lap": 57,
+      "flag": null,
+      "category": "Other",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 12 (ANT) - UNSAFE RELEASE"
+    },
+    {
+      "atMs": 6126027,
+      "lap": 57,
+      "flag": "CHEQUERED",
+      "category": "Flag",
+      "scope": "Track",
+      "sector": null,
+      "driverId": null,
+      "message": "CHEQUERED FLAG"
+    },
+    {
+      "atMs": 6126514,
+      "lap": 57,
+      "flag": null,
+      "category": "SessionStatus",
+      "scope": null,
+      "sector": null,
+      "driverId": null,
+      "message": "SESSION FINISHED"
     }
   ]
 }

@@ -8,7 +8,7 @@
   "totalLaps": 58,
   "source": {
     "provider": "jolpica-f1",
-    "fetchedAt": "2026-09-22T19:57:11.807Z",
+    "fetchedAt": "2026-09-22T22:39:28.078Z",
     "url": "https://api.jolpi.ca/ergast/f1/2021/22.json"
   },
   "drivers": [
@@ -16085,5 +16085,6 @@
         }
       ]
     }
-  ]
+  ],
+  "raceControl": []
 }

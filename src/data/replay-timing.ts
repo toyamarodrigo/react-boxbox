@@ -1,8 +1,21 @@
-import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
+import type {
+  SectorStatus,
+  SectorTime,
+  TimingRow,
+  TrackMarker,
+  TrackSector,
+  TrackStatus,
+} from '@/registry/boxbox/lib/types';
 import type { OvertakeMode } from '@/registry/boxbox/ui/overtake-indicator';
 import type { PodiumEntry, PodiumSteps } from '@/registry/boxbox/ui/podium';
 import { formatGap, resultValue } from '@/registry/boxbox/ui/timing-tower';
-import type { ReplayLap, ReplayLapRow, ReplayRace, ReplayStint } from './replay-schema';
+import type {
+  ReplayLap,
+  ReplayLapRow,
+  ReplayRace,
+  ReplayRaceControl,
+  ReplayStint,
+} from './replay-schema';
 
 /**
  * Maps a replay race onto the shapes the registry components take. Everything here is pure:
@@ -930,6 +943,208 @@ export function speedTrapAt(race: ReplayRace, driverId: string, elapsedMs: numbe
   if (own === undefined) return null;
   const count = countAtOrBefore(own.ats, elapsedMs);
   return count === 0 ? null : (own.kph[count - 1] ?? null);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Race control
+ *
+ * The dataset keeps race control's messages as the source wrote them, so reading them is this
+ * module's job. Two questions are asked of them ten times a second — which flag is flying, and
+ * which parts of the lap are under a local flag — and both are answered by walking the messages
+ * once per race and remembering the state after each one; a lookup is then a binary search.
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * The safety-car wordings, longest first, because `VIRTUAL SAFETY CAR DEPLOYED` contains
+ * `SAFETY CAR DEPLOYED`. The car state outranks whatever flag is out while it is deployed and is
+ * cleared by its own ending message, which is how the boards work: the flags stay yellow through
+ * the restart lap and only the green puts them out.
+ *
+ * Every other wording — `SAFETY CAR WILL USE...`, a warning of one to come — is deliberately not
+ * matched: an unrecognised message leaves the state exactly as it was, which is a great deal
+ * safer than guessing that a sentence with "safety car" in it deploys one.
+ */
+const SAFETY_CAR_RULES: readonly { match: string; state: 'sc' | 'vsc' | null }[] = [
+  { match: 'VIRTUAL SAFETY CAR DEPLOYED', state: 'vsc' },
+  { match: 'VIRTUAL SAFETY CAR ENDING', state: null },
+  { match: 'VSC DEPLOYED', state: 'vsc' },
+  { match: 'VSC ENDING', state: null },
+  { match: 'SAFETY CAR DEPLOYED', state: 'sc' },
+  { match: 'SAFETY CAR IN THIS LAP', state: null },
+];
+
+/** The state after one message: the flag over the track, and the sectors under a local flag. */
+type RaceControlIndex = {
+  ats: number[];
+  status: TrackStatus[];
+  sectors: TrackSector[][];
+  /** The same messages, newest first, so the feed is a slice rather than a copy and a reverse. */
+  newestFirst: ReplayRaceControl[];
+};
+
+const RACE_CONTROL_INDEXES = new WeakMap<ReplayRace, RaceControlIndex>();
+
+/** Nothing flagged: one shared array, so a memoised consumer sees the same value every tick. */
+const NO_SECTORS: TrackSector[] = [];
+const NO_MESSAGES: ReplayRaceControl[] = [];
+
+/**
+ * The open zones as slices of the lap.
+ *
+ * A marshalling sector `k` of `n` is painted from `(k−1)/n` to `k/n`. That is an assumption, and
+ * the map's caption says so: the numbering is not guaranteed to start at the line or to run with
+ * the direction of travel. Neighbouring zones of the same status are merged into one arc, the
+ * last and first among them too, because a zone that straddles the line is still one zone and
+ * three touching arcs draw seams the real board does not have.
+ */
+function zonesAsSectors(zones: ReadonlyMap<number, TrackStatus>, count: number): TrackSector[] {
+  if (zones.size === 0 || count < 1) return NO_SECTORS;
+
+  const numbers = [...zones.keys()].sort((a, b) => a - b);
+  const runs: { from: number; to: number; status: TrackStatus }[] = [];
+  for (const number of numbers) {
+    const status = zones.get(number);
+    if (status === undefined || number > count) continue;
+    const last = runs.at(-1);
+    if (last && last.to === number - 1 && last.status === status) last.to = number;
+    else runs.push({ from: number, to: number, status });
+  }
+
+  const sectors: TrackSector[] = runs.map((run) => ({
+    start: (run.from - 1) / count,
+    end: run.to / count,
+    status: run.status,
+  }));
+
+  const first = sectors[0];
+  const last = sectors.at(-1);
+  if (
+    sectors.length > 1 &&
+    first !== undefined &&
+    last !== undefined &&
+    first.start === 0 &&
+    last.end === 1 &&
+    first.status === last.status
+  ) {
+    // One zone straddling the line rather than two arcs meeting at it. `start` then sits after
+    // `end`, which is how the Track Map spells a sector that wraps.
+    sectors.pop();
+    first.start = last.start;
+  }
+
+  return sectors;
+}
+
+/**
+ * Walks the messages once and records the state after each.
+ *
+ * The state machine, in the order it is applied to a message:
+ *
+ * - a safety-car wording above sets or clears the car state, and nothing else;
+ * - a driver-scoped message never touches the track: `BLUE` and `BLACK AND WHITE` are addressed to
+ *   one car, and a green flag for the field is not among them;
+ * - `RED` is red and puts every local flag out;
+ * - `CHEQUERED` is chequered;
+ * - a message naming a sector opens a zone for `YELLOW` / `DOUBLE YELLOW` and closes it for
+ *   `CLEAR` / `GREEN`, without touching the flag over the track;
+ * - track-wide `YELLOW` / `DOUBLE YELLOW` is the flag over the track;
+ * - `GREEN`, and any message reading `TRACK CLEAR`, is green and puts every local flag out;
+ * - anything else — `BLACK`, `BLACK AND ORANGE`, a `SessionStatus` note, a wording nobody here has
+ *   seen — leaves the state alone. An unknown message is never a guess.
+ *
+ * The track is green until the first message says otherwise.
+ */
+function indexRaceControl(race: ReplayRace): RaceControlIndex {
+  const cached = RACE_CONTROL_INDEXES.get(race);
+  if (cached) return cached;
+
+  const messages = [...race.raceControl].sort((a, b) => a.atMs - b.atMs);
+  // The count of marshalling sectors is whatever this race's own messages mention: the source
+  // publishes no total, and a circuit with 23 posts is as normal as one with 12.
+  const count = messages.reduce((most, message) => Math.max(most, message.sector ?? 0), 0);
+
+  const index: RaceControlIndex = {
+    ats: [],
+    status: [],
+    sectors: [],
+    newestFirst: [...messages].reverse(),
+  };
+
+  let safety: TrackStatus | null = null;
+  let flag: TrackStatus = 'green';
+  const zones = new Map<number, TrackStatus>();
+
+  for (const message of messages) {
+    const text = message.message.toUpperCase();
+    const rule = SAFETY_CAR_RULES.find((entry) => text.includes(entry.match));
+    const value = message.flag?.trim().toUpperCase() ?? null;
+    const scope = message.scope?.trim().toUpperCase() ?? null;
+
+    if (rule !== undefined) {
+      safety = rule.state;
+    } else if (scope !== 'DRIVER') {
+      if (value === 'RED') {
+        flag = 'red';
+        zones.clear();
+      } else if (value === 'CHEQUERED') {
+        flag = 'chequered';
+      } else if (message.sector !== null && scope !== 'TRACK') {
+        if (value === 'YELLOW') zones.set(message.sector, 'yellow');
+        else if (value === 'DOUBLE YELLOW') zones.set(message.sector, 'double-yellow');
+        else if (value === 'CLEAR' || value === 'GREEN') zones.delete(message.sector);
+      } else if (value === 'YELLOW') {
+        flag = 'yellow';
+      } else if (value === 'DOUBLE YELLOW') {
+        flag = 'double-yellow';
+      } else if (value === 'GREEN' || text.includes('TRACK CLEAR')) {
+        flag = 'green';
+        zones.clear();
+      }
+    }
+
+    index.ats.push(message.atMs);
+    index.status.push(safety ?? flag);
+    index.sectors.push(zonesAsSectors(zones, count));
+  }
+
+  RACE_CONTROL_INDEXES.set(race, index);
+  return index;
+}
+
+/**
+ * The flag flying over the track at a moment of the race. Green before the first message, and
+ * green for the whole of a race the source has no messages for.
+ *
+ * A safety car or a virtual safety car outranks the flag underneath it, because that is what the
+ * viewer needs to read first and what the banner exists to say.
+ */
+export function trackStatusAt(race: ReplayRace, elapsedMs: number): TrackStatus {
+  const index = indexRaceControl(race);
+  const count = countAtOrBefore(index.ats, elapsedMs);
+  return count === 0 ? 'green' : (index.status[count - 1] ?? 'green');
+}
+
+/**
+ * The marshalling sectors under a local flag at a moment of the race, as slices of the lap ready
+ * for the Track Map's `sectors` prop. Empty whenever nothing is flagged, and always the same empty
+ * array, so a consumer that compares by identity is not woken ten times a second for nothing.
+ */
+export function flaggedSectorsAt(race: ReplayRace, elapsedMs: number): TrackSector[] {
+  const index = indexRaceControl(race);
+  const count = countAtOrBefore(index.ats, elapsedMs);
+  return count === 0 ? NO_SECTORS : (index.sectors[count - 1] ?? NO_SECTORS);
+}
+
+/**
+ * Race control's messages up to a moment, newest first: the feed's own order, where the latest
+ * word is the one at the top. Nothing from later in the race is ever included, so seeking back
+ * takes the feed back with it.
+ */
+export function raceControlUpTo(race: ReplayRace, elapsedMs: number): ReplayRaceControl[] {
+  const index = indexRaceControl(race);
+  const count = countAtOrBefore(index.ats, elapsedMs);
+  if (count === 0) return NO_MESSAGES;
+  return index.newestFirst.slice(index.newestFirst.length - count);
 }
 
 /** The best speed-trap reading of the race up to `elapsedMs`, and who set it. */

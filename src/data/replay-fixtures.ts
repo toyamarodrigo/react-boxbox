@@ -235,6 +235,116 @@ export function testReplayRace(): ReplayRace {
       },
       { driverId: 'delta', stints: [{ fromLap: 1, toLap: 2, compound: null }] },
     ],
+    /**
+     * One of every kind of message the real source sends, on a clock a test can read: a session
+     * note that changes nothing, a local flag in two neighbouring sectors, a virtual safety car
+     * with its own ending, a clear for one of the two zones, a message addressed to one car, a
+     * track-wide double yellow, and the green that puts everything out.
+     *
+     * The highest sector any of them mentions is 4, so a flagged sector is a quarter of the lap.
+     */
+    raceControl: [
+      {
+        atMs: 0,
+        lap: 1,
+        flag: null,
+        category: 'SessionStatus',
+        scope: null,
+        sector: null,
+        driverId: null,
+        message: 'GREEN LIGHT - PIT EXIT OPEN',
+      },
+      {
+        atMs: 20_000,
+        lap: 1,
+        flag: 'CLEAR',
+        category: 'Flag',
+        scope: 'Sector',
+        sector: 4,
+        driverId: null,
+        message: 'CLEAR IN TRACK SECTOR 4',
+      },
+      {
+        atMs: 30_000,
+        lap: 1,
+        flag: 'YELLOW',
+        category: 'Flag',
+        scope: 'Sector',
+        sector: 2,
+        driverId: null,
+        message: 'YELLOW IN TRACK SECTOR 2',
+      },
+      {
+        atMs: 35_000,
+        lap: 1,
+        flag: 'YELLOW',
+        category: 'Flag',
+        scope: 'Sector',
+        sector: 3,
+        driverId: null,
+        message: 'YELLOW IN TRACK SECTOR 3',
+      },
+      {
+        atMs: 60_000,
+        lap: 1,
+        flag: null,
+        category: 'SafetyCar',
+        scope: null,
+        sector: null,
+        driverId: null,
+        message: 'VSC DEPLOYED',
+      },
+      {
+        atMs: 120_000,
+        lap: 2,
+        flag: null,
+        category: 'SafetyCar',
+        scope: null,
+        sector: null,
+        driverId: null,
+        message: 'VSC ENDING',
+      },
+      {
+        atMs: 150_000,
+        lap: 2,
+        flag: 'CLEAR',
+        category: 'Flag',
+        scope: 'Sector',
+        sector: 2,
+        driverId: null,
+        message: 'CLEAR IN TRACK SECTOR 2',
+      },
+      {
+        atMs: 210_000,
+        lap: 3,
+        flag: 'BLACK AND WHITE',
+        category: 'Flag',
+        scope: 'Driver',
+        sector: null,
+        driverId: 'charlie',
+        message: 'BLACK AND WHITE FLAG FOR CAR 3 (CHA) - TRACK LIMITS',
+      },
+      {
+        atMs: 250_000,
+        lap: 3,
+        flag: 'DOUBLE YELLOW',
+        category: 'Flag',
+        scope: 'Track',
+        sector: null,
+        driverId: null,
+        message: 'DOUBLE YELLOW IN TRACK',
+      },
+      {
+        atMs: 280_000,
+        lap: 3,
+        flag: 'GREEN',
+        category: 'Flag',
+        scope: 'Track',
+        sector: null,
+        driverId: null,
+        message: 'GREEN LIGHT - TRACK CLEAR',
+      },
+    ],
   };
 }
 
