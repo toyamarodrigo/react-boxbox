@@ -68,6 +68,15 @@ describe('replay page', () => {
     expect(screen.getAllByText(/interpolated from lap times/i)).toHaveLength(2);
   });
 
+  it('is the showcase, not a docs page: subtitle, no sidebar', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+
+    expect(screen.getByText('The whole library in one race')).toBeInTheDocument();
+    // The mobile sheet is closed, so the sidebar `aside` would be the only docs navigation.
+    expect(screen.queryByRole('navigation', { name: 'Documentation' })).toBeNull();
+  });
+
   it('steps forward and back a lap', async () => {
     renderReplay();
     await screen.findByRole('heading', { name: race.name });

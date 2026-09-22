@@ -2,6 +2,7 @@ import { Link, createFileRoute } from '@tanstack/react-router';
 import { ArrowRight } from 'lucide-react';
 import { ComponentGrid } from '../components/site/home/component-grid';
 import { HeroSequence } from '../components/site/home/hero-sequence';
+import { ReplaySection } from '../components/site/home/replay-section';
 import { Button } from '../components/ui/button';
 
 export const Route = createFileRoute('/')({ component: Home });
@@ -53,6 +54,8 @@ function Home() {
           </div>
         ))}
       </div>
+
+      <ReplaySection />
 
       <section aria-labelledby="library-heading" className="mt-24">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4">

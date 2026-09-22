@@ -11,6 +11,7 @@ import {
   overtakeModeFor,
   replayPodium,
 } from '../data/replay-timing';
+import { byDateDescending, formatRaceDate } from '../data/replay-index';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
@@ -48,23 +49,6 @@ export const Route = createFileRoute('/replay')({
 });
 
 const JOLPICA_URL = 'https://github.com/jolpica/jolpica-f1';
-
-/** Newest first, which is also the default selection. */
-function byDateDescending(races: readonly ReplayIndexEntry[]): ReplayIndexEntry[] {
-  return [...races].sort((a, b) => b.date.localeCompare(a.date));
-}
-
-function formatDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00Z`);
-  return Number.isNaN(parsed.getTime())
-    ? date
-    : parsed.toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'UTC',
-      });
-}
 
 function Message({ children, onRetry }: { children: React.ReactNode; onRetry?: () => void }) {
   return (
@@ -355,13 +339,18 @@ function ReplayPage() {
   return (
     <div className="space-y-8 py-4">
       <header className="space-y-4">
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Replay</p>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Replay</p>
+          <p className="text-xs text-muted-foreground">The whole library in one race</p>
+        </div>
         <div>
           <h1 className="font-display text-4xl font-black leading-tight tracking-tight md:text-5xl">
             {entry ? entry.name : 'Race replay'}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {entry ? `${entry.circuit} · ${formatDate(entry.date)}` : 'Pick a race to play back.'}
+            {entry
+              ? `${entry.circuit} · ${formatRaceDate(entry.date)}`
+              : 'Pick a race to play back.'}
           </p>
         </div>
         <RacePicker
@@ -401,7 +390,9 @@ function ReplayPage() {
       <Controls replay={replay} disabled={race.data === undefined} />
 
       {race.data && circuit && (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+        // The page has the whole width now, so the tower column grows with it while the map,
+        // which is the point of the page, still takes everything left over.
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <Stage race={race.data} replay={replay} />
           <Circuit replay={replay} circuit={circuit} />
         </div>

@@ -95,8 +95,18 @@ function ThemeToggle() {
   );
 }
 
+/**
+ * The Replay page is the showcase, not documentation: it drops the sidebar and takes the whole
+ * width. Every other route keeps the docs shell.
+ */
+export function usesDocsSidebar(pathname: string): boolean {
+  return !pathname.startsWith('/replay');
+}
+
 export function SiteLayout() {
   const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
+  const docs = usesDocsSidebar(pathname);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a
@@ -132,7 +142,7 @@ export function SiteLayout() {
         <div className="flex items-center gap-1">
           <Link
             to="/replay"
-            className={`mr-2 hidden text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground sm:inline ${FOCUS_RING}`}
+            className={`mr-1 text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground sm:mr-2 ${FOCUS_RING}`}
           >
             Replay
           </Link>
@@ -149,18 +159,26 @@ export function SiteLayout() {
           </Button>
         </div>
       </header>
-      <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="hidden min-h-[calc(100vh-4rem)] border-r border-border lg:block">
-          <Navigation />
-        </aside>
+      <div
+        className={`mx-auto grid max-w-[1500px] ${docs ? 'lg:grid-cols-[240px_minmax(0,1fr)]' : ''}`}
+      >
+        {docs && (
+          <aside className="hidden min-h-[calc(100vh-4rem)] border-r border-border lg:block">
+            <Navigation />
+          </aside>
+        )}
         <main
           id="content"
           tabIndex={-1}
           className="min-w-0 px-5 py-10 focus:outline-none md:px-10 lg:px-14"
         >
-          <div className="mx-auto max-w-5xl">
+          {docs ? (
+            <div className="mx-auto max-w-5xl">
+              <Outlet />
+            </div>
+          ) : (
             <Outlet />
-          </div>
+          )}
         </main>
       </div>
     </div>
