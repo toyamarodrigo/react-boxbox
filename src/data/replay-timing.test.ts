@@ -17,6 +17,7 @@ import {
   replayPodium,
   replayProgress,
   replayResultsRows,
+  sectorCardAt,
   sectorStatusesAt,
   speedTrapAt,
   speedTrapBestAt,
@@ -552,6 +553,53 @@ describe('sectorStatusesAt', () => {
     expect(statuses('delta', 2, 326_000)).toEqual(['unset', 'unset', 'unset']);
     expect(statuses('delta', 9, 999_999)).toEqual(['unset', 'unset', 'unset']);
     expect(statuses('nobody', 1, 999_999)).toEqual(['unset', 'unset', 'unset']);
+  });
+});
+
+describe('sectorCardAt', () => {
+  it('holds the finished lap until the car completes a sector of the next one', () => {
+    // Alpha's opening lap is 30 / 35 / 35 and its second starts at 100s. Between the line and
+    // the new sector one the card still shows lap 1, whole, with the time it added up to.
+    const held = sectorCardAt(race, 'alpha', 2, 101_000);
+    expect(held.lap).toBe(1);
+    expect(held.sectors.map((sector) => sector.time)).toEqual([30, 35, 35]);
+    expect(held.lapTime).toBe(100);
+    // Alpha's opening lap is the only one finished at 101s, so it is the best of the race.
+    expect(held.lapStatus).toBe('fastest');
+  });
+
+  it('judges the held lap against every lap finished so far', () => {
+    // Bravo's lap two (98s) takes the race lap record from alpha's 100s opening lap.
+    expect(sectorCardAt(race, 'bravo', 3, 199_500).lapStatus).toBe('fastest');
+    // Alpha's own lap two (98.2s) is then its personal best, but not the race's.
+    expect(sectorCardAt(race, 'alpha', 3, 199_500).lapStatus).toBe('personal');
+  });
+
+  it('follows the lap in progress from its first sector, with no lap time yet', () => {
+    // 30s into lap two alpha has a sector one, so the card moves on to the lap being run.
+    const running = sectorCardAt(race, 'alpha', 2, 131_000);
+    expect(running.lap).toBe(2);
+    expect(running.sectors[0]?.time).not.toBe(null);
+    expect(running.sectors[1]?.time).toBe(null);
+    // The lap is not over, so it has no time. This is what keeps the card one lap.
+    expect(running.lapTime).toBe(null);
+    // No time, so no claim: the lap figure reads as unset while the lap is being run.
+    expect(running.lapStatus).toBe('unset');
+  });
+
+  it('has nothing to hold on the opening lap', () => {
+    const first = sectorCardAt(race, 'alpha', 1, 0);
+    expect(first.lap).toBe(1);
+    expect(first.lapTime).toBe(null);
+    expect(first.sectors.map((sector) => sector.status)).toEqual(['unset', 'unset', 'unset']);
+  });
+
+  it('gives no lap time to a held lap the source never timed in full', () => {
+    // Charlie's second lap has no middle sector, so its three cannot add up to a lap time.
+    const held = sectorCardAt(race, 'charlie', 3, 321_000);
+    expect(held.lap).toBe(2);
+    expect(held.lapTime).toBe(null);
+    expect(held.lapStatus).toBe('unset');
   });
 });
 

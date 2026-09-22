@@ -633,6 +633,9 @@ type TimingIndex = {
   cars: Map<string, SectorRuns>;
   /** Per car, per lap: the sector times and when each sector is complete. */
   laps: Map<string, Map<number, { sectorMs: ReplayLapRow['sectorMs']; ends: (number | null)[] }>>;
+  /** Completed lap totals in race-clock order, with the running best after each. */
+  lapRuns: { ats: number[]; best: number[] };
+  carLapRuns: Map<string, { ats: number[]; best: number[] }>;
   speedAts: number[];
   /** The best of the race after each reading, in the same order as `speedAts`. */
   speedBest: { driverId: string; speedKph: number }[];
@@ -672,6 +675,40 @@ function sectorRuns(events: readonly SectorEvent[]): SectorRuns {
   return { ats, best };
 }
 
+/** A lap's time from its sectors, or null unless the source timed all three of them. */
+function lapTotal(sectorMs: ReplayLapRow['sectorMs']): number | null {
+  return sectorMs.reduce<number | null>(
+    (sum, ms) => (sum === null || ms === null ? null : sum + ms),
+    0,
+  );
+}
+
+/** The best completed lap at a moment, in milliseconds; null before anyone has finished one. */
+function bestLapAt(
+  runs: { ats: number[]; best: number[] } | undefined,
+  elapsedMs: number,
+): number | null {
+  if (runs === undefined) return null;
+  const count = countAtOrBefore(runs.ats, elapsedMs);
+  return count === 0 ? null : (runs.best[count - 1] ?? null);
+}
+
+/** The same running-best walk as `sectorRuns`, over whole laps rather than sectors. */
+function lapRuns(entries: readonly { at: number; ms: number }[]): {
+  ats: number[];
+  best: number[];
+} {
+  const ats: number[] = [];
+  const best: number[] = [];
+  let running = Number.POSITIVE_INFINITY;
+  for (const entry of entries) {
+    if (entry.ms < running) running = entry.ms;
+    ats.push(entry.at);
+    best.push(running);
+  }
+  return { ats, best };
+}
+
 /** Built once per race object, like `indexRace`: the page asks for these ten times a second. */
 const TIMING_INDEXES = new WeakMap<ReplayRace, TimingIndex>();
 
@@ -684,6 +721,8 @@ function indexTiming(race: ReplayRace): TimingIndex {
   const speeds: { at: number; driverId: string; speedKph: number }[] = [];
   const carSpeeds = new Map<string, { ats: number[]; kph: number[] }>();
   const laps: TimingIndex['laps'] = new Map();
+  /** A lap only has a total once all three of its sectors are timed. */
+  const lapTotals: { at: number; driverId: string; ms: number }[] = [];
 
   for (const [driverId, driverLaps] of indexRace(race)) {
     const own: SectorEvent[] = [];
@@ -701,6 +740,8 @@ function indexTiming(race: ReplayRace): TimingIndex {
         if (ms === null || at == null) continue;
         own.push({ at, driverId, sector, ms });
       }
+      const total = lapTotal(lap.row.sectorMs);
+      if (total !== null) lapTotals.push({ at: lap.end, driverId, ms: total });
       if (lap.row.speedTrapKph !== null) {
         ownSpeeds.ats.push(lap.end);
         ownSpeeds.kph.push(lap.row.speedTrapKph);
@@ -717,6 +758,7 @@ function indexTiming(race: ReplayRace): TimingIndex {
 
   events.sort((a, b) => a.at - b.at);
   speeds.sort((a, b) => a.at - b.at);
+  lapTotals.sort((a, b) => a.at - b.at);
 
   const speedAts: number[] = [];
   const speedBest: { driverId: string; speedKph: number }[] = [];
@@ -731,6 +773,13 @@ function indexTiming(race: ReplayRace): TimingIndex {
 
   const index: TimingIndex = {
     race: sectorRuns(events),
+    lapRuns: lapRuns(lapTotals),
+    carLapRuns: new Map(
+      [...new Set(lapTotals.map((entry) => entry.driverId))].map((id) => [
+        id,
+        lapRuns(lapTotals.filter((entry) => entry.driverId === id)),
+      ]),
+    ),
     cars: new Map([...byCar].map(([id, own]) => [id, sectorRuns(own)])),
     laps,
     speedAts,
@@ -804,6 +853,59 @@ export function sectorStatusesAt(
     };
   });
   return [times[0] ?? UNSET_SECTORS[0], times[1] ?? UNSET_SECTORS[1], times[2] ?? UNSET_SECTORS[2]];
+}
+
+/**
+ * The lap a sector card should be showing, and that lap's own time once it is over.
+ *
+ * A card cannot mix laps: three sectors of the lap in progress beside the *previous* lap's time
+ * reads as one lap that somehow has no sectors. So the card holds the last lap the car finished —
+ * all three sectors and the time they add up to — until the car completes the first sector of the
+ * new one, and only then follows it round. That is how a broadcast does it, and it means the
+ * figures on the card always belong together.
+ *
+ * `lapTime` is in seconds, and is null exactly while the shown lap is still being run.
+ */
+export function sectorCardAt(
+  race: ReplayRace,
+  driverId: string,
+  lap: number,
+  elapsedMs: number,
+): {
+  lap: number;
+  sectors: [SectorTime, SectorTime, SectorTime];
+  lapTime: number | null;
+  lapStatus: SectorStatus;
+} {
+  const running = sectorStatusesAt(race, driverId, lap, elapsedMs);
+  // The lap in progress owns the card from its first sector on.
+  if (running.some((sector) => sector.time !== null)) {
+    return { lap, sectors: running, lapTime: null, lapStatus: 'unset' };
+  }
+
+  const previous = lap - 1;
+  const finished = previous < 1 ? undefined : indexTiming(race).laps.get(driverId)?.get(previous);
+  if (finished === undefined) return { lap, sectors: running, lapTime: null, lapStatus: 'unset' };
+
+  const sectors = sectorStatusesAt(race, driverId, previous, elapsedMs);
+  const total = lapTotal(finished.sectorMs);
+  if (total === null) {
+    return { lap: previous, sectors, lapTime: null, lapStatus: 'unset' };
+  }
+
+  // The lap is judged the way its sectors are: against every lap completed at or before now, this
+  // one included, so a lap that *is* the best of the race reads as the best.
+  const index = indexTiming(race);
+  return {
+    lap: previous,
+    sectors,
+    lapTime: total / 1000,
+    lapStatus: sectorStatus(
+      total,
+      bestLapAt(index.lapRuns, elapsedMs),
+      bestLapAt(index.carLapRuns.get(driverId), elapsedMs),
+    ),
+  };
 }
 
 /**

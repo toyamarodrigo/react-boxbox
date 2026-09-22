@@ -29,7 +29,7 @@ import {
   positionsSinceStart,
   replayGaps,
   replayPodium,
-  sectorStatusesAt,
+  sectorCardAt,
   speedTrapAt,
   speedTrapBestAt,
   stintAt,
@@ -38,7 +38,7 @@ import { byDateDescending, formatRaceDate } from '../data/replay-index';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
-import type { SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
+import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
@@ -369,7 +369,7 @@ function FollowedFigures({
   behind,
   stints,
   lap,
-  sectors,
+  card,
 }: {
   race: ReplayRace;
   row: TimingRow;
@@ -378,16 +378,25 @@ function FollowedFigures({
   stints: StintsByDriver;
   /** The lap this car is on, which is not the leader's lap. */
   lap: number;
-  /** This car's sectors on that lap, or absent when the race carries no timing at all. */
-  sectors: [SectorTime, SectorTime, SectorTime] | undefined;
+  /**
+   * The car's sector card — one lap's three sectors and, once it is over, its time. Absent when
+   * the race carries no timing at all.
+   */
+  card:
+    | {
+        sectors: [SectorTime, SectorTime, SectorTime];
+        lapTime: number | null;
+        lapStatus: SectorStatus;
+      }
+    | undefined;
 }) {
   const made = positionsSinceStart(race, row.driverId, row.position);
   const own = stints.get(row.driverId);
 
   return (
     <div className="flex flex-col gap-2">
-      <div className={cn('grid gap-x-3 gap-y-2', sectors ? 'grid-cols-3' : 'grid-cols-2')}>
-        {sectors === undefined && (
+      <div className={cn('grid gap-x-3 gap-y-2', card ? 'grid-cols-3' : 'grid-cols-2')}>
+        {card === undefined && (
           <TimingTowerFigure label="Last" figure="last">
             {formatLapTime(row.lastLapTime)}
           </TimingTowerFigure>
@@ -400,12 +409,13 @@ function FollowedFigures({
         </TimingTowerFigure>
         <PlacesMade made={made} />
       </div>
-      {sectors && (
+      {card && (
         <SectorTimes
-          sectors={sectors}
-          lapTime={row.lastLapTime}
-          // The lap keeps the neutral status: this page judges sectors against the race so far,
-          // and has no best *lap* at the current race time, so a colour here would be a claim.
+          sectors={card.sectors}
+          // The card's own lap, so the three sectors, the time they add up to and its colour all
+          // describe one lap. Null while that lap is still being run, which is what `unset` means.
+          lapTime={card.lapTime}
+          lapStatus={card.lapStatus}
           className="gap-2 p-2"
         />
       )}
@@ -506,12 +516,15 @@ function Stage({
    */
   const timed = useMemo(() => hasTimingData(race), [race]);
 
-  /** The followed car's sectors on its own lap, filling in as it runs the lap. */
-  const followedSectors = useMemo(
+  /**
+   * The followed car's sector card: the lap it has just finished until it completes a sector of
+   * the new one, then that lap filling in. Sectors and lap time always describe the same lap.
+   */
+  const followedCard = useMemo(
     () =>
       !timed || followedId === undefined
         ? undefined
-        : sectorStatusesAt(race, followedId, followedLap, replay.elapsedMs),
+        : sectorCardAt(race, followedId, followedLap, replay.elapsedMs),
     [timed, followedId, race, followedLap, replay.elapsedMs],
   );
 
@@ -535,10 +548,10 @@ function Stage({
         behind={ctx.behind}
         stints={stints}
         lap={followedLap}
-        sectors={followedSectors}
+        card={followedCard}
       />
     ),
-    [race, stints, followedLap, followedSectors],
+    [race, stints, followedLap, followedCard],
   );
 
   return (
