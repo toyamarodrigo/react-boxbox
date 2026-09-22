@@ -23,23 +23,29 @@ import {
   emphasiseMarker,
   followedDriverId,
   formatRaceTime,
+  hasTimingData,
   leaderLapsCompleted,
   overtakeModeFor,
   positionsSinceStart,
   replayGaps,
   replayPodium,
+  sectorStatusesAt,
+  speedTrapAt,
+  speedTrapBestAt,
   stintAt,
 } from '../data/replay-timing';
 import { byDateDescending, formatRaceDate } from '../data/replay-index';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
-import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
+import type { SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
+import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
+import { SpeedTrap } from '@/registry/boxbox/ui/speed-trap';
 import { StintBar } from '@/registry/boxbox/ui/stint-bar';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
 import {
@@ -321,11 +327,40 @@ function FollowedTyre({ stint, lap }: { stint: ReplayStint | undefined; lap: num
 }
 
 /**
+ * Places made up since the grid. Its own component so the panel around it stays one list of
+ * figures: the arrow and the sentence under it are two spellings of one number, and neither the
+ * tower nor this page has anywhere else to put them.
+ */
+function PlacesMade({ made }: { made: number | null }) {
+  return (
+    <TimingTowerFigure label="Since start" figure="places">
+      {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
+      <span aria-hidden className={CHANGE_TONES[positionChangeState(made ?? 0)]}>
+        {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
+      </span>
+      <span className="sr-only">
+        {made === null
+          ? 'no grid slot'
+          : made === 0
+            ? 'no places made up'
+            : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
+      </span>
+    </TimingTowerFigure>
+  );
+}
+
+/**
  * What the followed row shows on this page: the tower's own figures, the places the car has made
  * up since the grid, and its tyres — both of which the registry cannot know.
  *
+ * With real timing the `LAST` figure gives way to `SectorTimes`, which says the same lap time and
+ * three sectors more; the remaining three figures then fit on one line, so the panel grows by the
+ * sector card alone. A race OpenF1 never covered keeps the old four figures rather than a card of
+ * em dashes nothing in that race will ever fill.
+ *
  * Every line has a height of its own, because the tower's panel measures itself once as it opens
- * and anything that grew afterwards would hang out of it.
+ * and anything that grew afterwards would hang out of it. The sector card is no exception: its
+ * bars and both text sizes are fixed, so an unset sector is exactly as tall as a set one.
  */
 function FollowedFigures({
   race,
@@ -334,6 +369,7 @@ function FollowedFigures({
   behind,
   stints,
   lap,
+  sectors,
 }: {
   race: ReplayRace;
   row: TimingRow;
@@ -342,37 +378,37 @@ function FollowedFigures({
   stints: StintsByDriver;
   /** The lap this car is on, which is not the leader's lap. */
   lap: number;
+  /** This car's sectors on that lap, or absent when the race carries no timing at all. */
+  sectors: [SectorTime, SectorTime, SectorTime] | undefined;
 }) {
   const made = positionsSinceStart(race, row.driverId, row.position);
-  const change = positionChangeState(made ?? 0);
   const own = stints.get(row.driverId);
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-        <TimingTowerFigure label="Last" figure="last">
-          {formatLapTime(row.lastLapTime)}
-        </TimingTowerFigure>
+      <div className={cn('grid gap-x-3 gap-y-2', sectors ? 'grid-cols-3' : 'grid-cols-2')}>
+        {sectors === undefined && (
+          <TimingTowerFigure label="Last" figure="last">
+            {formatLapTime(row.lastLapTime)}
+          </TimingTowerFigure>
+        )}
         <TimingTowerFigure label="Ahead" figure="ahead">
           {ahead === undefined ? EMPTY : formatGap(row.interval)}
         </TimingTowerFigure>
         <TimingTowerFigure label="Behind" figure="behind">
           {formatGap(behind?.interval ?? null)}
         </TimingTowerFigure>
-        <TimingTowerFigure label="Since start" figure="places">
-          {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
-          <span aria-hidden className={CHANGE_TONES[change]}>
-            {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
-          </span>
-          <span className="sr-only">
-            {made === null
-              ? 'no grid slot'
-              : made === 0
-                ? 'no places made up'
-                : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
-          </span>
-        </TimingTowerFigure>
+        <PlacesMade made={made} />
       </div>
+      {sectors && (
+        <SectorTimes
+          sectors={sectors}
+          lapTime={row.lastLapTime}
+          // The lap keeps the neutral status: this page judges sectors against the race so far,
+          // and has no best *lap* at the current race time, so a colour here would be a claim.
+          className="gap-2 p-2"
+        />
+      )}
       <div className="flex h-11 items-center gap-3">
         <TimingTowerFigure label="Tyre" figure="tyre" className="w-12 shrink-0">
           <FollowedTyre stint={stintAt(own, lap)} lap={lap} />
@@ -388,6 +424,41 @@ function FollowedFigures({
     </div>
   );
 }
+
+/**
+ * The last trap reading under the tower: the followed car's, or the leader's when nobody is
+ * followed. Memoised on the plain values it draws rather than on the race clock, because the
+ * column re-renders ten times a second and the trap only fires as a car crosses the line — the
+ * same reason `StrategyLine` and `PitStopMarks` are memoised. The session best is taken apart
+ * into two values for that: an object rebuilt every tick would defeat the shallow comparison.
+ */
+const SpeedTrapCard = memo(function SpeedTrapCard({
+  code,
+  color,
+  speed,
+  bestCode,
+  bestSpeed,
+}: {
+  code: string;
+  color: string | undefined;
+  speed: number | null;
+  bestCode: string | undefined;
+  bestSpeed: number | null;
+}) {
+  const sessionBest =
+    bestCode === undefined || bestSpeed === null ? null : { code: bestCode, speed: bestSpeed };
+  return (
+    <SpeedTrap
+      // The readings are km/h, which is what OpenF1 publishes.
+      unit="kph"
+      code={code}
+      color={color}
+      speed={speed}
+      sessionBest={sessionBest}
+      className="w-full"
+    />
+  );
+});
 
 function Stage({
   race,
@@ -428,6 +499,31 @@ function Stage({
     return running ?? stints.get(followedId)?.at(-1)?.toLap ?? 0;
   }, [followedId, race, replay.elapsedMs, pit, stints]);
 
+  /**
+   * Whether this race has any OpenF1 timing. 2021-22 Abu Dhabi has none, and neither the sector
+   * card nor the speed trap can ever fill there, so both give way rather than sit empty for the
+   * whole race. Decided from the laps themselves, not from the season.
+   */
+  const timed = useMemo(() => hasTimingData(race), [race]);
+
+  /** The followed car's sectors on its own lap, filling in as it runs the lap. */
+  const followedSectors = useMemo(
+    () =>
+      !timed || followedId === undefined
+        ? undefined
+        : sectorStatusesAt(race, followedId, followedLap, replay.elapsedMs),
+    [timed, followedId, race, followedLap, replay.elapsedMs],
+  );
+
+  // The trap card follows the followed car, and the leader when the viewer follows nobody.
+  const trapDriver = drivers[followedId ?? replay.rows[0]?.driverId ?? ''];
+  const trapSpeed =
+    trapDriver === undefined ? null : speedTrapAt(race, trapDriver.id, replay.elapsedMs);
+  const trapBest = useMemo(
+    () => (timed ? speedTrapBestAt(race, replay.elapsedMs) : null),
+    [timed, race, replay.elapsedMs],
+  );
+
   // Both are handed to the tower on every tick, so neither may be a fresh value each render.
   const handleRowClick = useCallback((row: TimingRow) => onFollow(row.driverId), [onFollow]);
   const renderExpanded = useCallback(
@@ -439,9 +535,10 @@ function Stage({
         behind={ctx.behind}
         stints={stints}
         lap={followedLap}
+        sectors={followedSectors}
       />
     ),
-    [race, stints, followedLap],
+    [race, stints, followedLap, followedSectors],
   );
 
   return (
@@ -472,6 +569,19 @@ function Stage({
         renderExpanded={renderExpanded}
         className="w-full"
       />
+      {/*
+       * Above the notes rather than under them: the notes are the column's footnotes, and a card
+       * of race figures reads as part of the timing, not as something after the small print.
+       */}
+      {timed && trapDriver && (
+        <SpeedTrapCard
+          code={trapDriver.code}
+          color={teams[trapDriver.teamId]?.color}
+          speed={trapSpeed}
+          bestCode={trapBest?.code}
+          bestSpeed={trapBest?.speedKph ?? null}
+        />
+      )}
       <p className="text-xs text-muted-foreground">Click a row to follow a driver. Esc releases.</p>
       {!replay.finished && (
         <p className="text-xs text-muted-foreground">

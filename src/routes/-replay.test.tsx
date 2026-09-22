@@ -36,6 +36,28 @@ const searchOf = (router: ReturnType<typeof getRouter>) =>
   router.state.location.search as { driver?: string; round?: number };
 
 const followedRow = () => document.querySelector('[data-slot="timing-tower-row"][data-followed]');
+const sectorCard = () => document.querySelector('[data-slot="sector-times"]');
+const sectorValues = () =>
+  [...document.querySelectorAll('[data-slot="sector-times-sector"]')].map((sector) => [
+    sector.getAttribute('data-status'),
+    sector.textContent?.replace(/,.*/, ''),
+  ]);
+const trapCard = () => document.querySelector('[data-slot="speed-trap"]');
+const trapPart = (slot: string) =>
+  trapCard()?.querySelector(`[data-slot="speed-trap-${slot}"]`)?.textContent;
+
+/** The same race with every sector and every trap reading missing: a season OpenF1 never covered. */
+const untimedRace = () => ({
+  ...race,
+  laps: race.laps.map((lap) => ({
+    ...lap,
+    rows: lap.rows.map((row) => ({
+      ...row,
+      sectorMs: [null, null, null] as [null, null, null],
+      speedTrapKph: null,
+    })),
+  })),
+});
 const rowButton = (driverId: string) =>
   document.querySelector<HTMLElement>(
     `[data-driver="${driverId}"] [data-slot="timing-tower-row-button"]`,
@@ -360,6 +382,81 @@ describe('replay page, followed driver', () => {
     fireEvent.click(rowButton('charlie')!);
     await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
     expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
+  });
+});
+
+describe('replay page, sectors and speed trap', () => {
+  it('fills the followed row in sector by sector as the lap runs', async () => {
+    renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    // The sector card replaces the LAST figure, so the lap time is only said once.
+    expect(sectorCard()).not.toBeNull();
+    expect(document.querySelector('[data-figure="last"]')).toBeNull();
+    // Nothing has been run at the start of the race, so nothing is claimed.
+    expect(sectorValues()).toEqual([
+      ['unset', 'S1—'],
+      ['unset', 'S2—'],
+      ['unset', 'S3—'],
+    ]);
+
+    // One leader lap in, charlie is 100 s into its own 160 s lap: S1 is done, S2 is not.
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(sectorValues()[0]).toEqual(['personal', 'S148.000']));
+    expect(sectorValues().slice(1)).toEqual([
+      ['unset', 'S2—'],
+      ['unset', 'S3—'],
+    ]);
+  });
+
+  it('shows the leader in the trap card, and the followed driver once there is one', async () => {
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(trapCard()).not.toBeNull());
+
+    // Before anyone has crossed the line the card keeps its shape and claims no record.
+    expect(trapPart('plate')).toContain('ALP');
+    expect(trapPart('reading')).toContain('—');
+    expect(trapPart('best')).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(trapPart('reading')).toContain('240'));
+    // The best is the best of the race so far, which is the only reading taken so far.
+    expect(trapPart('best')).toContain('ALP');
+    expect(trapPart('best')).toContain('240');
+
+    fireEvent.click(rowButton('charlie')!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+
+    // Charlie crossed at 160 s with 180 km/h; bravo's second lap took the record by then.
+    await waitFor(() => expect(trapPart('plate')).toContain('CHA'));
+    expect(trapPart('reading')).toContain('180');
+    expect(trapPart('best')).toContain('BRA');
+    expect(trapPart('best')).toContain('242');
+  });
+
+  it('keeps the old figures for a race OpenF1 never covered', async () => {
+    const untimed = untimedRace();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(untimed);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    // Neither a card of em dashes nothing will ever fill, nor a missing lap time.
+    expect(sectorCard()).toBeNull();
+    expect(trapCard()).toBeNull();
+    expect(document.querySelector('[data-figure="last"]')).not.toBeNull();
+    expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
   });
 });
 

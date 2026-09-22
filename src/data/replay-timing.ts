@@ -807,6 +807,19 @@ export function sectorStatusesAt(
 }
 
 /**
+ * Whether the race carries any OpenF1 timing at all — one sector or one trap reading is enough.
+ *
+ * Asked of the laps rather than of `source.timing` or of the race id: a race built before the
+ * timing block existed has no source entry and may still have figures, and a season OpenF1 does
+ * not cover has the entry but every figure null. A page uses this to decide between a panel that
+ * will fill in as the race runs and one that would show em dashes for two hours.
+ */
+export function hasTimingData(race: ReplayRace): boolean {
+  const index = indexTiming(race);
+  return index.race.ats.length > 0 || index.speedAts.length > 0;
+}
+
+/**
  * A car's most recent speed-trap reading at `elapsedMs`, in km/h. `null` until it has one: an
  * older season OpenF1 does not cover never gets one at all.
  */
