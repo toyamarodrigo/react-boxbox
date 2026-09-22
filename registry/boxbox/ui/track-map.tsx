@@ -72,27 +72,28 @@ function viewBoxSize(viewBox: string): { width: number; height: number } {
   };
 }
 
-export type PathFromPointsOptions = {
+export type FitPointsOptions = {
   width?: number;
   height?: number;
   padding?: number;
+};
+
+export type PathFromPointsOptions = FitPointsOptions & {
   close?: boolean;
 };
 
 /**
- * Turns arbitrary coordinates into an SVG `d` and a matching `viewBox`.
- *
- * Any source of points works, including a GeoJSON `LineString` of longitude and
- * latitude pairs. The outline keeps its aspect ratio, is centred inside the box,
- * and the y axis is flipped so that north points up.
+ * Fits arbitrary coordinates into a `viewBox`, keeping their aspect ratio, centring them,
+ * and flipping the y axis so that north points up. Returns the fitted points in viewBox
+ * units, so a second layer (a pit lane, a marker) can be derived in the same space.
  */
-export function pathFromPoints(
+export function fitPoints(
   points: readonly (readonly [number, number])[],
-  options: PathFromPointsOptions = {},
-): { d: string; viewBox: string } {
-  const { width = 1000, height = 600, padding = 40, close = true } = options;
+  options: FitPointsOptions = {},
+): { points: [number, number][]; viewBox: string } {
+  const { width = 1000, height = 600, padding = 40 } = options;
   const viewBox = `0 0 ${width} ${height}`;
-  if (points.length === 0) return { d: '', viewBox };
+  if (points.length === 0) return { points: [], viewBox };
 
   const xs = points.map(([x]) => x);
   const ys = points.map(([, y]) => y);
@@ -108,16 +109,39 @@ export function pathFromPoints(
   const offsetX = (width - spanX * scale) / 2;
   const offsetY = (height - spanY * scale) / 2;
 
-  const d = points
-    .map(([x, y], index) => {
-      const px = round(offsetX + (x - minX) * scale);
+  return {
+    points: points.map(([x, y]) => [
+      round(offsetX + (x - minX) * scale),
       // Flipped: source coordinates grow northwards, SVG grows downwards.
-      const py = round(height - (offsetY + (y - minY) * scale));
-      return `${index === 0 ? 'M' : 'L'} ${px} ${py}`;
-    })
-    .join(' ');
+      round(height - (offsetY + (y - minY) * scale)),
+    ]),
+    viewBox,
+  };
+}
 
-  return { d: close ? `${d} Z` : d, viewBox };
+/** Joins points already in viewBox units into an SVG `d` of straight segments. */
+export function pointsToPath(points: readonly (readonly [number, number])[], close = true): string {
+  if (points.length === 0) return '';
+  const d = points
+    .map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${round(x)} ${round(y)}`)
+    .join(' ');
+  return close ? `${d} Z` : d;
+}
+
+/**
+ * Turns arbitrary coordinates into an SVG `d` and a matching `viewBox`.
+ *
+ * Any source of points works, including a GeoJSON `LineString` of longitude and
+ * latitude pairs. The outline keeps its aspect ratio, is centred inside the box,
+ * and the y axis is flipped so that north points up.
+ */
+export function pathFromPoints(
+  points: readonly (readonly [number, number])[],
+  options: PathFromPointsOptions = {},
+): { d: string; viewBox: string } {
+  const { close = true, ...fit } = options;
+  const fitted = fitPoints(points, fit);
+  return { d: pointsToPath(fitted.points, close), viewBox: fitted.viewBox };
 }
 
 /**
@@ -168,6 +192,27 @@ export function TrackMapPath({
       strokeLinejoin="round"
       strokeLinecap="round"
       className={cn('stroke-muted-foreground opacity-30', className)}
+      {...props}
+    />
+  );
+}
+
+/** The pit lane: a thinner, fainter road beside the track, drawn underneath it. */
+export function TrackMapPitLane({
+  path,
+  strokeWidth = TRACK_MAP_STROKE_WIDTH,
+  className,
+  ...props
+}: { path: string; strokeWidth?: number } & React.ComponentProps<'path'>) {
+  return (
+    <path
+      data-slot="track-map-pit-lane"
+      d={path}
+      fill="none"
+      strokeWidth={strokeWidth * 0.5}
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      className={cn('stroke-muted-foreground opacity-20', className)}
       {...props}
     />
   );
@@ -236,6 +281,11 @@ export function TrackMapStartFinish({
   );
 }
 
+/**
+ * One car. `path` is the road the marker runs on: the lap, or the pit lane while the car is
+ * in it. A marker that changes road must be remounted (the map keys it on the road), so it
+ * appears at its new place rather than sliding there across the circuit.
+ */
 export function TrackMapMarker({
   marker,
   path,
@@ -276,6 +326,7 @@ export function TrackMapMarker({
     <div
       data-slot="track-map-marker"
       data-id={marker.id}
+      data-pit={marker.inPit ? 'true' : undefined}
       data-wrap={wrapped ? 'true' : undefined}
       aria-hidden
       className={cn(
@@ -324,6 +375,11 @@ export function TrackMapMarker({
 export type TrackMapProps = {
   /** SVG `d` for the lap, in the coordinate space of `viewBox`. */
   path: string;
+  /**
+   * SVG `d` for the pit lane, an open path from pit entry to pit exit in the same space.
+   * A marker with `inPit` runs along it, its `progress` measured from entry to exit.
+   */
+  pitLane?: string;
   viewBox?: string;
   sectors?: readonly TrackSector[];
   markers?: readonly TrackMarker[];
@@ -342,6 +398,7 @@ export type TrackMapProps = {
 
 export function TrackMap({
   path,
+  pitLane,
   viewBox = TRACK_MAP_VIEW_BOX,
   sectors = [],
   markers = [],
@@ -386,6 +443,7 @@ export function TrackMap({
         preserveAspectRatio="xMidYMid meet"
         className="h-auto w-full"
       >
+        {pitLane && <TrackMapPitLane path={pitLane} strokeWidth={strokeWidth} />}
         <TrackMapPath path={path} strokeWidth={strokeWidth} />
         <TrackMapSectors path={path} sectors={sectors} strokeWidth={strokeWidth} />
         {showStartFinish && <TrackMapStartFinish path={path} strokeWidth={strokeWidth} />}
@@ -397,22 +455,30 @@ export function TrackMap({
           className="pointer-events-none absolute left-0 top-0 origin-top-left"
           style={{ width, height, transform: 'scale(var(--track-map-scale))' }}
         >
-          {markers.map((marker) => (
-            <TrackMapMarker
-              key={marker.id}
-              marker={marker}
-              path={path}
-              size={size}
-              transitionMs={transitionMs}
-            />
-          ))}
+          {markers.map((marker) => {
+            const inPit = marker.inPit === true && pitLane !== undefined;
+            return (
+              <TrackMapMarker
+                // Keyed on the road too: a car entering or leaving the pit lane gets a
+                // fresh marker at its new place, with no transition across the circuit.
+                key={`${marker.id}:${inPit ? 'pit' : 'lap'}`}
+                marker={marker}
+                path={inPit ? pitLane : path}
+                size={size}
+                transitionMs={transitionMs}
+              />
+            );
+          })}
         </div>
       )}
       {markers.length > 0 && (
         <ul data-slot="track-map-positions" className="sr-only">
           {markers.map((marker) => (
             <li key={marker.id}>
-              {marker.code ?? marker.id} at {Math.round(clamp01(marker.progress) * 100)}% of the lap
+              {marker.code ?? marker.id}{' '}
+              {marker.inPit
+                ? 'in the pit lane'
+                : `at ${Math.round(clamp01(marker.progress) * 100)}% of the lap`}
             </li>
           ))}
         </ul>

@@ -89,8 +89,8 @@ export function finishStatusOf(status: string, positionText: string): ReplayFini
  *   this field: `ReplayResult.lapsBehind` comes from the `+N Lap(s)` status instead.
  */
 export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): ReplayLap[] {
-  const pits = new Set(
-    rawPitStops.map((stop) => `${Number.parseInt(stop.lap, 10)}:${stop.driverId}`),
+  const pits = new Map(
+    rawPitStops.map((stop) => [`${Number.parseInt(stop.lap, 10)}:${stop.driverId}`, stop]),
   );
 
   const cumulatives = new Map<string, number | null>();
@@ -117,6 +117,8 @@ export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): Replay
       const cumulativeMs = previous === null || lapTimeMs === null ? null : previous + lapTimeMs;
       cumulatives.set(timing.driverId, cumulativeMs);
 
+      const stop = pits.get(`${lap}:${timing.driverId}`);
+      const stopNumber = stop?.stop === undefined ? null : Number.parseInt(stop.stop, 10);
       return {
         driverId: timing.driverId,
         position: Number.parseInt(timing.position, 10),
@@ -124,7 +126,11 @@ export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): Replay
         cumulativeMs,
         gapToLeaderMs: null,
         intervalMs: null,
-        inPit: pits.has(`${lap}:${timing.driverId}`),
+        inPit: stop !== undefined,
+        // The source's `duration` is the time spent in the pit lane, entry to exit.
+        pitDurationMs: stop?.duration === undefined ? null : parseLapTime(stop.duration),
+        pitStop:
+          stopNumber === null || Number.isNaN(stopNumber) || stopNumber < 1 ? null : stopNumber,
         overtake: false,
         lapsBehind: 0,
       };

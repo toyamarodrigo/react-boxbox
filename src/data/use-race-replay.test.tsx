@@ -174,6 +174,46 @@ describe('useRaceReplay', () => {
     expect(result.current.markers[1]?.progress).toBe(0);
   });
 
+  it('draws pit stops on the lane when given the circuit pit shape', () => {
+    // Charlie stops on lap one: 20 s in the lane on a 160 s lap, entering 10 s before the line.
+    const pitted = {
+      ...race,
+      laps: race.laps.map((lap) =>
+        lap.lap === 1
+          ? {
+              ...lap,
+              rows: lap.rows.map((row) =>
+                row.driverId === 'charlie'
+                  ? { ...row, inPit: true, pitDurationMs: 20_000, pitStop: 1 }
+                  : row,
+              ),
+            }
+          : lap,
+      ),
+    };
+    const pit = { entry: 0.9, exit: 0.1 };
+    const { result } = renderHook(() => useRaceReplay(pitted, { pit }));
+    expect(result.current.pitStops).toEqual([{ driverId: 'charlie', lap: 1, atMs: 150_000 }]);
+
+    const charlie = () => ({
+      marker: result.current.markers.find((marker) => marker.id === 'charlie'),
+      row: result.current.rows.find((row) => row.driverId === 'charlie'),
+    });
+    act(() => result.current.seek(100_000));
+    expect(charlie().marker?.inPit).toBeFalsy();
+    expect(charlie().row?.inPit).toBe(false);
+
+    act(() => result.current.seek(155_000));
+    expect(charlie().marker?.inPit).toBe(true);
+    expect(charlie().marker?.progress).toBeCloseTo(0.25);
+    expect(charlie().row?.inPit).toBe(true);
+
+    // Without the shape the whole pit lap is flagged and no stop can be placed on the bar.
+    const bare = renderHook(() => useRaceReplay(pitted));
+    expect(bare.result.current.pitStops).toEqual([]);
+    expect(bare.result.current.rows.find((row) => row.driverId === 'charlie')?.inPit).toBe(true);
+  });
+
   it('rewinds when the race changes', () => {
     const { result, rerender } = renderHook(({ value }) => useRaceReplay(value), {
       initialProps: { value: race as ReturnType<typeof testReplayRace> | undefined },

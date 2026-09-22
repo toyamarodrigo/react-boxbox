@@ -252,6 +252,55 @@ describe('TrackMap', () => {
     expect(element()).not.toHaveAttribute('data-wrap');
   });
 
+  it('draws the pit lane under the track and runs a pitting car along it', () => {
+    const pit = 'M 0 10 L 50 10 L 100 10';
+    const { container, rerender } = render(
+      <TrackMap
+        path={PATH}
+        pitLane={pit}
+        markers={[marker({ id: 'evo', code: 'EVO', progress: 0.95 })]}
+      />,
+    );
+    const lane = container.querySelector('[data-slot="track-map-pit-lane"]');
+    expect(lane).toHaveAttribute('d', pit);
+    expect(lane).toHaveAttribute('stroke-width', '7');
+    // Drawn before the track so the track paints over it.
+    expect(lane?.nextElementSibling).toHaveAttribute('data-slot', 'track-map-path');
+
+    const element = () => container.querySelector<HTMLElement>('[data-slot="track-map-marker"]');
+    expect(element()).not.toHaveAttribute('data-pit');
+
+    rerender(
+      <TrackMap
+        path={PATH}
+        pitLane={pit}
+        markers={[marker({ id: 'evo', code: 'EVO', progress: 0.2, inPit: true })]}
+      />,
+    );
+    expect(element()).toHaveAttribute('data-pit', 'true');
+    expect(element()).toHaveStyle({ offsetPath: `path("${pit}")`, offsetDistance: '20%' });
+    expect(container.querySelector('[data-slot="track-map-positions"]')).toHaveTextContent(
+      'EVO in the pit lane',
+    );
+
+    // Back on the lap, the fresh marker starts a new lap count at its own progress.
+    rerender(
+      <TrackMap path={PATH} pitLane={pit} markers={[marker({ id: 'evo', progress: 0.04 })]} />,
+    );
+    expect(element()).not.toHaveAttribute('data-pit');
+    expect(element()).toHaveStyle({ offsetPath: `path("${PATH}")`, offsetDistance: '4%' });
+  });
+
+  it('keeps a pitting car on the lap when the map has no pit lane', () => {
+    const { container } = render(
+      <TrackMap path={PATH} markers={[marker({ id: 'evo', progress: 0.5, inPit: true })]} />,
+    );
+    expect(container.querySelector('[data-slot="track-map-pit-lane"]')).toBeNull();
+    expect(container.querySelector('[data-slot="track-map-marker"]')).toHaveStyle({
+      offsetPath: `path("${PATH}")`,
+    });
+  });
+
   it('slides markers linearly for the given sample interval', () => {
     const { container } = render(<TrackMap path={PATH} markers={[marker()]} transitionMs={240} />);
     expect(container.querySelector('[data-slot="track-map-marker"]')).toHaveStyle({

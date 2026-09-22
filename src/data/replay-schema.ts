@@ -32,6 +32,10 @@ export const replayLapRowSchema = z.object({
   gapToLeaderMs: z.number().int().min(0).nullable(),
   intervalMs: z.number().int().min(0).nullable(),
   inPit: z.boolean(),
+  /** Time from pit entry to pit exit on this lap's stop, when the source has it. */
+  pitDurationMs: z.number().int().min(0).nullable().default(null),
+  /** Which stop of the race this was for the car: 1 for the first. */
+  pitStop: z.number().int().min(1).nullable().default(null),
   overtake: z.boolean(),
   lapsBehind: z.number().int().min(0),
 });

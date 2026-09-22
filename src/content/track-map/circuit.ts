@@ -36,10 +36,22 @@ const d = [
   'Z',
 ].join(' ');
 
+/**
+ * The pit lane runs inside the last corner and along the start/finish straight: entry on
+ * the way down to the line, exit a little past it, hand-drawn to sit clear of the track.
+ */
+const pitLane = [
+  'M 236 452',
+  'C 226 478 200 490 172 494',
+  'L 300 494',
+  'C 330 494 340 506 356 520',
+].join(' ');
+
 export const FICTIONAL_CIRCUIT = {
   d,
   viewBox: '0 0 1000 600',
   name: 'Aster Park',
+  pit: { entry: 0.96, exit: 0.06, d: pitLane },
 } as const;
 
 /** Three equal sectors, the way a race director would cut this lap up. */

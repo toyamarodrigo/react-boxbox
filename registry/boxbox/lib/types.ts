@@ -12,10 +12,13 @@ export type TrackSector = { start: number; end: number; status?: TrackStatus };
 /** A car on the track map. `progress` is 0 to 1 along the lap, from the start/finish line. */
 export type TrackMarker = {
   id: string;
+  /** 0..1 around the lap; along the pit lane from entry to exit while `inPit`. */
   progress: number;
   color: string;
   code?: string;
   emphasis?: boolean;
+  /** The car is in the pit lane; needs the map's `pitLane` path to show. */
+  inPit?: boolean;
 };
 
 export type Team = { id: string; name: string; color: string };

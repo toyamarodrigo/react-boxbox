@@ -53,6 +53,8 @@ export function testReplayRace(): ReplayRace {
         gapToLeaderMs,
         intervalMs,
         inPit: false,
+        pitDurationMs: null,
+        pitStop: null,
         overtake: intervalMs !== null && intervalMs < 1500 && position > 1,
         lapsBehind,
       }),

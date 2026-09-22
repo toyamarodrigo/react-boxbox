@@ -3,7 +3,12 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { pathFromPoints } from '../registry/boxbox/ui/track-map.tsx';
+import { type PitLaneOptions, pitLaneOffsetFor, pitLanePoints } from '../src/lib/pit-lane.ts';
+import {
+  TRACK_MAP_STROKE_WIDTH,
+  fitPoints,
+  pointsToPath,
+} from '../registry/boxbox/ui/track-map.tsx';
 
 /**
  * Generates `src/data/circuits.ts` from bacinger/f1-circuits (MIT), one GeoJSON
@@ -13,8 +18,18 @@ import { pathFromPoints } from '../registry/boxbox/ui/track-map.tsx';
  * scaled by the cosine of the mean latitude, so a metre is a metre on both axes),
  * then fitted into a 1000-wide viewBox whose height follows the circuit's own
  * aspect ratio. The first point of each LineString is taken as start/finish.
+ *
+ * The source has no pit lanes, so each one is approximated: the stretch of the lap
+ * around the line, shifted to the inside of the loop and eased back onto the track
+ * (see `src/lib/pit-lane.ts`). `PIT_LANES` overrides the defaults per venue.
  */
 const SOURCE = 'https://raw.githubusercontent.com/bacinger/f1-circuits/master/circuits';
+
+/** Where the pit lane leaves and rejoins the lap, as fractions of it, unless overridden. */
+const PIT_LANE_DEFAULTS = { entry: 0.94, exit: 0.03 } as const;
+
+/** Per-venue pit lane adjustments: `side` for the odd circuit with the pits outside the loop. */
+const PIT_LANES: Partial<Record<(typeof CALENDAR_2026)[number], Partial<PitLaneOptions>>> = {};
 
 /** The 2026 calendar, in season order. */
 const CALENDAR_2026 = [
@@ -93,29 +108,39 @@ function fit(points: [number, number][]) {
   const spanX = Math.max(...xs) - Math.min(...xs);
   const spanY = Math.max(...ys) - Math.min(...ys);
   const height = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round((WIDTH * spanY) / spanX)));
-  return pathFromPoints(points, { width: WIDTH, height, padding: 40 });
+  return fitPoints(points, { width: WIDTH, height, padding: 40 });
+}
+
+function pitLane(outline: [number, number][], id: (typeof CALENDAR_2026)[number]) {
+  const options = { ...PIT_LANE_DEFAULTS, ...PIT_LANES[id] };
+  const points = pitLanePoints(outline, {
+    ...options,
+    offset: pitLaneOffsetFor(TRACK_MAP_STROKE_WIDTH),
+  });
+  return { d: pointsToPath(points, false), entry: options.entry, exit: options.exit };
 }
 
 async function main() {
   const circuits = [];
   for (const id of CALENDAR_2026) {
     const feature = await fetchCircuit(id);
-    const { d, viewBox } = fit(project(feature.geometry.coordinates, REVERSED.has(id)));
+    const fitted = fit(project(feature.geometry.coordinates, REVERSED.has(id)));
     circuits.push({
       id,
       name: feature.properties.Name,
       location: feature.properties.Location,
       lengthM: feature.properties.length,
-      d,
-      viewBox,
+      d: pointsToPath(fitted.points),
+      viewBox: fitted.viewBox,
+      pit: pitLane(fitted.points, id),
     });
-    process.stdout.write(`${id} ${feature.properties.Name} (${viewBox})\n`);
+    process.stdout.write(`${id} ${feature.properties.Name} (${fitted.viewBox})\n`);
   }
 
   const body = circuits
     .map(
       (c) =>
-        `  {\n    id: ${JSON.stringify(c.id)},\n    name: ${JSON.stringify(c.name)},\n    location: ${JSON.stringify(c.location)},\n    lengthM: ${c.lengthM},\n    viewBox: ${JSON.stringify(c.viewBox)},\n    d: ${JSON.stringify(c.d)},\n  }`,
+        `  {\n    id: ${JSON.stringify(c.id)},\n    name: ${JSON.stringify(c.name)},\n    location: ${JSON.stringify(c.location)},\n    lengthM: ${c.lengthM},\n    viewBox: ${JSON.stringify(c.viewBox)},\n    d: ${JSON.stringify(c.d)},\n    pit: { entry: ${c.pit.entry}, exit: ${c.pit.exit}, d: ${JSON.stringify(c.pit.d)} },\n  }`,
     )
     .join(',\n');
 
@@ -133,6 +158,11 @@ export type Circuit = {
   viewBox: string;
   /** SVG \`d\` in \`viewBox\` units. Start/finish is the first point; travel follows path order. */
   d: string;
+  /**
+   * An approximate pit lane, derived from the outline (the source has none): an open \`d\`
+   * from pit entry to pit exit, with the lap fractions where it leaves and rejoins the track.
+   */
+  pit: { entry: number; exit: number; d: string };
 };
 
 export const CIRCUITS: readonly Circuit[] = [

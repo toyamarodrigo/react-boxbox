@@ -1,14 +1,15 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
-import { replayRaceSchema } from './replay-schema';
+import { type ReplayRace, replayRaceSchema } from './replay-schema';
 import {
   carLapsAt,
   formatRaceTime,
   leaderCumulative,
   overtakeModeFor,
-  replayPodium,
   replayLiveRows,
+  replayPitStops,
+  replayPodium,
   replayProgress,
   replayResultsRows,
 } from './replay-timing';
@@ -121,6 +122,88 @@ describe('replayLiveRows', () => {
     expect(delta?.drs).toBe(false);
     expect(delta?.bestLapTime).toBe(161);
     expect(rows[0]?.finishStatus).toBeUndefined();
+  });
+});
+
+describe('pit stops on the lane', () => {
+  /** Charlie stops on lap two: 20 s in the lane, on a 160 s lap that ends at 320000. */
+  const pitted: ReplayRace = {
+    ...race,
+    laps: race.laps.map((lap) =>
+      lap.lap === 2
+        ? {
+            ...lap,
+            rows: lap.rows.map((row) =>
+              row.driverId === 'charlie'
+                ? { ...row, inPit: true, pitDurationMs: 20_000, pitStop: 1 }
+                : row,
+            ),
+          }
+        : lap,
+    ),
+  };
+  // The line sits halfway along the lane, so the car enters 10 s before it completes the lap.
+  const shape = { entry: 0.9, exit: 0.1 };
+  const charlieAt = (ms: number) => carLapsAt(pitted, ms, shape).get('charlie');
+
+  it('lists the stop with the moment the car enters the lane', () => {
+    expect(replayPitStops(pitted, shape)).toEqual([{ driverId: 'charlie', lap: 2, atMs: 310_000 }]);
+    expect(replayPitStops(race, shape)).toEqual([]);
+  });
+
+  it('stretches the in-lap so the car reaches the entry as the stop begins', () => {
+    expect(charlieAt(200_000)).toMatchObject({ lap: 2, inPit: false });
+    expect(charlieAt(200_000)?.progress).toBeCloseTo(0.24);
+    expect(charlieAt(309_999)?.progress).toBeCloseTo(0.9, 3);
+  });
+
+  it('runs the car along the lane for the stop, across the line, without a jump in distance', () => {
+    expect(charlieAt(315_000)).toMatchObject({ lap: 2, inPit: true });
+    expect(charlieAt(315_000)?.progress).toBeCloseTo(0.25);
+    expect(charlieAt(315_000)?.distance).toBeCloseTo(1.95);
+    // The lap changes under the car while it is still in the lane.
+    expect(charlieAt(320_000)).toMatchObject({ lap: 3, inPit: true });
+    expect(charlieAt(320_000)?.progress).toBeCloseTo(0.5);
+    expect(charlieAt(320_000)?.distance).toBeCloseTo(2);
+    expect(charlieAt(325_000)?.distance).toBeCloseTo(2.05);
+  });
+
+  it('rejoins at the exit and runs the rest of the out-lap to the line', () => {
+    expect(charlieAt(330_000)).toMatchObject({ lap: 3, inPit: false });
+    expect(charlieAt(330_000)?.progress).toBeCloseTo(0.1);
+    expect(charlieAt(404_000)?.progress).toBeCloseTo(0.55);
+  });
+
+  it('flags the whole lap when the stop is not drawn, and when it cannot be', () => {
+    // No shape: the lap's own flag stands, and progress is the plain constant-speed lap.
+    expect(carLapsAt(pitted, 315_000).get('charlie')).toMatchObject({ inPit: true });
+    expect(carLapsAt(pitted, 315_000).get('charlie')?.progress).toBeCloseTo(0.96875);
+    expect(carLapsAt(pitted, 200_000).get('charlie')).toMatchObject({ inPit: true });
+    // A stop longer than the lap it sits in cannot be placed on the lane.
+    const endless: ReplayRace = {
+      ...pitted,
+      laps: pitted.laps.map((lap) => ({
+        ...lap,
+        rows: lap.rows.map((row) =>
+          row.pitDurationMs === null ? row : { ...row, pitDurationMs: 1_000_000 },
+        ),
+      })),
+    };
+    expect(carLapsAt(endless, 200_000, shape).get('charlie')).toMatchObject({ inPit: true });
+    expect(carLapsAt(endless, 200_000, shape).get('charlie')?.progress).toBeCloseTo(0.25);
+    expect(replayPitStops(endless, shape)).toEqual([]);
+  });
+
+  it('feeds the markers and the tower from the same window', () => {
+    const marker = replayProgress(pitted, 315_000, shape).find((item) => item.id === 'charlie');
+    expect(marker).toMatchObject({ inPit: true });
+    expect(marker?.progress).toBeCloseTo(0.25);
+    const rows = (ms: number) =>
+      replayLiveRows(pitted, ms, { pit: shape }).find((row) => row.driverId === 'charlie');
+    expect(rows(200_000)?.inPit).toBe(false);
+    expect(rows(315_000)?.inPit).toBe(true);
+    expect(rows(315_000)?.drs).toBe(false);
+    expect(rows(330_000)?.inPit).toBe(false);
   });
 });
 

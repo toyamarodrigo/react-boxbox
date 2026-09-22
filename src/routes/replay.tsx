@@ -7,7 +7,7 @@ import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
 import { formatRaceTime, overtakeModeFor, replayPodium } from '../data/replay-timing';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
-import { circuitForRace } from '../data/circuit-for-race';
+import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
@@ -110,7 +110,7 @@ function RacePicker({
  * slides on those renders (see `RaceReplay.jumped`).
  */
 function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean }) {
-  const { endMs, lapBoundaries, totalLaps } = replay;
+  const { endMs, lapBoundaries, pitStops, totalLaps } = replay;
   const percent = (ms: number) => (endMs > 0 ? (ms / endMs) * 100 : 0);
 
   return (
@@ -122,6 +122,15 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
             key={index}
             className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-foreground/25"
             style={{ left: `${percent(ms)}%` }}
+          />
+        ))}
+        {/* Pit stops hang under the bar in the pit colour, one mark per stop. */}
+        {pitStops.map((stop) => (
+          <span
+            key={`${stop.driverId}:${stop.lap}`}
+            data-slot="timeline-pit-stop"
+            className="absolute top-1/2 mt-2 h-1 w-px bg-status-pit"
+            style={{ left: `${percent(stop.atMs)}%` }}
           />
         ))}
       </div>
@@ -251,14 +260,14 @@ function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
   );
 }
 
-function Circuit({ replay, race }: { replay: RaceReplay; race: ReplayRace }) {
-  const circuit = circuitForRace(race.circuit);
+function Circuit({ replay, circuit }: { replay: RaceReplay; circuit: ReplayCircuit }) {
   return (
     <figure className="border border-border bg-card p-5">
       <TrackMap
         // A new outline restarts the markers, so their lap counters do not carry over.
         key={circuit.name}
         path={circuit.d}
+        pitLane={circuit.pit.d}
         viewBox={circuit.viewBox}
         markers={replay.markers}
         // After a seek the cars snap to the new time; sliding there would cross the circuit.
@@ -266,7 +275,7 @@ function Circuit({ replay, race }: { replay: RaceReplay; race: ReplayRace }) {
       />
       <figcaption className="mt-3 text-xs text-muted-foreground">
         {circuit.real
-          ? `${circuit.name}, unofficial layout from public GeoJSON. `
+          ? `${circuit.name}, unofficial layout from public GeoJSON, approximate pit lane. `
           : `${circuit.name}, an invented circuit. `}
         Positions are interpolated from lap times; they are not real telemetry.
       </figcaption>
@@ -290,7 +299,11 @@ function ReplayPage() {
   const entry = races.find((race) => race.id === requested) ?? races[0];
 
   const race = useReplayRace(entry?.id);
-  const replay = useRaceReplay(race.data);
+  const circuit = useMemo(
+    () => (race.data ? circuitForRace(race.data.circuit) : undefined),
+    [race.data],
+  );
+  const replay = useRaceReplay(race.data, { pit: circuit?.pit });
 
   return (
     <div className="space-y-8 py-4">
@@ -340,10 +353,10 @@ function ReplayPage() {
 
       <Controls replay={replay} disabled={race.data === undefined} />
 
-      {race.data && (
+      {race.data && circuit && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
           <Stage race={race.data} replay={replay} />
-          <Circuit replay={replay} race={race.data} />
+          <Circuit replay={replay} circuit={circuit} />
         </div>
       )}
     </div>

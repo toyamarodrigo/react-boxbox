@@ -55,8 +55,9 @@ describe('replay page', () => {
     const tower = await screen.findByRole('list', { name: 'Timing tower' });
     expect(within(tower).getAllByRole('listitem')).toHaveLength(race.drivers.length);
     expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument();
-    // One marker per car running that lap, drawn on the invented circuit.
+    // One marker per car running that lap, drawn on the invented circuit, with its pit lane.
     expect(screen.getByRole('img', { name: 'Track map, 4 cars' })).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="track-map-pit-lane"]')).not.toBeNull();
     // Both the map caption and the tower note say so.
     expect(screen.getAllByText(/interpolated from lap times/i)).toHaveLength(2);
   });

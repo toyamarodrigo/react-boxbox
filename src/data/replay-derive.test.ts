@@ -167,7 +167,11 @@ describe('deriveLaps', () => {
 
   it('marks the pit lap and never calls it an overtake', () => {
     expect(rowFor(3, 'charlie').inPit).toBe(true);
+    expect(rowFor(3, 'charlie').pitDurationMs).toBe(22_400);
+    expect(rowFor(3, 'charlie').pitStop).toBe(1);
     expect(rowFor(2, 'charlie').inPit).toBe(false);
+    expect(rowFor(2, 'charlie').pitDurationMs).toBeNull();
+    expect(rowFor(2, 'charlie').pitStop).toBeNull();
     expect(rowFor(3, 'charlie').overtake).toBe(false);
   });
 

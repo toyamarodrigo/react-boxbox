@@ -194,11 +194,73 @@ export function replayPodium(race: ReplayRace): PodiumSteps | null {
 export type CarLap = {
   lap: number;
   row: ReplayLapRow;
-  /** 0 at the start of the lap, approaching 1 at the line. */
+  /**
+   * 0 at the start of the lap, approaching 1 at the line; while `inPit`, 0 at pit entry
+   * and approaching 1 at pit exit instead.
+   */
   progress: number;
-  /** Laps completed plus `progress`: the car's place along the race, for ordering cars. */
+  /** Laps completed plus the lap fraction: the car's place along the race, for ordering cars. */
   distance: number;
+  /** The car is in the pit lane right now (needs a `PitLaneShape`; otherwise the lap's flag). */
+  inPit: boolean;
 };
+
+/** Where a circuit's pit lane leaves and rejoins the lap, as fractions of it. */
+export type PitLaneShape = { entry: number; exit: number };
+
+/**
+ * When a lap's pit stop has the car in the lane, on the car's clock. The source gives the
+ * time from entry to exit; the line sits inside the lane, at `before / span` of it, so the
+ * car enters that share of the duration before it completes the lap. A stop that would start
+ * before the lap does (a red flag, a stop longer than the lap) cannot be drawn: `null`.
+ */
+function pitWindow(lap: DriverLap, shape: PitLaneShape) {
+  const duration = lap.row.inPit ? lap.row.pitDurationMs : null;
+  if (duration === null || duration <= 0) return null;
+  const before = 1 - shape.entry;
+  const span = before + shape.exit;
+  const inAt = lap.end - duration * (before / span);
+  if (inAt <= lap.start) return null;
+  return { inAt, outAt: inAt + duration, duration, span };
+}
+
+/**
+ * Where a car is on the lap `lap` at `elapsedMs` when its pit stops are drawn: on the lane
+ * between entry and exit, stretched to reach the entry from the start of an in-lap, and to
+ * reach the line from the exit on an out-lap.
+ */
+function placeWithPit(
+  laps: readonly DriverLap[],
+  index: number,
+  elapsedMs: number,
+  shape: PitLaneShape,
+): { progress: number; fraction: number; inPit: boolean } {
+  const lap = laps[index]!;
+  const previous = laps[index - 1];
+  const stop = pitWindow(lap, shape);
+  const earlier = previous && previous.lap === lap.lap - 1 ? pitWindow(previous, shape) : null;
+
+  if (stop && elapsedMs >= stop.inAt) {
+    const progress = (elapsedMs - stop.inAt) / stop.duration;
+    return { progress, fraction: shape.entry + progress * stop.span, inPit: true };
+  }
+  if (earlier && elapsedMs < earlier.outAt && earlier.outAt < lap.end) {
+    const progress = (elapsedMs - earlier.inAt) / earlier.duration;
+    return { progress, fraction: shape.entry + progress * earlier.span - 1, inPit: true };
+  }
+  if (stop) {
+    const fraction = (shape.entry * (elapsedMs - lap.start)) / (stop.inAt - lap.start);
+    return { progress: fraction, fraction, inPit: false };
+  }
+  if (earlier && earlier.outAt < lap.end) {
+    const fraction =
+      shape.exit + ((1 - shape.exit) * (elapsedMs - earlier.outAt)) / (lap.end - earlier.outAt);
+    return { progress: fraction, fraction, inPit: false };
+  }
+  // No drawable stop touches this lap. A stop that could not be drawn still flags the lap.
+  const fraction = (elapsedMs - lap.start) / (lap.end - lap.start);
+  return { progress: fraction, fraction, inPit: lap.row.inPit };
+}
 
 /**
  * Which lap each car is on at `elapsedMs`, measured on that car's own clock, in `race.drivers`
@@ -208,25 +270,59 @@ export type CarLap = {
  * leader starts lap N+1, and a lapped car is a whole lap further back. Keying every car to the
  * leader's lap is what made cars jump back to the start line at each lap boundary.
  *
+ * With a `pit` shape, a lap with a timed stop puts the car in the pit lane for the stop's
+ * duration around the line; without one, the lap's own pit flag stands for the whole lap.
+ *
  * A car with no lap in progress — it has retired, or its lap cannot be timed — is absent.
  */
-export function carLapsAt(race: ReplayRace, elapsedMs: number): Map<string, CarLap> {
+export function carLapsAt(
+  race: ReplayRace,
+  elapsedMs: number,
+  pit?: PitLaneShape,
+): Map<string, CarLap> {
   const index = indexRace(race);
   const cars = new Map<string, CarLap>();
   for (const driver of race.drivers) {
-    const lap = index
-      .get(driver.id)
-      ?.find((item) => elapsedMs >= item.start && elapsedMs < item.end);
+    const laps = index.get(driver.id) ?? [];
+    const at = laps.findIndex((item) => elapsedMs >= item.start && elapsedMs < item.end);
+    const lap = laps[at];
     if (!lap) continue;
-    const progress = (elapsedMs - lap.start) / (lap.end - lap.start);
-    cars.set(driver.id, { lap: lap.lap, row: lap.row, progress, distance: lap.lap - 1 + progress });
+    const placed = pit ? placeWithPit(laps, at, elapsedMs, pit) : placeOnLap(lap, elapsedMs);
+    cars.set(driver.id, {
+      lap: lap.lap,
+      row: lap.row,
+      progress: placed.progress,
+      distance: lap.lap - 1 + placed.fraction,
+      inPit: placed.inPit,
+    });
   }
   return cars;
 }
 
+/** Constant speed around the lap; the lap's own pit flag stands for the whole lap. */
+function placeOnLap(lap: DriverLap, elapsedMs: number) {
+  const fraction = (elapsedMs - lap.start) / (lap.end - lap.start);
+  return { progress: fraction, fraction, inPit: lap.row.inPit };
+}
+
 /** The running order at a moment: cars furthest along the race first. Stable for ties. */
-function orderAt(race: ReplayRace, elapsedMs: number): [string, CarLap][] {
-  return [...carLapsAt(race, elapsedMs)].sort((a, b) => b[1].distance - a[1].distance);
+function orderAt(race: ReplayRace, elapsedMs: number, pit?: PitLaneShape): [string, CarLap][] {
+  return [...carLapsAt(race, elapsedMs, pit)].sort((a, b) => b[1].distance - a[1].distance);
+}
+
+/** Every drawable pit stop of the race: who, which lap, and when the car enters the lane. */
+export function replayPitStops(
+  race: ReplayRace,
+  pit: PitLaneShape,
+): { driverId: string; lap: number; atMs: number }[] {
+  const stops: { driverId: string; lap: number; atMs: number }[] = [];
+  for (const [driverId, laps] of indexRace(race)) {
+    for (const lap of laps) {
+      const window = pitWindow(lap, pit);
+      if (window) stops.push({ driverId, lap: lap.lap, atMs: window.inAt });
+    }
+  }
+  return stops.sort((a, b) => a.atMs - b.atMs);
 }
 
 /** Overtake aid threshold, the same one the dataset applies at the line. */
@@ -240,6 +336,8 @@ export type LiveRowsOptions = {
   gapAtMs?: number;
   /** The moment the position change is measured against; without it every row reads unchanged. */
   referenceMs?: number;
+  /** The circuit's pit lane, so `IN PIT` covers the stop itself rather than the whole lap. */
+  pit?: PitLaneShape;
 };
 
 /**
@@ -257,15 +355,15 @@ export type LiveRowsOptions = {
 export function replayLiveRows(
   race: ReplayRace,
   elapsedMs: number,
-  { gapAtMs = elapsedMs, referenceMs }: LiveRowsOptions = {},
+  { gapAtMs = elapsedMs, referenceMs, pit }: LiveRowsOptions = {},
 ): TimingRow[] {
   const index = indexRace(race);
-  const order = orderAt(race, elapsedMs);
-  const measured = gapAtMs === elapsedMs ? new Map(order) : carLapsAt(race, gapAtMs);
+  const order = orderAt(race, elapsedMs, pit);
+  const measured = gapAtMs === elapsedMs ? new Map(order) : carLapsAt(race, gapAtMs, pit);
   const reference =
     referenceMs === undefined
       ? null
-      : new Map(orderAt(race, referenceMs).map(([id], i) => [id, i + 1]));
+      : new Map(orderAt(race, referenceMs, pit).map(([id], i) => [id, i + 1]));
 
   /** How long ago `aheadId` passed the point `car` is at, in ms; `null` when it cannot be timed. */
   const timeBehind = (car: CarLap | undefined, aheadId: string | undefined): number | null => {
@@ -293,10 +391,10 @@ export function replayLiveRows(
       bestLapTime: bestLapBefore(laps, car.lap),
       sectors: sectors(),
       tyre: { ...PLACEHOLDER_TYRE },
-      inPit: car.row.inPit,
+      inPit: car.inPit,
       lapped: lapsBehind > 0,
       lapsBehind,
-      drs: interval !== null && interval < OVERTAKE_WITHIN_MS && !car.row.inPit && position > 1,
+      drs: interval !== null && interval < OVERTAKE_WITHIN_MS && !car.inPit && position > 1,
       positionChange: reference === null ? 0 : (reference.get(driverId) ?? position) - position,
     };
   });
@@ -337,8 +435,12 @@ export function replayLiveRows(
  * emphasised as the leader. Markers keep the order of `race.drivers`, so the Track Map sees a
  * stable list and animates each car rather than re-keying the set.
  */
-export function replayProgress(race: ReplayRace, elapsedMs: number): TrackMarker[] {
-  const cars = carLapsAt(race, elapsedMs);
+export function replayProgress(
+  race: ReplayRace,
+  elapsedMs: number,
+  pit?: PitLaneShape,
+): TrackMarker[] {
+  const cars = carLapsAt(race, elapsedMs, pit);
   const teams = new Map(race.teams.map((team) => [team.id, team]));
 
   let leader: { id: string; distance: number } | null = null;
@@ -356,6 +458,7 @@ export function replayProgress(race: ReplayRace, elapsedMs: number): TrackMarker
       color: teams.get(driver.teamId)?.color ?? 'currentColor',
       code: driver.code,
       emphasis: driver.id === leader?.id,
+      inPit: car.inPit,
     });
   }
   return markers;

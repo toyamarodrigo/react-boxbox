@@ -5,6 +5,8 @@ export type ReplayCircuit = {
   d: string;
   viewBox: string;
   name: string;
+  /** The approximate pit lane: an open `d`, and where it leaves and rejoins the lap. */
+  pit: { entry: number; exit: number; d: string };
   /** True when the outline is a real venue from the generated dataset, false for Aster Park. */
   real: boolean;
 };
@@ -29,6 +31,7 @@ const FALLBACK: ReplayCircuit = {
   d: FICTIONAL_CIRCUIT.d,
   viewBox: FICTIONAL_CIRCUIT.viewBox,
   name: FICTIONAL_CIRCUIT.name,
+  pit: FICTIONAL_CIRCUIT.pit,
   real: false,
 };
 
@@ -43,5 +46,7 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
       const name = normalise(circuit.name);
       return wanted.includes(location) || wanted.includes(name) || name.includes(wanted);
     });
-  return match ? { d: match.d, viewBox: match.viewBox, name: match.name, real: true } : FALLBACK;
+  return match
+    ? { d: match.d, viewBox: match.viewBox, name: match.name, pit: match.pit, real: true }
+    : FALLBACK;
 }

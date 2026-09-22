@@ -21,7 +21,13 @@ function withStatus(sector: TrackSector, status: string): TrackSector {
 function circuitAt(location: string) {
   const real = CIRCUITS.find((circuit) => circuit.location === location);
   return real
-    ? { d: real.d, viewBox: real.viewBox, name: real.name, caption: 'unofficial layout' }
+    ? {
+        d: real.d,
+        pit: real.pit,
+        viewBox: real.viewBox,
+        name: real.name,
+        caption: 'unofficial layout, approximate pit lane',
+      }
     : { ...FICTIONAL_CIRCUIT, caption: 'an invented circuit' };
 }
 
@@ -65,6 +71,7 @@ export default function TrackMapDemo({
         // A new outline restarts the markers, so their lap counters do not carry over.
         key={layout.name}
         path={layout.d}
+        pitLane={layout.pit.d}
         viewBox={layout.viewBox}
         sectors={sectors}
         markers={markers}

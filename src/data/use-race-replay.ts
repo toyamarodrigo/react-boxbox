@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
 import {
+  type PitLaneShape,
   leaderCumulative,
   replayLiveRows,
+  replayPitStops,
   replayProgress,
   replayResultsRows,
 } from './replay-timing';
@@ -40,6 +42,8 @@ export type RaceReplay = {
   jumped: boolean;
   rows: TimingRow[];
   markers: TrackMarker[];
+  /** When each drawable pit stop begins, on the race clock, in time order. */
+  pitStops: readonly { driverId: string; lap: number; atMs: number }[];
   finished: boolean;
   isPlaying: boolean;
   speed: ReplaySpeed;
@@ -68,7 +72,16 @@ export type RaceReplay = {
  */
 export function useRaceReplay(
   race: ReplayRace | undefined,
-  { speed: initialSpeed = 1, autoPlay = false }: { speed?: ReplaySpeed; autoPlay?: boolean } = {},
+  {
+    speed: initialSpeed = 1,
+    autoPlay = false,
+    pit,
+  }: {
+    speed?: ReplaySpeed;
+    autoPlay?: boolean;
+    /** The circuit's pit lane, so stops are drawn on it and `IN PIT` covers the stop itself. */
+    pit?: PitLaneShape;
+  } = {},
 ): RaceReplay {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [jumped, setJumped] = useState(false);
@@ -123,13 +136,16 @@ export function useRaceReplay(
     return replayLiveRows(race, elapsedMs, {
       gapAtMs: Math.floor(elapsedMs / GAP_REFRESH_MS) * GAP_REFRESH_MS,
       referenceMs,
+      pit,
     });
-  }, [race, finished, elapsedMs, referenceMs]);
+  }, [race, finished, elapsedMs, referenceMs, pit]);
 
   const markers = useMemo(() => {
     if (!race || finished) return [];
-    return replayProgress(race, elapsedMs);
-  }, [race, finished, elapsedMs]);
+    return replayProgress(race, elapsedMs, pit);
+  }, [race, finished, elapsedMs, pit]);
+
+  const pitStops = useMemo(() => (race && pit ? replayPitStops(race, pit) : []), [race, pit]);
 
   const seek = useCallback(
     (ms: number) => {
@@ -163,6 +179,7 @@ export function useRaceReplay(
     jumped,
     rows,
     markers,
+    pitStops,
     finished,
     isPlaying,
     speed,
