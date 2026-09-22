@@ -100,6 +100,32 @@ export const replayResultSchema = z.object({
 });
 
 /**
+ * One race-control message, placed on the replay clock.
+ *
+ * The source publishes a wall-clock `date`, which is no use to a page whose clock starts at zero,
+ * so the build converts it to `atMs`, milliseconds since the start of the race. A message whose
+ * time cannot be resolved is dropped at build time rather than guessed at here.
+ *
+ * `flag`, `category` and `scope` are kept as the source spells them — `GREEN`, `DOUBLE YELLOW`,
+ * `SafetyCar`, `Sector` — because this is a record of what race control said, and reading them is
+ * the helpers' job, not the dataset's. `sector` is a **marshalling** sector, of which a circuit has
+ * twenty-odd, not one of the three timing sectors.
+ */
+export const replayRaceControlSchema = z.object({
+  /** Milliseconds since the start of the race. */
+  atMs: z.number().int().min(0),
+  /** The lap the message was issued on, when the source says. */
+  lap: z.number().int().min(0).nullable(),
+  flag: z.string().min(1).nullable(),
+  category: z.string().min(1),
+  scope: z.string().min(1).nullable(),
+  sector: z.number().int().min(1).nullable(),
+  /** This project's own driver id when the message names a car; `null` when it names none. */
+  driverId: z.string().min(1).nullable(),
+  message: z.string().min(1),
+});
+
+/**
  * Where one OpenF1-sourced field came from. Absent when a race has none: each block is filled
  * on its own, so a race can carry compounds without timing and the other way round.
  */
@@ -119,6 +145,8 @@ export const replaySourceSchema = z.object({
   compounds: replayOpenF1SourceSchema.optional(),
   /** Where the sector times and speed-trap readings came from. */
   timing: replayOpenF1SourceSchema.optional(),
+  /** Where the race-control messages came from. */
+  raceControl: replayOpenF1SourceSchema.optional(),
 });
 
 export const replayRaceSchema = z.object({
@@ -136,6 +164,8 @@ export const replayRaceSchema = z.object({
   results: z.array(replayResultSchema).min(1),
   /** One entry per car that ran a lap. Defaults to none, so a race built before this parses. */
   stints: z.array(replayDriverStintsSchema).default([]),
+  /** Race control's own messages, oldest first. Empty for a race the source does not cover. */
+  raceControl: z.array(replayRaceControlSchema).default([]),
 });
 
 export const replayIndexEntrySchema = z.object({
@@ -164,6 +194,7 @@ export type ReplayTyreCompound = z.infer<typeof tyreCompoundSchema>;
 export type ReplayStint = z.infer<typeof replayStintSchema>;
 export type ReplayDriverStints = z.infer<typeof replayDriverStintsSchema>;
 export type ReplayResult = z.infer<typeof replayResultSchema>;
+export type ReplayRaceControl = z.infer<typeof replayRaceControlSchema>;
 export type ReplaySource = z.infer<typeof replaySourceSchema>;
 export type ReplayOpenF1Source = z.infer<typeof replayOpenF1SourceSchema>;
 export type ReplayCompoundSource = ReplayOpenF1Source;

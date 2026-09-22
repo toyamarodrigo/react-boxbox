@@ -13,7 +13,12 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { cn } from 'cn';
 import { z } from 'zod';
-import type { ReplayIndexEntry, ReplayRace, ReplayStint } from '../data/replay-schema';
+import type {
+  ReplayIndexEntry,
+  ReplayRace,
+  ReplayRaceControl,
+  ReplayStint,
+} from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
 import {
@@ -21,18 +26,21 @@ import {
   type ReplayPitStop,
   carLapsAt,
   emphasiseMarker,
+  flaggedSectorsAt,
   followedDriverId,
   formatRaceTime,
   hasTimingData,
   leaderLapsCompleted,
   overtakeModeFor,
   positionsSinceStart,
+  raceControlUpTo,
   replayGaps,
   replayPodium,
   sectorCardAt,
   speedTrapAt,
   speedTrapBestAt,
   stintAt,
+  trackStatusAt,
 } from '../data/replay-timing';
 import { byDateDescending, formatRaceDate } from '../data/replay-index';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
@@ -565,8 +573,6 @@ function Stage({
         <RaceClock ms={replay.elapsedMs} direction="up" label="ELAPSED" />
       </div>
 
-      <FlagBanner status="chequered" visible={replay.finished} />
-
       {podium && <Podium steps={podium} size="sm" />}
 
       <TimingTower
@@ -606,11 +612,13 @@ function Stage({
 }
 
 function Circuit({
+  race,
   replay,
   circuit,
   followedId,
   onFollow,
 }: {
+  race: ReplayRace;
   replay: RaceReplay;
   circuit: ReplayCircuit;
   followedId: string | undefined;
@@ -623,8 +631,22 @@ function Circuit({
   );
   const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
 
+  /**
+   * The flag flying over the track, over the map it belongs to. At the finish it is the chequered
+   * one, which is the only flag this page showed before race control was in the dataset.
+   */
+  const status = replay.finished ? 'chequered' : trackStatusAt(race, replay.elapsedMs);
+  const flagged = useMemo(() => flaggedSectorsAt(race, replay.elapsedMs), [race, replay.elapsedMs]);
+
   return (
-    <figure className="border border-border bg-card p-5">
+    <figure className="flex flex-col gap-3 border border-border bg-card p-5">
+      {/*
+       * A green track is no news, and a green bar sitting there for two hours would be noise the
+       * viewer learns to ignore — so the banner is only on screen when something is flying. Its
+       * text changes when the flag does and not on the clock's ticks, so the live region announces
+       * a change of flag rather than ten times a second.
+       */}
+      <FlagBanner status={status} visible={status !== 'green'} />
       <TrackMap
         // A new outline restarts the markers, so their lap counters do not carry over.
         key={circuit.name}
@@ -632,16 +654,20 @@ function Circuit({
         pitLane={circuit.pit.d}
         viewBox={circuit.viewBox}
         markers={markers}
+        sectors={flagged}
         // After a seek the cars snap to the new time; sliding there would cross the circuit.
         transitionMs={replay.jumped ? 0 : REPLAY_TICK_MS}
         onMarkerClick={handleMarkerClick}
         dimOthers={followedId !== undefined}
       />
-      <figcaption className="mt-3 text-xs text-muted-foreground">
+      <figcaption className="text-xs text-muted-foreground">
         {circuit.real
           ? `${circuit.name}, unofficial layout from public GeoJSON, approximate pit lane. `
           : `${circuit.name}, an invented circuit. `}
-        Positions are interpolated from lap times; they are not real telemetry.
+        Positions are interpolated from lap times; they are not real telemetry. A flagged stretch of
+        track is drawn in the right place only roughly: race control counts marshalling posts, and
+        that count need not begin at the start line or run the way the cars do, so a zone can sit
+        turned from where the flags really were.
       </figcaption>
     </figure>
   );
@@ -720,7 +746,49 @@ const PANEL_MOTION = {
   },
 } as const;
 
-type StrategyTab = 'strategy' | 'gaps';
+/**
+ * One thing race control said. Memoised on what it draws, like `StrategyLine`: the panel re-renders
+ * ten times a second and a message never changes once it has been issued.
+ *
+ * The text is quoted exactly as race control wrote it, capitals and all. It is a fact about the
+ * event, the same stance the page takes on driver names, and rewording a stewards' decision would
+ * make it something this site said instead.
+ */
+const RaceControlLine = memo(function RaceControlLine({
+  lap,
+  code,
+  message,
+}: {
+  lap: number | null;
+  code: string | undefined;
+  message: string;
+}) {
+  return (
+    <li
+      data-slot="race-control-line"
+      className="flex gap-3 border-b border-border/60 py-1.5 last:border-b-0"
+    >
+      <span className="w-8 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+        {lap === null ? EMPTY : `L${lap}`}
+      </span>
+      {/* The column keeps its width with no car named, so every message starts on one line. */}
+      <span className="w-9 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider">
+        {code ?? ''}
+      </span>
+      <span className="min-w-0 flex-1 text-xs leading-relaxed">{message}</span>
+    </li>
+  );
+});
+
+/** Nothing to show yet: one array, so the feed's memo is not woken by a fresh empty one. */
+const NO_MESSAGES: ReplayRaceControl[] = [];
+
+type StrategyTab = 'strategy' | 'gaps' | 'control';
+
+/** Radix hands back a string; anything the panel does not know falls back to the first tab. */
+function asStrategyTab(value: string): StrategyTab {
+  return value === 'gaps' || value === 'control' ? value : 'strategy';
+}
 
 /**
  * The whole field's tyre strategy under the map, in the tower's order, closed until asked for:
@@ -775,6 +843,17 @@ function StrategyPanel({
     [open, tab, race, replay.elapsedMs],
   );
 
+  /**
+   * The feed grows as the race runs, so it is only read while it is the tab on screen. The list
+   * itself is cheap — a slice of an array the helper indexed once — and each line is memoised, so
+   * a tick that adds no message re-renders nothing below this component.
+   */
+  const control = useMemo(
+    () => (open && tab === 'control' ? raceControlUpTo(race, replay.elapsedMs) : NO_MESSAGES),
+    [open, tab, race, replay.elapsedMs],
+  );
+  const hasControl = race.raceControl.length > 0;
+
   return (
     <section data-slot="strategy-panel" className="border border-border bg-card">
       <h2>
@@ -798,13 +877,12 @@ function StrategyPanel({
         {open && (
           <motion.div key="body" className="overflow-hidden" {...PANEL_MOTION}>
             <div className="px-5 pb-4">
-              <Tabs
-                value={tab}
-                onValueChange={(value) => setTab(value === 'gaps' ? 'gaps' : 'strategy')}
-              >
+              <Tabs value={tab} onValueChange={(value) => setTab(asStrategyTab(value))}>
                 <TabsList>
                   <TabsTrigger value="strategy">Strategy</TabsTrigger>
                   <TabsTrigger value="gaps">Gaps</TabsTrigger>
+                  {/* Nothing to list for a race the source has no messages for. */}
+                  {hasControl && <TabsTrigger value="control">Race control</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="strategy">
                   <ul aria-label="Strategy" className="flex list-none flex-col">
@@ -846,6 +924,38 @@ function StrategyPanel({
                     driver.
                   </p>
                 </TabsContent>
+                {hasControl && (
+                  <TabsContent value="control">
+                    {/*
+                     * The list only grows, so it is bounded and scrolls inside itself: a race can
+                     * send close to two hundred messages, and the panel is under the map.
+                     */}
+                    <ul
+                      aria-label="Race control"
+                      className="flex max-h-72 list-none flex-col overflow-y-auto"
+                    >
+                      {control.map((message, position) => (
+                        <RaceControlLine
+                          // Two messages can share a moment, so the place in the feed is part of
+                          // the identity; the feed only ever grows from the top.
+                          key={`${message.atMs}:${control.length - position}`}
+                          lap={message.lap}
+                          code={
+                            message.driverId === null
+                              ? undefined
+                              : drivers.get(message.driverId)?.code
+                          }
+                          message={message.message}
+                        />
+                      ))}
+                    </ul>
+                    <p className="pt-2 text-xs text-muted-foreground">
+                      {control.length === 0
+                        ? 'Race control has said nothing yet.'
+                        : "Race control's own messages, newest first, quoted as they were issued."}
+                    </p>
+                  </TabsContent>
+                )}
               </Tabs>
             </div>
           </motion.div>
@@ -1005,7 +1115,13 @@ function ReplayPage() {
             onFollow={follow}
           />
           <div className="flex min-w-0 flex-col gap-6">
-            <Circuit replay={replay} circuit={circuit} followedId={followedId} onFollow={follow} />
+            <Circuit
+              race={race.data}
+              replay={replay}
+              circuit={circuit}
+              followedId={followedId}
+              onFollow={follow}
+            />
             <StrategyPanel
               race={race.data}
               replay={replay}

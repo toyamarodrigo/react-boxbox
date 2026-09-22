@@ -58,6 +58,10 @@ const untimedRace = () => ({
     })),
   })),
 });
+const banner = () => document.querySelector('[data-slot="flag-banner"]');
+const flaggedSectors = () => [...document.querySelectorAll('[data-slot="track-map-sector"]')];
+/** The same race with nothing from race control: an older season, or a source failure. */
+const quietRace = () => ({ ...race, raceControl: [] });
 const rowButton = (driverId: string) =>
   document.querySelector<HTMLElement>(
     `[data-driver="${driverId}"] [data-slot="timing-tower-row-button"]`,
@@ -457,6 +461,98 @@ describe('replay page, sectors and speed trap', () => {
     expect(trapCard()).toBeNull();
     expect(document.querySelector('[data-figure="last"]')).not.toBeNull();
     expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
+  });
+});
+
+describe('replay page, race control', () => {
+  /** Serves one race instead of the fixture, for a case that needs a different dataset. */
+  const serve = (body: unknown) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(body);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  };
+
+  it('flies the flag over the map and hides the banner while the track is green', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    // Nothing is flying at the start, and a green bar for two hours would only be noise.
+    expect(banner()).toBeNull();
+
+    // The virtual safety car is out from 60 s to 120 s, which covers the first lap boundary.
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(banner()).not.toBeNull());
+    expect(banner()).toHaveAttribute('data-status', 'vsc');
+    expect(banner()).toHaveTextContent('VIRTUAL SAFETY CAR');
+  });
+
+  it('paints the flagged marshalling sectors on the map', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    expect(flaggedSectors()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    // Sectors 2 and 3 of 4 are yellow and touch, so the map draws them as one half-lap arc.
+    await waitFor(() => expect(flaggedSectors()).toHaveLength(1));
+    const arc = flaggedSectors()[0];
+    expect(arc).toHaveAttribute('data-status', 'yellow');
+    expect(arc).toHaveAttribute('stroke-dasharray', '0.5 0.5');
+    expect(screen.getByText(/marshalling posts/)).toBeInTheDocument();
+  });
+
+  it('lists the messages up to the race time, newest first', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Race control' }));
+
+    const feed = await screen.findByRole('list', { name: 'Race control' });
+    const lines = () => within(feed).getAllByRole('listitem');
+    // Only what race control had said by the start of the race.
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toHaveTextContent('GREEN LIGHT - PIT EXIT OPEN');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(lines()).toHaveLength(5));
+    expect(lines()[0]).toHaveTextContent('VSC DEPLOYED');
+    expect(lines()[0]).toHaveTextContent('L1');
+    expect(lines().at(-1)).toHaveTextContent('GREEN LIGHT - PIT EXIT OPEN');
+
+    // To the flag: a message addressed to one car names it by the code the tower shows.
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+    await waitFor(() => expect(lines()).toHaveLength(race.raceControl.length));
+    const limits = lines().find((line) => line.textContent?.includes('TRACK LIMITS'));
+    expect(limits).toHaveTextContent('CHA');
+  });
+
+  it('has no tab and only the chequered flag for a race with no race control', async () => {
+    serve(quietRace());
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Strategy' })).toBeInTheDocument());
+    expect(screen.queryByRole('tab', { name: 'Race control' })).toBeNull();
+
+    // Nothing over the map through the race; the chequered flag at the end, as before.
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    expect(banner()).toBeNull();
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+    await waitFor(() => expect(banner()).not.toBeNull());
+    expect(banner()).toHaveAttribute('data-status', 'chequered');
   });
 });
 

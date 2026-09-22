@@ -3,13 +3,21 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { deriveLaps, deriveResults, deriveStints, withTiming } from '../src/data/replay-derive.ts';
+import {
+  deriveLaps,
+  deriveRaceControl,
+  deriveResults,
+  deriveStints,
+  withTiming,
+} from '../src/data/replay-derive.ts';
 import type {
   OpenF1Compounds,
+  OpenF1RaceControl,
   OpenF1Timing,
   RawLap,
   RawOpenF1Driver,
   RawOpenF1Lap,
+  RawOpenF1RaceControl,
   RawOpenF1Stint,
   RawPitStop,
   RawResult,
@@ -320,6 +328,8 @@ type OpenF1ForRace = {
   compoundSource?: ReplayOpenF1Source;
   timing?: OpenF1Timing;
   timingSource?: ReplayOpenF1Source;
+  raceControl?: OpenF1RaceControl;
+  raceControlSource?: ReplayOpenF1Source;
   meeting: string;
 };
 
@@ -380,6 +390,28 @@ async function openF1For(
     warn('timing', error);
   }
 
+  try {
+    // One request covers the whole race: `race_control` is a row per message, 181 of them for
+    // 2026-14. The messages are dated in wall clock, so they are placed on the replay's own clock
+    // against lap 1 of the `laps` payload above; without that payload none of them can be timed.
+    const url = `${OPENF1_BASE_URL}/race_control?session_key=${session.sessionKey}`;
+    const messages = await openF1Request<RawOpenF1RaceControl>(
+      `/race_control?session_key=${session.sessionKey}`,
+    );
+    if (messages.length === 0) {
+      throw new OpenF1Unavailable(`no race control published for session ${session.sessionKey}`);
+    }
+    found.raceControl = {
+      drivers: session.drivers,
+      messages,
+      laps: found.timing?.laps ?? [],
+      codes,
+    };
+    found.raceControlSource = { provider: 'openf1', fetchedAt, url };
+  } catch (error) {
+    warn('race control', error);
+  }
+
   return found;
 }
 
@@ -412,7 +444,7 @@ async function buildRace(
   selection: ReplaySelection,
   info: RaceInfo,
   fetchedAt: string,
-): Promise<{ race: ReplayRace; meeting: string } | null> {
+): Promise<{ race: ReplayRace; meeting: string; control: string } | null> {
   const { season, round } = selection;
 
   const resultsPayload = await request(raceUrl(selection, '/results'));
@@ -453,6 +485,17 @@ async function buildRace(
   const openF1 = await openF1For(selection, info, drivers, fetchedAt);
   const laps = openF1.timing ? withTiming(derived, openF1.timing) : derived;
 
+  const control = openF1.raceControl
+    ? deriveRaceControl(openF1.raceControl)
+    : { messages: [], dropped: 0 };
+  if (control.dropped > 0) {
+    // Everything race control said before the lights went out — formation lap, pit-lane opening,
+    // the hours of practice the session covers — has no place on a clock that starts at the race.
+    console.warn(
+      `  ! ${raceId(selection)}: dropped ${control.dropped} race-control message(s) with no resolvable race time`,
+    );
+  }
+
   const race = replayRaceSchema.parse({
     id: raceId(selection),
     season,
@@ -467,15 +510,22 @@ async function buildRace(
       url: raceUrl(selection),
       compounds: openF1.compoundSource,
       timing: openF1.timingSource,
+      raceControl: control.messages.length > 0 ? openF1.raceControlSource : undefined,
     },
     drivers,
     teams,
     laps,
     results: classification,
     stints: deriveStints(laps, classification, openF1.compounds),
+    raceControl: control.messages,
   } satisfies ReplayRace);
 
-  return { race, meeting: openF1.meeting };
+  const fetched = openF1.raceControl?.messages.length ?? 0;
+  return {
+    race,
+    meeting: openF1.meeting,
+    control: fetched === 0 ? '—' : `${control.messages.length}/${fetched}`,
+  };
 }
 
 function indexEntry(race: ReplayRace): ReplayIndexEntry {
@@ -550,6 +600,7 @@ async function main() {
     stints: string;
     compounds: string;
     timing: string;
+    control: string;
     meeting: string;
   }[] = [];
   const races: ReplayRace[] = [];
@@ -558,7 +609,7 @@ async function main() {
     const before = requestCount + openF1RequestCount;
     const built = await buildRace(selection, info, fetchedAt);
     if (built === null) continue;
-    const { race, meeting } = built;
+    const { race, meeting, control } = built;
 
     const json = `${JSON.stringify(race, null, 2)}\n`;
     await writeFile(path.join(outDir, `${race.id}.json`), json);
@@ -574,6 +625,7 @@ async function main() {
       stints: `${coverage.total} over ${coverage.cars} cars`,
       compounds: `${coverage.known}/${coverage.total}`,
       timing: `${timed.sectors}+${timed.speeds}/${timed.rows}`,
+      control,
       meeting,
     });
     console.log(`  wrote ${race.id}.json`);
@@ -590,13 +642,14 @@ async function main() {
   await writeFile(path.join(outDir, 'index.json'), indexJson);
 
   const bytes = summary.reduce((total, row) => total + row.bytes, 0) + byteLength(indexJson);
-  // `timing` reads sectors+speedTrap over the race's lap rows.
+  // `timing` reads sectors+speedTrap over the race's lap rows; `control` reads the race-control
+  // messages kept over the messages fetched, so a race losing many to the clock is visible.
   console.log(
-    '\nrace        laps  drivers  requests     bytes  stints             compounds  timing          meeting',
+    '\nrace        laps  drivers  requests     bytes  stints             compounds  timing          control    meeting',
   );
   for (const row of summary) {
     console.log(
-      `${row.id.padEnd(10)}  ${String(row.laps).padStart(4)}  ${String(row.drivers).padStart(7)}  ${String(row.requests).padStart(8)}  ${String(row.bytes).padStart(8)}  ${row.stints.padEnd(17)}  ${row.compounds.padEnd(9)}  ${row.timing.padEnd(14)}  ${row.meeting}`,
+      `${row.id.padEnd(10)}  ${String(row.laps).padStart(4)}  ${String(row.drivers).padStart(7)}  ${String(row.requests).padStart(8)}  ${String(row.bytes).padStart(8)}  ${row.stints.padEnd(17)}  ${row.compounds.padEnd(9)}  ${row.timing.padEnd(14)}  ${row.control.padEnd(9)}  ${row.meeting}`,
     );
   }
   console.log(
