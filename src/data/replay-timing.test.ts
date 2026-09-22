@@ -1,6 +1,9 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { testReplayRace } from './replay-fixtures';
+import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
+import { replayRaceSchema } from './replay-schema';
 import {
+  carLapsAt,
   formatRaceTime,
   leaderCumulative,
   overtakeModeFor,
@@ -126,9 +129,38 @@ describe('leaderCumulative', () => {
   });
 });
 
+describe('carLapsAt', () => {
+  it('puts each car on its own lap, not the leader lap', () => {
+    // Bravo has just started lap three; alpha is still 500 ms from the end of lap two;
+    // charlie and delta are a lap down and a quarter of the way through lap two.
+    const cars = carLapsAt(race, 199_500);
+    expect(cars.get('bravo')?.lap).toBe(3);
+    expect(cars.get('bravo')?.progress).toBeCloseTo(500 / 98_000);
+    expect(cars.get('alpha')?.lap).toBe(2);
+    expect(cars.get('alpha')?.progress).toBeCloseTo(0.995);
+    expect(cars.get('charlie')?.lap).toBe(2);
+    expect(cars.get('charlie')?.progress).toBeCloseTo(39_500 / 160_000);
+    expect(cars.get('delta')?.distance).toBeCloseTo(1 + 34_500 / 161_000);
+  });
+
+  it('drops a car once it has no lap in progress', () => {
+    // Delta has no lap three: it is on the map until its own lap two ends at 326000.
+    expect(carLapsAt(race, 325_999).has('delta')).toBe(true);
+    expect(carLapsAt(race, 326_000).has('delta')).toBe(false);
+    expect(carLapsAt(race, 326_000).get('charlie')?.lap).toBe(3);
+    expect(carLapsAt(race, 10_000_000).size).toBe(0);
+  });
+
+  it('cannot time a lap that does not follow the car previous one', () => {
+    const gappy = { ...race, laps: race.laps.filter((lap) => lap.lap !== 2) };
+    expect(carLapsAt(gappy, 250_000).has('bravo')).toBe(false);
+    expect(carLapsAt(gappy, 50_000).get('bravo')?.lap).toBe(1);
+  });
+});
+
 describe('replayProgress', () => {
   it('interpolates within the lap and emphasises the leader', () => {
-    const markers = replayProgress(race, 1, 50_000);
+    const markers = replayProgress(race, 50_000);
     const alpha = markers.find((marker) => marker.id === 'alpha');
     expect(alpha?.progress).toBeCloseTo(0.5);
     expect(alpha?.emphasis).toBe(true);
@@ -138,16 +170,31 @@ describe('replayProgress', () => {
   });
 
   it('measures the later laps from the driver own previous cumulative', () => {
-    // Bravo starts lap two at 101000 and takes 98000, so half its lap is 150000.
-    const markers = replayProgress(race, 2, 150_000);
+    // Bravo starts lap two at 101000 and ends it at 199000, so half its lap is 150000.
+    const markers = replayProgress(race, 150_000);
     expect(markers.find((marker) => marker.id === 'bravo')?.progress).toBeCloseTo(0.5);
   });
 
-  it('clamps outside the lap rather than running off the track', () => {
-    const early = replayProgress(race, 2, 0);
-    expect(early.every((marker) => marker.progress === 0)).toBe(true);
-    const late = replayProgress(race, 2, 10_000_000);
-    expect(late.every((marker) => marker.progress === 1)).toBe(true);
+  it('does not send the field back to the line when the leader completes a lap', () => {
+    // The leader (bravo) crosses at 199000; the others carry on where they were.
+    const before = replayProgress(race, 198_900);
+    const after = replayProgress(race, 199_100);
+    const alphaBefore = before.find((marker) => marker.id === 'alpha')?.progress ?? 0;
+    const alphaAfter = after.find((marker) => marker.id === 'alpha')?.progress ?? 0;
+    expect(alphaAfter).toBeGreaterThan(alphaBefore);
+    expect(alphaAfter).toBeGreaterThan(0.98);
+    expect(after.find((marker) => marker.id === 'bravo')?.progress).toBeLessThan(0.01);
+    expect(after.find((marker) => marker.id === 'bravo')?.emphasis).toBe(true);
+    expect(after.find((marker) => marker.id === 'alpha')?.emphasis).toBe(false);
+  });
+
+  it('keeps the marker order of the drivers list', () => {
+    expect(replayProgress(race, 199_000).map((marker) => marker.id)).toEqual([
+      'alpha',
+      'bravo',
+      'charlie',
+      'delta',
+    ]);
   });
 
   it('skips a car whose cumulative time is unknown', () => {
@@ -164,8 +211,37 @@ describe('replayProgress', () => {
           : lap,
       ),
     };
-    expect(replayProgress(broken, 1, 10_000).map((marker) => marker.id)).not.toContain('delta');
+    expect(replayProgress(broken, 10_000).map((marker) => marker.id)).not.toContain('delta');
+    // Without a known end to lap one, lap two cannot be timed either.
+    expect(replayProgress(broken, 200_000).map((marker) => marker.id)).not.toContain('delta');
   });
+});
+
+describe('replayProgress on the generated dataset', () => {
+  const files = generatedReplayFiles();
+  if (files.length === 0) {
+    it.skip('is not generated yet, so the dataset checks are skipped', () => {});
+    return;
+  }
+
+  it.each(files.map((file) => [path.basename(file), file] as const))(
+    '%s never sends a car backwards when the leader completes a lap',
+    (_name, file) => {
+      const real = replayRaceSchema.parse(readJson(file));
+      for (let lap = 1; lap < real.totalLaps; lap++) {
+        const boundary = leaderCumulative(real, lap);
+        const before = new Map(
+          replayProgress(real, boundary - 100).map((marker) => [marker.id, marker.progress]),
+        );
+        for (const marker of replayProgress(real, boundary + 100)) {
+          const was = before.get(marker.id);
+          if (was === undefined) continue;
+          const wrapped = was > 0.9 && marker.progress < 0.1;
+          expect(wrapped || marker.progress > was, `${marker.id} on lap ${lap}`).toBe(true);
+        }
+      }
+    },
+  );
 });
 
 describe('overtakeModeFor', () => {

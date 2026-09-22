@@ -103,8 +103,8 @@ export function useRaceReplay(
 
   const markers = useMemo(() => {
     if (!race || finished) return [];
-    return replayProgress(race, lapInProgress, elapsedMs);
-  }, [race, finished, lapInProgress, elapsedMs]);
+    return replayProgress(race, elapsedMs);
+  }, [race, finished, elapsedMs]);
 
   const setLap = useCallback(
     (lap: number) => {

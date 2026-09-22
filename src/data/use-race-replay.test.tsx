@@ -125,15 +125,24 @@ describe('useRaceReplay', () => {
     expect(result.current.isPlaying).toBe(true);
   });
 
-  it('puts a marker on the track for each running car', () => {
+  it('puts a marker on the track for each running car, each on its own lap', () => {
     const { result } = renderHook(() => useRaceReplay(race));
     act(() => result.current.setLap(3));
+    // The leader starts lap three at 199000; delta is still out on its lap two until 326000.
     expect(result.current.markers.map((marker) => marker.id)).toEqual([
-      'bravo',
       'alpha',
+      'bravo',
       'charlie',
+      'delta',
     ]);
-    expect(result.current.markers[0]?.emphasis).toBe(true);
+    expect(result.current.markers.map((marker) => marker.emphasis)).toEqual([
+      false,
+      true,
+      false,
+      false,
+    ]);
+    expect(result.current.markers[0]?.progress).toBeCloseTo(0.99);
+    expect(result.current.markers[1]?.progress).toBe(0);
   });
 
   it('rewinds when the race changes', () => {

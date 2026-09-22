@@ -2,7 +2,7 @@ import type { SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/t
 import type { OvertakeMode } from '@/registry/boxbox/ui/overtake-indicator';
 import type { PodiumEntry, PodiumSteps } from '@/registry/boxbox/ui/podium';
 import { formatGap, resultValue } from '@/registry/boxbox/ui/timing-tower';
-import type { ReplayLap, ReplayRace } from './replay-schema';
+import type { ReplayLap, ReplayLapRow, ReplayRace } from './replay-schema';
 
 /**
  * Maps a replay race onto the shapes the registry components take. Everything here is pure:
@@ -172,45 +172,78 @@ export function replayPodium(race: ReplayRace): PodiumSteps | null {
   return first && second && third ? [first, second, third] : null;
 }
 
-function clamp01(value: number): number {
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
+/** The lap a car is running at a moment of the race, and how far into it the car is. */
+export type CarLap = {
+  lap: number;
+  row: ReplayLapRow;
+  /** 0 at the start of the lap, approaching 1 at the line. */
+  progress: number;
+  /** Laps completed plus `progress`: the car's place along the race, for ordering cars. */
+  distance: number;
+};
+
+/**
+ * Which lap each car is on at `elapsedMs`, measured on that car's own clock.
+ *
+ * A car is on lap N from its cumulative time at the end of lap N-1 until its cumulative time at
+ * the end of lap N. That differs from the leader's lap: a car a minute behind is still finishing
+ * lap N when the leader starts lap N+1, and a lapped car is a whole lap further back. Keying every
+ * car to the leader's lap is what made cars jump back to the start line at each lap boundary.
+ *
+ * A car with no lap in progress — it has retired, or its cumulative time is unknown — is absent.
+ * A lap that does not follow the car's previous one (a gap in the source) cannot be timed, so the
+ * car is absent for it too, rather than placed at a guess.
+ */
+export function carLapsAt(race: ReplayRace, elapsedMs: number): Map<string, CarLap> {
+  const cars = new Map<string, CarLap>();
+  /** The end of each car's previous lap: the lap number and the cumulative time at the line. */
+  const lastLine = new Map<string, { lap: number; at: number }>();
+
+  for (const entry of race.laps) {
+    for (const row of entry.rows) {
+      const previous = lastLine.get(row.driverId);
+      const start = entry.lap === 1 ? 0 : previous?.lap === entry.lap - 1 ? previous.at : null;
+
+      if (row.cumulativeMs === null) lastLine.delete(row.driverId);
+      else lastLine.set(row.driverId, { lap: entry.lap, at: row.cumulativeMs });
+
+      if (start === null || row.cumulativeMs === null || row.cumulativeMs <= start) continue;
+      if (cars.has(row.driverId) || elapsedMs < start || elapsedMs >= row.cumulativeMs) continue;
+
+      const progress = (elapsedMs - start) / (row.cumulativeMs - start);
+      cars.set(row.driverId, { lap: entry.lap, row, progress, distance: entry.lap - 1 + progress });
+    }
+  }
+  return cars;
 }
 
 /**
- * Where each car sits on the lap it is currently running, as progress from 0 to 1.
+ * Where each car sits on the track at `elapsedMs`, as progress from 0 to 1 around its own lap.
  *
- * The replay carries one time per lap, so a car is assumed to circulate at a constant speed:
- * progress is how far the elapsed time has moved into that car's lap. It is an interpolation,
- * not telemetry, and the page says so. A car whose cumulative time is unknown is left off the
- * map rather than placed at a guess.
+ * The replay carries one time per lap, so a car is assumed to circulate at a constant speed. It
+ * is an interpolation, not telemetry, and the page says so. The car furthest along the race is
+ * emphasised as the leader. Markers keep the order of `race.drivers`, so the Track Map sees a
+ * stable list and animates each car rather than re-keying the set.
  */
-export function replayProgress(race: ReplayRace, lap: number, elapsedMs: number): TrackMarker[] {
-  const entry = lapAt(race, lap);
-  if (!entry) return [];
-
-  const before = lap > 1 ? lapAt(race, lap - 1) : undefined;
-  // This runs on every clock tick, so the previous lap is indexed once rather than searched per car.
-  const startedAt = new Map(before?.rows.map((item) => [item.driverId, item.cumulativeMs]) ?? []);
-  const drivers = new Map(race.drivers.map((driver) => [driver.id, driver]));
+export function replayProgress(race: ReplayRace, elapsedMs: number): TrackMarker[] {
+  const cars = carLapsAt(race, elapsedMs);
   const teams = new Map(race.teams.map((team) => [team.id, team]));
 
+  let leader: { id: string; distance: number } | null = null;
+  for (const [id, car] of cars) {
+    if (leader === null || car.distance > leader.distance) leader = { id, distance: car.distance };
+  }
+
   const markers: TrackMarker[] = [];
-  for (const row of entry.rows) {
-    if (row.cumulativeMs === null || row.lapTimeMs === null || row.lapTimeMs <= 0) continue;
-    const started = lap > 1 ? (startedAt.get(row.driverId) ?? null) : 0;
-    if (started === null) continue;
-
-    const driver = drivers.get(row.driverId);
-    if (!driver) continue;
-
+  for (const driver of race.drivers) {
+    const car = cars.get(driver.id);
+    if (!car) continue;
     markers.push({
-      id: row.driverId,
-      progress: clamp01((elapsedMs - started) / row.lapTimeMs),
+      id: driver.id,
+      progress: car.progress,
       color: teams.get(driver.teamId)?.color ?? 'currentColor',
       code: driver.code,
-      emphasis: row.position === 1,
+      emphasis: driver.id === leader?.id,
     });
   }
   return markers;
