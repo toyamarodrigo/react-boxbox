@@ -72,6 +72,32 @@ describe('replay page', () => {
     expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument();
   });
 
+  it('scrubs the race on the timeline and snaps the cars there', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    const slider = screen.getByRole('slider', { name: 'Race time' });
+    expect(slider).toHaveAttribute('aria-valuenow', '0');
+    expect(slider).toHaveAttribute('aria-valuemax', '297000');
+    expect(slider).toHaveAttribute('aria-valuetext', 'Lap 1 of 3, 0:00:00.000');
+    // One tick per interior lap boundary.
+    expect(
+      slider.closest('[data-slot="slider"]')?.parentElement?.querySelectorAll('span.w-px'),
+    ).toHaveLength(2);
+
+    fireEvent.keyDown(slider, { key: 'End' });
+    expect(slider).toHaveAttribute('aria-valuenow', '297000');
+    expect(slider).toHaveAttribute('aria-valuetext', 'Lap 3 of 3, 0:04:57.000');
+    expect(screen.queryByText('Lap 1 of 3')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(slider, { key: 'Home' });
+    expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument();
+    // The clock jumped, so the markers snap instead of sliding across the circuit.
+    const marker = document.querySelector<HTMLElement>('[data-slot="track-map-marker"]');
+    expect(marker?.style.transitionDuration).toBe('0ms');
+  });
+
   it('honours the season and round in the search params', async () => {
     renderReplay(`/replay?season=${race.season}&round=${race.round}`);
     expect(await screen.findByRole('heading', { name: race.name })).toBeInTheDocument();

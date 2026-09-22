@@ -22,6 +22,15 @@ export type RaceReplay = {
   lap: number;
   totalLaps: number;
   elapsedMs: number;
+  /** The leader's race time at the flag: the end of the clock. */
+  endMs: number;
+  /** The leader's race time at the end of each lap, index 0 being the start. */
+  lapBoundaries: readonly number[];
+  /**
+   * True when the clock last moved by a seek rather than a tick. A map animating between
+   * samples should snap on that render instead of sliding its cars across the circuit.
+   */
+  jumped: boolean;
   rows: TimingRow[];
   markers: TrackMarker[];
   finished: boolean;
@@ -31,6 +40,8 @@ export type RaceReplay = {
   pause: () => void;
   restart: () => void;
   setSpeed: (speed: ReplaySpeed) => void;
+  /** Moves the clock to a race time, clamped to the race. */
+  seek: (ms: number) => void;
   setLap: (lap: number) => void;
   nextLap: () => void;
   previousLap: () => void;
@@ -53,6 +64,7 @@ export function useRaceReplay(
   { speed: initialSpeed = 1, autoPlay = false }: { speed?: ReplaySpeed; autoPlay?: boolean } = {},
 ): RaceReplay {
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [jumped, setJumped] = useState(false);
   const [wantsPlay, setWantsPlay] = useState(autoPlay);
   const [speed, setSpeed] = useState<ReplaySpeed>(initialSpeed);
 
@@ -62,6 +74,7 @@ export function useRaceReplay(
   if (shown !== race) {
     setShown(race);
     setElapsedMs(0);
+    setJumped(true);
     setWantsPlay(autoPlay);
   }
 
@@ -81,6 +94,7 @@ export function useRaceReplay(
     if (!isPlaying) return;
     const timer = setInterval(() => {
       setElapsedMs((current) => Math.min(current + TICK_MS * speed, endMs));
+      setJumped(false);
     }, TICK_MS);
     return () => clearInterval(timer);
   }, [endMs, isPlaying, speed]);
@@ -106,17 +120,26 @@ export function useRaceReplay(
     return replayProgress(race, elapsedMs);
   }, [race, finished, elapsedMs]);
 
+  const seek = useCallback(
+    (ms: number) => {
+      if (!race) return;
+      setElapsedMs(Math.min(Math.max(0, ms), endMs));
+      setJumped(true);
+    },
+    [endMs, race],
+  );
+
   const setLap = useCallback(
     (lap: number) => {
-      if (!race) return;
       const target = Math.min(Math.max(1, Math.round(lap)), Math.max(1, totalLaps));
-      setElapsedMs(boundaries[target - 1] ?? 0);
+      seek(boundaries[target - 1] ?? 0);
     },
-    [boundaries, race, totalLaps],
+    [boundaries, seek, totalLaps],
   );
 
   const restart = useCallback(() => {
     setElapsedMs(0);
+    setJumped(true);
     setWantsPlay(autoPlay);
   }, [autoPlay]);
 
@@ -124,6 +147,9 @@ export function useRaceReplay(
     lap: lapInProgress,
     totalLaps,
     elapsedMs,
+    endMs,
+    lapBoundaries: boundaries,
+    jumped,
     rows,
     markers,
     finished,
@@ -133,6 +159,7 @@ export function useRaceReplay(
     pause: useCallback(() => setWantsPlay(false), []),
     restart,
     setSpeed,
+    seek,
     setLap,
     nextLap: useCallback(() => setLap(lapInProgress + 1), [setLap, lapInProgress]),
     previousLap: useCallback(() => setLap(lapInProgress - 1), [setLap, lapInProgress]),

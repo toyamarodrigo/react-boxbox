@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { ReplayIndexEntry, ReplayRace } from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
-import { overtakeModeFor, replayPodium } from '../data/replay-timing';
+import { formatRaceTime, overtakeModeFor, replayPodium } from '../data/replay-timing';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { circuitForRace } from '../data/circuit-for-race';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
@@ -15,6 +15,7 @@ import { RaceClock } from '@/registry/boxbox/ui/race-clock';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { Button } from '../components/ui/button';
+import { Slider } from '../components/ui/slider';
 import { seo } from '../lib/seo';
 
 /**
@@ -103,60 +104,106 @@ function RacePicker({
   );
 }
 
+/**
+ * The race on one bar: drag anywhere in the race, with a tick at every lap boundary and the lap
+ * in progress riding on the thumb. Seeking is live while dragging; the map snaps rather than
+ * slides on those renders (see `RaceReplay.jumped`).
+ */
+function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean }) {
+  const { endMs, lapBoundaries, totalLaps } = replay;
+  const percent = (ms: number) => (endMs > 0 ? (ms / endMs) * 100 : 0);
+
+  return (
+    <div className="relative pt-6">
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 top-6">
+        {/* Interior boundaries only: the first and last lap end where the bar does. */}
+        {lapBoundaries.slice(1, totalLaps).map((ms, index) => (
+          <span
+            key={index}
+            className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-foreground/25"
+            style={{ left: `${percent(ms)}%` }}
+          />
+        ))}
+      </div>
+      <Slider
+        value={[replay.elapsedMs]}
+        min={0}
+        max={Math.max(endMs, 1)}
+        step={1000}
+        disabled={disabled || endMs === 0}
+        onValueChange={([ms]) => ms !== undefined && replay.seek(ms)}
+        thumbProps={{
+          'aria-label': 'Race time',
+          'aria-valuetext': `Lap ${replay.lap} of ${totalLaps}, ${formatRaceTime(replay.elapsedMs)}`,
+          className: 'relative',
+          children: (
+            <span
+              aria-hidden
+              className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums leading-none text-foreground"
+            >
+              {`L${replay.lap}`}
+            </span>
+          ),
+        }}
+      />
+    </div>
+  );
+}
+
 function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean }) {
   return (
-    <fieldset
-      aria-label="Replay controls"
-      className="flex flex-wrap items-center gap-2 border border-border bg-card p-3"
-    >
-      <Button
-        size="sm"
-        disabled={disabled || replay.finished}
-        onClick={() => (replay.isPlaying ? replay.pause() : replay.play())}
-      >
-        {replay.isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-        {replay.isPlaying ? 'Pause' : 'Play'}
-      </Button>
-      <Button variant="outline" size="sm" disabled={disabled} onClick={replay.restart}>
-        <RotateCcw aria-hidden="true" />
-        Restart
-      </Button>
+    <div className="flex flex-col gap-3 border border-border bg-card p-3">
+      <fieldset aria-label="Replay controls" className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={disabled || replay.finished}
+          onClick={() => (replay.isPlaying ? replay.pause() : replay.play())}
+        >
+          {replay.isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+          {replay.isPlaying ? 'Pause' : 'Play'}
+        </Button>
+        <Button variant="outline" size="sm" disabled={disabled} onClick={replay.restart}>
+          <RotateCcw aria-hidden="true" />
+          Restart
+        </Button>
 
-      <div className="ml-auto flex items-center gap-2">
-        <fieldset className="flex items-center gap-1" aria-label="Replay speed">
-          {REPLAY_SPEEDS.map((speed: ReplaySpeed) => (
-            <Button
-              key={speed}
-              variant={replay.speed === speed ? 'default' : 'outline'}
-              size="sm"
-              disabled={disabled}
-              aria-pressed={replay.speed === speed}
-              onClick={() => replay.setSpeed(speed)}
-            >
-              {`${speed}×`}
-            </Button>
-          ))}
-        </fieldset>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label="Previous lap"
-          disabled={disabled || replay.lap <= 1}
-          onClick={replay.previousLap}
-        >
-          <ChevronLeft aria-hidden="true" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label="Next lap"
-          disabled={disabled || replay.lap >= replay.totalLaps}
-          onClick={replay.nextLap}
-        >
-          <ChevronRight aria-hidden="true" />
-        </Button>
-      </div>
-    </fieldset>
+        <div className="ml-auto flex items-center gap-2">
+          <fieldset className="flex items-center gap-1" aria-label="Replay speed">
+            {REPLAY_SPEEDS.map((speed: ReplaySpeed) => (
+              <Button
+                key={speed}
+                variant={replay.speed === speed ? 'default' : 'outline'}
+                size="sm"
+                disabled={disabled}
+                aria-pressed={replay.speed === speed}
+                onClick={() => replay.setSpeed(speed)}
+              >
+                {`${speed}×`}
+              </Button>
+            ))}
+          </fieldset>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Previous lap"
+            disabled={disabled || replay.lap <= 1}
+            onClick={replay.previousLap}
+          >
+            <ChevronLeft aria-hidden="true" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Next lap"
+            disabled={disabled || replay.lap >= replay.totalLaps}
+            onClick={replay.nextLap}
+          >
+            <ChevronRight aria-hidden="true" />
+          </Button>
+        </div>
+      </fieldset>
+      <Timeline replay={replay} disabled={disabled} />
+    </div>
   );
 }
 
@@ -209,7 +256,8 @@ function Circuit({ replay, race }: { replay: RaceReplay; race: ReplayRace }) {
         path={circuit.d}
         viewBox={circuit.viewBox}
         markers={replay.markers}
-        transitionMs={REPLAY_TICK_MS}
+        // After a seek the cars snap to the new time; sliding there would cross the circuit.
+        transitionMs={replay.jumped ? 0 : REPLAY_TICK_MS}
       />
       <figcaption className="mt-3 text-xs text-muted-foreground">
         {circuit.real

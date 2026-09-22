@@ -113,6 +113,35 @@ describe('useRaceReplay', () => {
     expect(result.current.lap).toBe(1);
   });
 
+  it('seeks to any race time, clamped to the race, and reports the jump for one render', () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useRaceReplay(race, { autoPlay: true }));
+    expect(result.current.endMs).toBe(297_000);
+    expect(result.current.lapBoundaries).toEqual([0, 100_000, 199_000, 297_000]);
+    expect(result.current.jumped).toBe(false);
+
+    act(() => result.current.seek(150_000));
+    expect(result.current.elapsedMs).toBe(150_000);
+    expect(result.current.lap).toBe(2);
+    expect(result.current.jumped).toBe(true);
+
+    // The next tick moves the clock normally again.
+    act(() => vi.advanceTimersByTime(100));
+    expect(result.current.elapsedMs).toBe(150_100);
+    expect(result.current.jumped).toBe(false);
+
+    act(() => result.current.seek(-5));
+    expect(result.current.elapsedMs).toBe(0);
+    act(() => result.current.seek(9_999_999));
+    expect(result.current.elapsedMs).toBe(297_000);
+    expect(result.current.finished).toBe(true);
+
+    // Seeking back from the flag makes the replay playable again.
+    act(() => result.current.seek(200_000));
+    expect(result.current.finished).toBe(false);
+    expect(result.current.isPlaying).toBe(true);
+  });
+
   it('restarts back to the start line and pauses', () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useRaceReplay(race, { autoPlay: true, speed: 20 }));
