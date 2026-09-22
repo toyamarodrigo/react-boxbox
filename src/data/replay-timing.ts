@@ -507,6 +507,40 @@ export function overtakeModeFor(season: number): OvertakeMode {
 }
 
 /**
+ * How many places a car has made up since the start: its grid slot minus its position now.
+ * Positive is a gain.
+ *
+ * `null` when there is no grid slot to count from. A pit-lane start is reported as grid 0, which
+ * is not a slot on the grid, and a missing value means the source never carried one.
+ */
+export function positionsSinceStart(
+  race: ReplayRace,
+  driverId: string,
+  position: number,
+): number | null {
+  const grid = race.results.find((result) => result.driverId === driverId)?.grid ?? null;
+  return grid === null || grid === 0 ? null : grid - position;
+}
+
+/**
+ * Emphasises one car and no other, so the followed driver is the car the map picks out rather
+ * than whoever is furthest along. An unknown id leaves every marker unemphasised.
+ */
+export function emphasiseMarker(markers: readonly TrackMarker[], id: string): TrackMarker[] {
+  return markers.map((marker) => ({ ...marker, emphasis: marker.id === id }));
+}
+
+/**
+ * The driver a code in the URL names. A code is what a viewer reads off the tower, so it is what
+ * addresses the followed driver; an unknown one resolves to nobody and is ignored.
+ */
+export function followedDriverId(race: ReplayRace, code: string | undefined): string | undefined {
+  if (code === undefined) return undefined;
+  const wanted = code.toUpperCase();
+  return race.drivers.find((driver) => driver.code.toUpperCase() === wanted)?.id;
+}
+
+/**
  * The leader's race time at the end of `lap`, which is the replay clock's lap boundary.
  * Lap 0 is the start. A lap with no usable leader time falls back to the last one that had
  * it, so the boundaries never move backwards.

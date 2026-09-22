@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { CIRCUITS } from '@/data/circuits';
 import { grid } from '@/data/grid';
 import type { TrackMarker, TrackSector, TrackStatus } from '@/registry/boxbox/lib/types';
@@ -43,6 +43,11 @@ export default function TrackMapDemo({
 }: ControlValues<typeof controls.fields>) {
   const progress = useTrackProgress(cars, TICK_MS, animate);
   const layout = circuitAt(circuit);
+  const [followedId, setFollowedId] = useState<string | null>(null);
+  const onMarkerClick = useCallback(
+    (marker: TrackMarker) => setFollowedId((current) => (current === marker.id ? null : marker.id)),
+    [],
+  );
 
   const sectors = useMemo<TrackSector[]>(
     () =>
@@ -56,13 +61,14 @@ export default function TrackMapDemo({
     () =>
       grid.drivers.slice(0, cars).map((driver, index) => ({
         id: driver.id,
-        // The leader is emphasised, the way a broadcast graphic picks one car out.
-        emphasis: index === 0,
+        // The leader is emphasised, the way a broadcast graphic picks one car out, until a
+        // click picks another.
+        emphasis: followedId === null ? index === 0 : driver.id === followedId,
         progress: progress[index] ?? 0,
         color: teamColor(driver.teamId),
         code: showCodes ? driver.code : undefined,
       })),
-    [cars, progress, showCodes],
+    [cars, followedId, progress, showCodes],
   );
 
   return (
@@ -77,10 +83,15 @@ export default function TrackMapDemo({
         markers={markers}
         size={size}
         transitionMs={TICK_MS}
+        onMarkerClick={onMarkerClick}
+        dimOthers={followedId !== null}
       />
       <figcaption className="mt-3 text-center font-display text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
         {layout.name} · {layout.caption}
       </figcaption>
+      <p className="mt-2 text-center text-xs text-muted-foreground">
+        Click a car to pick it out and dim the rest; click it again to let it go.
+      </p>
     </figure>
   );
 }

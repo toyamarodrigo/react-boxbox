@@ -4,9 +4,12 @@ import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixture
 import { type ReplayRace, replayRaceSchema } from './replay-schema';
 import {
   carLapsAt,
+  emphasiseMarker,
+  followedDriverId,
   formatRaceTime,
   leaderCumulative,
   overtakeModeFor,
+  positionsSinceStart,
   replayLiveRows,
   replayPitStops,
   replayPodium,
@@ -397,5 +400,54 @@ describe('overtakeModeFor', () => {
     expect(overtakeModeFor(2021)).toBe('drs');
     expect(overtakeModeFor(2025)).toBe('drs');
     expect(overtakeModeFor(2026)).toBe('overtake');
+  });
+});
+
+describe('positionsSinceStart', () => {
+  it('counts the grid slot against the position now', () => {
+    // Charlie started fifth.
+    expect(positionsSinceStart(race, 'charlie', 3)).toBe(2);
+    expect(positionsSinceStart(race, 'charlie', 8)).toBe(-3);
+    expect(positionsSinceStart(race, 'charlie', 5)).toBe(0);
+  });
+
+  it('has nothing to count from for a pit-lane start or an unknown car', () => {
+    // Delta's grid is zero: it started from the pit lane, which is not a grid slot.
+    expect(positionsSinceStart(race, 'delta', 4)).toBeNull();
+    expect(positionsSinceStart(race, 'nobody', 1)).toBeNull();
+  });
+});
+
+describe('emphasiseMarker', () => {
+  const markers = replayProgress(race, 50_000);
+
+  it('emphasises the named car and nobody else', () => {
+    const emphasised = emphasiseMarker(markers, 'bravo');
+    expect(emphasised.filter((marker) => marker.emphasis).map((marker) => marker.id)).toEqual([
+      'bravo',
+    ]);
+    // The leader was the emphasised one before.
+    expect(markers.find((marker) => marker.id === 'alpha')?.emphasis).toBe(true);
+    expect(emphasised.find((marker) => marker.id === 'alpha')?.emphasis).toBe(false);
+  });
+
+  it('leaves the rest of each marker alone and emphasises nothing for an unknown id', () => {
+    const emphasised = emphasiseMarker(markers, 'nobody');
+    expect(emphasised.every((marker) => marker.emphasis === false)).toBe(true);
+    expect(emphasised.map((marker) => marker.progress)).toEqual(
+      markers.map((marker) => marker.progress),
+    );
+  });
+});
+
+describe('followedDriverId', () => {
+  it('reads a driver code, in any case', () => {
+    expect(followedDriverId(race, 'CHA')).toBe('charlie');
+    expect(followedDriverId(race, 'cha')).toBe('charlie');
+  });
+
+  it('ignores an unknown code and no code at all', () => {
+    expect(followedDriverId(race, 'ZZZ')).toBeUndefined();
+    expect(followedDriverId(race, undefined)).toBeUndefined();
   });
 });

@@ -10,6 +10,8 @@ export type RawResult = {
   points: string;
   laps: string;
   status: string;
+  /** Grid slot, `0` for a pit-lane start. Absent in some older payloads. */
+  grid?: string;
   Driver: { driverId: string };
   Time?: { millis?: string; time: string };
 };
@@ -41,6 +43,12 @@ export function parseLapTime(value: string): number | null {
 export function parseGap(value: string): number | null {
   const trimmed = value.trim();
   return parseLapTime(trimmed.startsWith('+') ? trimmed.slice(1) : trimmed);
+}
+
+/** A grid slot. `0` is a pit-lane start, which the source reports as a slot of its own. */
+function parseGrid(value: string | undefined): number | null {
+  const trimmed = value?.trim() ?? '';
+  return /^\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : null;
 }
 
 /**
@@ -182,6 +190,7 @@ export function deriveResults(rawResults: RawResult[]): ReplayResult[] {
       driverId: result.Driver.driverId,
       position: /^\d+$/.test(result.position) ? Number.parseInt(result.position, 10) : null,
       positionText: result.positionText,
+      grid: parseGrid(result.grid),
       points: Number.parseFloat(result.points),
       laps,
       status: result.status,

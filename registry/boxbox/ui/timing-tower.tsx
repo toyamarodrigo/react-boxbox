@@ -272,6 +272,96 @@ export function TimingTowerChange({ positionChange }: { positionChange: number }
   );
 }
 
+/** What every row render slot gets alongside the row. */
+export type TimingTowerRowContext = { driver: Driver; team: Team | undefined; index: number };
+
+/**
+ * The expanded panel also gets the rows either side of the followed one, in the order the tower
+ * shows, so `behind.interval` is the gap back to the car behind.
+ */
+export type TimingTowerExpandedContext = TimingTowerRowContext & {
+  ahead: TimingRow | undefined;
+  behind: TimingRow | undefined;
+};
+
+/** One labelled figure of the expanded panel: a caption over a monospaced value. */
+export function TimingTowerFigure({
+  label,
+  figure,
+  children,
+  className,
+  ...props
+}: { label: string; figure: string } & React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="timing-tower-figure"
+      data-figure={figure}
+      className={cn('flex flex-col gap-0.5', className)}
+      {...props}
+    >
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
+      <span className="font-mono text-sm tabular-nums">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * What the expanded row shows when the consumer has not said otherwise: the figures the tower
+ * already holds. Anything the component cannot know — places made up since the start, a stint
+ * bar — belongs in a `renderExpanded` of your own.
+ */
+export function TimingTowerExpanded({
+  row,
+  ahead,
+  behind,
+  showTyre = false,
+  className,
+  ...props
+}: {
+  row: TimingRow;
+  /** The row one place ahead in the shown order, for the gap it is measured against. */
+  ahead?: TimingRow | undefined;
+  /** The row one place behind, whose `interval` is the gap back to it. */
+  behind?: TimingRow | undefined;
+  showTyre?: boolean;
+} & React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="timing-tower-expanded-figures"
+      className={cn('grid grid-cols-2 gap-x-3 gap-y-2', className)}
+      {...props}
+    >
+      <TimingTowerFigure label="Last" figure="last">
+        {formatLapTime(row.lastLapTime)}
+      </TimingTowerFigure>
+      <TimingTowerFigure label="Ahead" figure="ahead">
+        {ahead === undefined ? EMPTY : formatGap(row.interval)}
+      </TimingTowerFigure>
+      <TimingTowerFigure label="Behind" figure="behind">
+        {formatGap(behind?.interval ?? null)}
+      </TimingTowerFigure>
+      {/* The badge reads the compound and the age itself, so nothing is spelled out beside it. */}
+      {showTyre && (
+        <TimingTowerFigure label="Tyre" figure="tyre">
+          <TyreBadge
+            size="sm"
+            compound={row.tyre.compound}
+            age={row.tyre.age}
+            wear={row.tyre.wear}
+          />
+        </TimingTowerFigure>
+      )}
+    </div>
+  );
+}
+
+const EXPANDED_MOTION = {
+  initial: { opacity: 0, transform: 'translateY(-4px)' },
+  animate: { opacity: 1, transform: 'translateY(0px)' },
+  exit: { opacity: 0, transition: { duration: DURATION.fast, ease: EASE_OUT } },
+  transition: { duration: DURATION.base, ease: EASE_OUT },
+} as const;
+
 export function TimingTowerRow({
   row,
   driver,
@@ -280,10 +370,13 @@ export function TimingTowerRow({
   isLeader = false,
   isFastestLap = false,
   highlighted = false,
+  followed = false,
   showTyre = true,
   showOvertake,
   showDrs,
   overtakeMode = 'drs',
+  onSelect,
+  expanded,
   className,
   ...props
 }: {
@@ -294,46 +387,24 @@ export function TimingTowerRow({
   isLeader?: boolean;
   isFastestLap?: boolean;
   highlighted?: boolean;
+  /** The row the viewer is following: emphasised, and the one that carries `expanded`. */
+  followed?: boolean;
   showTyre?: boolean;
   showOvertake?: boolean;
   /** @deprecated use showOvertake */
   showDrs?: boolean;
   overtakeMode?: OvertakeMode;
+  /** Makes the row line a button. Without it the row is not operable at all. */
+  onSelect?: () => void;
+  /** A panel under the row line, shown while `followed`. */
+  expanded?: React.ReactNode;
 } & HTMLMotionProps<'li'>) {
   const valueLabel = VALUE_LABELS[mode];
   const results = mode === 'results';
   // A car that has left the race while it is still running: it stays listed, faded, with no tags.
   const out = !results && !isClassified(row);
-  return (
-    <motion.li
-      layout="position"
-      data-slot="timing-tower-row"
-      data-position={row.position}
-      data-driver={row.driverId}
-      data-pit={String(row.inPit)}
-      data-lapped={String(row.lapped)}
-      data-drs={String(row.drs)}
-      data-classified={results ? String(isClassified(row)) : undefined}
-      data-out={out ? 'true' : undefined}
-      // `y` rather than a transform string: Motion composes it with the layout
-      // projection, so a row leaving past `maxRows` drops out of the bottom
-      // instead of vanishing, and one climbing into view rises into its place.
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 12, transition: { duration: DURATION.fast, ease: EASE_OUT } }}
-      transition={{
-        layout: SPRING_ROW,
-        opacity: { duration: DURATION.base, ease: EASE_OUT },
-        y: { duration: DURATION.base, ease: EASE_OUT },
-      }}
-      className={cn(
-        'flex items-center gap-2 border-b border-border bg-card/90 py-1 pr-2 text-card-foreground last:border-b-0',
-        highlighted && 'bg-primary/10',
-        out && 'opacity-50',
-        className,
-      )}
-      {...props}
-    >
+  const line = (
+    <>
       <span className="sr-only">Position</span>
       <TimingTowerPosition position={row.position} positionChange={row.positionChange} />
       <span
@@ -380,6 +451,79 @@ export function TimingTowerRow({
           <TimingTowerPoints points={row.points} />
         </>
       )}
+    </>
+  );
+
+  return (
+    <motion.li
+      layout="position"
+      data-slot="timing-tower-row"
+      data-position={row.position}
+      data-driver={row.driverId}
+      data-pit={String(row.inPit)}
+      data-lapped={String(row.lapped)}
+      data-drs={String(row.drs)}
+      data-classified={results ? String(isClassified(row)) : undefined}
+      data-out={out ? 'true' : undefined}
+      data-followed={followed ? 'true' : undefined}
+      // `y` rather than a transform string: Motion composes it with the layout
+      // projection, so a row leaving past `maxRows` drops out of the bottom
+      // instead of vanishing, and one climbing into view rises into its place.
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 12, transition: { duration: DURATION.fast, ease: EASE_OUT } }}
+      transition={{
+        layout: SPRING_ROW,
+        opacity: { duration: DURATION.base, ease: EASE_OUT },
+        y: { duration: DURATION.base, ease: EASE_OUT },
+      }}
+      className={cn(
+        'flex flex-col border-b border-border bg-card/90 text-card-foreground last:border-b-0',
+        (highlighted || followed) && 'bg-primary/10',
+        // A followed car that is out fades less than the rest: its panel has to stay legible.
+        out && (followed ? 'opacity-80' : 'opacity-50'),
+        className,
+      )}
+      {...props}
+    >
+      {onSelect ? (
+        <button
+          type="button"
+          data-slot="timing-tower-row-button"
+          aria-pressed={followed}
+          onClick={onSelect}
+          className="flex w-full cursor-pointer appearance-none items-center gap-2 border-0 bg-transparent py-1 pr-2 text-left text-inherit focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          // An inset accent in the team colour, rather than a border: it marks the followed row
+          // without moving anything in it.
+          style={
+            followed ? { boxShadow: `inset 2px 0 0 0 ${team?.color ?? 'currentColor'}` } : undefined
+          }
+        >
+          {line}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 py-1 pr-2">{line}</div>
+      )}
+      {/*
+       * Its own presence boundary: rows live inside the tower's `AnimatePresence initial={false}`,
+       * which keeps blocking `initial` on anything that mounts later inside them.
+       */}
+      <AnimatePresence initial={false}>
+        {followed && expanded != null && (
+          <motion.div
+            key="expanded"
+            data-slot="timing-tower-expanded"
+            // A named group of figures inside a list item; `fieldset` would mean a form.
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+            role="group"
+            aria-label={`${driver.code} details`}
+            className="px-2 pb-2"
+            {...EXPANDED_MOTION}
+          >
+            {expanded}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.li>
   );
 }
@@ -396,6 +540,9 @@ export function TimingTower({
   showDrs,
   overtakeMode = 'drs',
   fastestLapDriverId = null,
+  followedId = null,
+  onRowClick,
+  renderExpanded,
   renderRow,
   className,
   ...props
@@ -412,10 +559,13 @@ export function TimingTower({
   showDrs?: boolean;
   overtakeMode?: OvertakeMode;
   fastestLapDriverId?: string | null;
-  renderRow?: (
-    row: TimingRow,
-    ctx: { driver: Driver; team: Team | undefined; index: number },
-  ) => React.ReactNode;
+  /** The driver the viewer is following: that row is emphasised and expands. */
+  followedId?: string | null;
+  /** Makes every default row operable. Without it no row is a button. */
+  onRowClick?: (row: TimingRow, ctx: TimingTowerRowContext) => void;
+  /** What the followed row shows under its line. Defaults to `TimingTowerExpanded`. */
+  renderExpanded?: (row: TimingRow, ctx: TimingTowerExpandedContext) => React.ReactNode;
+  renderRow?: (row: TimingRow, ctx: TimingTowerRowContext) => React.ReactNode;
 } & React.ComponentProps<'ol'>) {
   const ordered = sortRows(rows);
   const shown = maxRows === undefined ? ordered : ordered.slice(0, Math.max(0, maxRows));
@@ -437,11 +587,14 @@ export function TimingTower({
             const driver = drivers[row.driverId];
             if (!driver) return null;
             const team = teams[driver.teamId];
+            const ctx = { driver, team, index };
             if (renderRow) {
-              return (
-                <Fragment key={row.driverId}>{renderRow(row, { driver, team, index })}</Fragment>
-              );
+              return <Fragment key={row.driverId}>{renderRow(row, ctx)}</Fragment>;
             }
+            const followed = followedId !== null && followedId === row.driverId;
+            // Neighbours in the shown order, so an expanded panel can name the car behind.
+            const ahead = shown[index - 1];
+            const behind = shown[index + 1];
             return (
               <TimingTowerRow
                 key={row.driverId}
@@ -452,9 +605,23 @@ export function TimingTower({
                 isLeader={index === 0}
                 isFastestLap={fastestLapDriverId === row.driverId}
                 highlighted={index < highlightTop}
+                followed={followed}
                 showTyre={showTyre}
                 showOvertake={showsOvertake(showOvertake, showDrs)}
                 overtakeMode={overtakeMode}
+                onSelect={onRowClick === undefined ? undefined : () => onRowClick(row, ctx)}
+                expanded={
+                  !followed ? undefined : renderExpanded ? (
+                    renderExpanded(row, { ...ctx, ahead, behind })
+                  ) : (
+                    <TimingTowerExpanded
+                      row={row}
+                      ahead={ahead}
+                      behind={behind}
+                      showTyre={showTyre}
+                    />
+                  )
+                }
               />
             );
           })}

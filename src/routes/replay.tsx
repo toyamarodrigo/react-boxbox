@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { z } from 'zod';
@@ -7,18 +7,29 @@ import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
 import {
   type ReplayPitStop,
+  emphasiseMarker,
+  followedDriverId,
   formatRaceTime,
   overtakeModeFor,
+  positionsSinceStart,
   replayPodium,
 } from '../data/replay-timing';
 import { byDateDescending, formatRaceDate } from '../data/replay-index';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
+import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
-import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
+import {
+  type TimingTowerExpandedContext,
+  TimingTower,
+  TimingTowerFigure,
+  formatGap,
+  formatLapTime,
+  positionChangeState,
+} from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
@@ -32,6 +43,8 @@ import { seo } from '../lib/seo';
 const searchSchema = z.object({
   season: z.coerce.number().int().min(1950).optional(),
   round: z.coerce.number().int().min(1).optional(),
+  /** The followed driver, by the code the tower shows. An unknown one is ignored. */
+  driver: z.string().optional(),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -247,7 +260,72 @@ function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
   );
 }
 
-function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
+const EMPTY = '—';
+
+/** Gain / loss tones, the ones the tower's own ▲ / ▼ glyph uses. */
+const CHANGE_TONES = {
+  gain: 'text-flag-green',
+  loss: 'text-primary',
+  none: 'text-foreground',
+} as const;
+
+/**
+ * What the followed row shows on this page: the tower's own figures plus the places the car has
+ * made up since the grid, which the registry cannot know. No tyre line: the dataset has none.
+ */
+function FollowedFigures({
+  race,
+  row,
+  ahead,
+  behind,
+}: {
+  race: ReplayRace;
+  row: TimingRow;
+  ahead: TimingRow | undefined;
+  behind: TimingRow | undefined;
+}) {
+  const made = positionsSinceStart(race, row.driverId, row.position);
+  const change = positionChangeState(made ?? 0);
+
+  return (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+      <TimingTowerFigure label="Last" figure="last">
+        {formatLapTime(row.lastLapTime)}
+      </TimingTowerFigure>
+      <TimingTowerFigure label="Ahead" figure="ahead">
+        {ahead === undefined ? EMPTY : formatGap(row.interval)}
+      </TimingTowerFigure>
+      <TimingTowerFigure label="Behind" figure="behind">
+        {formatGap(behind?.interval ?? null)}
+      </TimingTowerFigure>
+      <TimingTowerFigure label="Since start" figure="places">
+        {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
+        <span aria-hidden className={CHANGE_TONES[change]}>
+          {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
+        </span>
+        <span className="sr-only">
+          {made === null
+            ? 'no grid slot'
+            : made === 0
+              ? 'no places made up'
+              : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
+        </span>
+      </TimingTowerFigure>
+    </div>
+  );
+}
+
+function Stage({
+  race,
+  replay,
+  followedId,
+  onFollow,
+}: {
+  race: ReplayRace;
+  replay: RaceReplay;
+  followedId: string | undefined;
+  onFollow: (driverId: string) => void;
+}) {
   const drivers = useMemo(
     () => Object.fromEntries(race.drivers.map((driver) => [driver.id, driver])),
     [race],
@@ -259,6 +337,15 @@ function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
   const podium = useMemo(
     () => (replay.finished ? replayPodium(race) : null),
     [race, replay.finished],
+  );
+
+  // Both are handed to the tower on every tick, so neither may be a fresh value each render.
+  const handleRowClick = useCallback((row: TimingRow) => onFollow(row.driverId), [onFollow]);
+  const renderExpanded = useCallback(
+    (row: TimingRow, ctx: TimingTowerExpandedContext) => (
+      <FollowedFigures race={race} row={row} ahead={ctx.ahead} behind={ctx.behind} />
+    ),
+    [race],
   );
 
   return (
@@ -280,8 +367,12 @@ function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
         maxRows={replay.rows.length}
         showTyre={false}
         overtakeMode={overtakeModeFor(race.season)}
+        followedId={followedId ?? null}
+        onRowClick={handleRowClick}
+        renderExpanded={renderExpanded}
         className="w-full"
       />
+      <p className="text-xs text-muted-foreground">Click a row to follow a driver. Esc releases.</p>
       {!replay.finished && (
         <p className="text-xs text-muted-foreground">
           Order and gaps between laps are interpolated from lap times.
@@ -291,7 +382,24 @@ function Stage({ race, replay }: { race: ReplayRace; replay: RaceReplay }) {
   );
 }
 
-function Circuit({ replay, circuit }: { replay: RaceReplay; circuit: ReplayCircuit }) {
+function Circuit({
+  replay,
+  circuit,
+  followedId,
+  onFollow,
+}: {
+  replay: RaceReplay;
+  circuit: ReplayCircuit;
+  followedId: string | undefined;
+  onFollow: (driverId: string) => void;
+}) {
+  // Following a driver overrides the emphasis the timing gives the car furthest along.
+  const markers = useMemo(
+    () => (followedId === undefined ? replay.markers : emphasiseMarker(replay.markers, followedId)),
+    [replay.markers, followedId],
+  );
+  const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
+
   return (
     <figure className="border border-border bg-card p-5">
       <TrackMap
@@ -300,9 +408,11 @@ function Circuit({ replay, circuit }: { replay: RaceReplay; circuit: ReplayCircu
         path={circuit.d}
         pitLane={circuit.pit.d}
         viewBox={circuit.viewBox}
-        markers={replay.markers}
+        markers={markers}
         // After a seek the cars snap to the new time; sliding there would cross the circuit.
         transitionMs={replay.jumped ? 0 : REPLAY_TICK_MS}
+        onMarkerClick={handleMarkerClick}
+        dimOthers={followedId !== undefined}
       />
       <figcaption className="mt-3 text-xs text-muted-foreground">
         {circuit.real
@@ -336,6 +446,50 @@ function ReplayPage() {
   );
   const replay = useRaceReplay(race.data, { pit: circuit?.pit });
 
+  const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
+
+  const release = useCallback(() => {
+    void navigate({
+      search: ({ driver: _driver, ...rest }) => rest,
+      replace: true,
+    });
+  }, [navigate]);
+
+  /**
+   * Following is a view of the race, not a step in it, so it replaces the URL rather than
+   * stacking history entries. Clicking the followed car again lets it go.
+   */
+  const follow = useCallback(
+    (driverId: string) => {
+      if (driverId === followedId) {
+        release();
+        return;
+      }
+      const code = race.data?.drivers.find((driver) => driver.id === driverId)?.code;
+      if (code === undefined) return;
+      void navigate({ search: (prev) => ({ ...prev, driver: code }), replace: true });
+    },
+    [followedId, navigate, race.data, release],
+  );
+
+  useEffect(() => {
+    if (followedId === undefined) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      // Escape belongs to whatever the viewer is typing in or dragging, if anything.
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('input, textarea, select, [role="slider"], [contenteditable="true"]')
+      ) {
+        return;
+      }
+      release();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [followedId, release]);
+
   return (
     <div className="space-y-8 py-4">
       <header className="space-y-4">
@@ -356,6 +510,7 @@ function ReplayPage() {
         <RacePicker
           races={races}
           value={entry?.id}
+          // A whole new search, so another race starts with no followed driver.
           onSelect={(next) => void navigate({ search: { season: next.season, round: next.round } })}
         />
         <p className="max-w-3xl border-l-2 border-border pl-4 text-xs leading-relaxed text-muted-foreground">
@@ -393,8 +548,8 @@ function ReplayPage() {
         // The page has the whole width now, so the tower column grows with it while the map,
         // which is the point of the page, still takes everything left over.
         <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-          <Stage race={race.data} replay={replay} />
-          <Circuit replay={replay} circuit={circuit} />
+          <Stage race={race.data} replay={replay} followedId={followedId} onFollow={follow} />
+          <Circuit replay={replay} circuit={circuit} followedId={followedId} onFollow={follow} />
         </div>
       )}
     </div>

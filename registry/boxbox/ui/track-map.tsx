@@ -291,6 +291,8 @@ export function TrackMapMarker({
   path,
   size = 'md',
   transitionMs = TRACK_MAP_TRANSITION_MS,
+  dimmed = false,
+  onSelect,
   className,
   ...props
 }: {
@@ -298,6 +300,10 @@ export function TrackMapMarker({
   path: string;
   size?: TrackMapSize;
   transitionMs?: number;
+  /** Faded because another car is emphasised. */
+  dimmed?: boolean;
+  /** Makes the dot a button. Without it the marker is not operable at all. */
+  onSelect?: () => void;
 } & React.ComponentProps<'div'>) {
   const progress = clamp01(marker.progress);
   // Adjusting state during render: a lap that wraps must not run the marker backwards.
@@ -322,30 +328,11 @@ export function TrackMapMarker({
   // matter keep theirs there.
   const showLabel = marker.code !== undefined && (marker.emphasis === true || size !== 'sm');
 
-  return (
-    <div
-      data-slot="track-map-marker"
-      data-id={marker.id}
-      data-pit={marker.inPit ? 'true' : undefined}
-      data-wrap={wrapped ? 'true' : undefined}
-      aria-hidden
-      className={cn(
-        'absolute left-0 top-0 size-0 transition-[offset-distance]',
-        'motion-reduce:transition-none data-[wrap]:transition-none',
-        className,
-      )}
-      style={{
-        offsetPath: `path("${path}")`,
-        offsetDistance: `${round(distance * 100)}%`,
-        offsetRotate: '0deg',
-        transitionDuration: `${Math.max(0, transitionMs)}ms`,
-        transitionTimingFunction: 'linear',
-      }}
-      {...props}
-    >
+  const body = (
+    <>
       <span
         data-slot="track-map-marker-dot"
-        className="absolute rounded-full ring-2 ring-background"
+        className="absolute rounded-full ring-2 ring-background group-focus-visible/marker:ring-4 group-focus-visible/marker:ring-ring"
         style={{
           width: dot,
           height: dot,
@@ -367,6 +354,49 @@ export function TrackMapMarker({
         >
           {marker.code}
         </span>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      data-slot="track-map-marker"
+      data-id={marker.id}
+      data-pit={marker.inPit ? 'true' : undefined}
+      data-wrap={wrapped ? 'true' : undefined}
+      data-dimmed={dimmed ? 'true' : undefined}
+      // A clickable marker has to stay in the accessibility tree; a decorative one does not.
+      aria-hidden={onSelect === undefined ? true : undefined}
+      className={cn(
+        'absolute left-0 top-0 size-0 transition-[offset-distance,opacity]',
+        'motion-reduce:transition-none data-[wrap]:transition-none',
+        dimmed && 'opacity-40',
+        className,
+      )}
+      style={{
+        offsetPath: `path("${path}")`,
+        offsetDistance: `${round(distance * 100)}%`,
+        offsetRotate: '0deg',
+        transitionDuration: `${Math.max(0, transitionMs)}ms`,
+        transitionTimingFunction: 'linear',
+      }}
+      {...props}
+    >
+      {onSelect ? (
+        // Zero-sized, like its parent: the dot overflows it and is what gets clicked, so the
+        // button never covers any of the track around the car.
+        <button
+          type="button"
+          data-slot="track-map-marker-button"
+          aria-label={marker.code ?? marker.id}
+          aria-pressed={marker.emphasis === true}
+          onClick={onSelect}
+          className="pointer-events-auto group/marker absolute size-0 cursor-pointer appearance-none border-0 bg-transparent p-0 focus-visible:outline-hidden"
+        >
+          {body}
+        </button>
+      ) : (
+        body
       )}
     </div>
   );
@@ -394,6 +424,13 @@ export type TrackMapProps = {
    * between your position updates so cars move at constant speed between samples.
    */
   transitionMs?: number;
+  /**
+   * Makes every marker a button. The map then exposes its children rather than reading as one
+   * graphic, so its `role` becomes `group`.
+   */
+  onMarkerClick?: (marker: TrackMarker) => void;
+  /** Fades every marker without `emphasis`, so the emphasised car is the one the eye follows. */
+  dimOthers?: boolean;
 } & React.ComponentProps<'div'>;
 
 export function TrackMap({
@@ -406,6 +443,8 @@ export function TrackMap({
   strokeWidth = TRACK_MAP_STROKE_WIDTH,
   size = 'md',
   transitionMs = TRACK_MAP_TRANSITION_MS,
+  onMarkerClick,
+  dimOthers = false,
   className,
   ...props
 }: TrackMapProps) {
@@ -431,7 +470,8 @@ export function TrackMap({
       ref={root}
       data-slot="track-map"
       data-size={size}
-      role="img"
+      // `img` hides its subtree, which would hide the marker buttons with it.
+      role={onMarkerClick ? 'group' : 'img'}
       aria-label={trackMapLabel(sectors, markers)}
       className={cn('relative w-full', className)}
       style={{ ['--track-map-scale' as string]: scale }}
@@ -451,7 +491,8 @@ export function TrackMap({
       {markers.length > 0 && (
         <div
           data-slot="track-map-markers"
-          aria-hidden
+          // The layer covers the whole map, so it never takes a pointer; the markers in it do.
+          aria-hidden={onMarkerClick === undefined ? true : undefined}
           className="pointer-events-none absolute left-0 top-0 origin-top-left"
           style={{ width, height, transform: 'scale(var(--track-map-scale))' }}
         >
@@ -466,6 +507,8 @@ export function TrackMap({
                 path={inPit ? pitLane : path}
                 size={size}
                 transitionMs={transitionMs}
+                dimmed={dimOthers && marker.emphasis !== true}
+                onSelect={onMarkerClick === undefined ? undefined : () => onMarkerClick(marker)}
               />
             );
           })}

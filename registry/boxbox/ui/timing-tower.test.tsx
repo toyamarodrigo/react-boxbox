@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Driver, SectorTime, Team, TimingRow } from '@/registry/boxbox/lib/types';
 import {
   TimingTower,
@@ -342,6 +342,156 @@ describe('TimingTower', () => {
       <TimingTower rows={rows} drivers={drivers} teams={teams} fastestLapDriverId="three" />,
     );
     expect(tone()).toEqual(['default', 'pit', 'fastest']);
+  });
+
+  it('makes no row operable until onRowClick is given', () => {
+    const { container, rerender } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} />,
+    );
+    expect(container.querySelectorAll('[data-slot="timing-tower-row-button"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[tabindex]')).toHaveLength(0);
+
+    rerender(<TimingTower rows={rows} drivers={drivers} teams={teams} onRowClick={() => {}} />);
+    expect(container.querySelectorAll('[data-slot="timing-tower-row-button"]')).toHaveLength(3);
+  });
+
+  it('reports the clicked row with its driver, team and place in the order', () => {
+    const onRowClick = vi.fn();
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} onRowClick={onRowClick} />,
+    );
+    const buttons = container.querySelectorAll('[data-slot="timing-tower-row-button"]');
+    fireEvent.click(buttons[1]!);
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    const [row, ctx] = onRowClick.mock.calls[0]!;
+    expect(row.driverId).toBe('two');
+    expect(ctx).toMatchObject({ index: 1 });
+    expect(ctx.driver.code).toBe('BBB');
+    expect(ctx.team.name).toBe('Aster Forge');
+  });
+
+  it('marks the followed row and presses its button', () => {
+    const { container } = render(
+      <TimingTower
+        rows={rows}
+        drivers={drivers}
+        teams={teams}
+        followedId="two"
+        onRowClick={() => {}}
+      />,
+    );
+    const rendered = [...container.querySelectorAll('[data-slot="timing-tower-row"]')];
+    expect(rendered.map((row) => row.getAttribute('data-followed'))).toEqual([null, 'true', null]);
+    expect(rendered[1]).toHaveClass('bg-primary/10');
+    const pressed = [...container.querySelectorAll('[data-slot="timing-tower-row-button"]')].map(
+      (button) => button.getAttribute('aria-pressed'),
+    );
+    expect(pressed).toEqual(['false', 'true', 'false']);
+  });
+
+  it('expands the followed row only, inside that row, with a named group', () => {
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} followedId="two" />,
+    );
+    const panels = container.querySelectorAll('[data-slot="timing-tower-expanded"]');
+    expect(panels).toHaveLength(1);
+    expect(panels[0]?.closest('[data-slot="timing-tower-row"]')).toHaveAttribute(
+      'data-driver',
+      'two',
+    );
+    expect(screen.getByRole('group', { name: 'BBB details' })).toBeInTheDocument();
+  });
+
+  it('gives renderExpanded the neighbours in the shown order', () => {
+    const seen: (string | undefined)[] = [];
+    render(
+      <TimingTower
+        rows={rows}
+        drivers={drivers}
+        teams={teams}
+        followedId="two"
+        renderExpanded={(_row, ctx) => {
+          seen.push(ctx.ahead?.driverId, ctx.behind?.driverId);
+          return <span>panel</span>;
+        }}
+      />,
+    );
+    expect(seen).toEqual(['one', 'three']);
+    expect(screen.getByText('panel')).toBeInTheDocument();
+  });
+
+  it('has no car ahead of the leader', () => {
+    const seen: { ahead?: string; behind?: string } = {};
+    render(
+      <TimingTower
+        rows={rows}
+        drivers={drivers}
+        teams={teams}
+        followedId="one"
+        renderExpanded={(_row, ctx) => {
+          seen.ahead = ctx.ahead?.driverId;
+          seen.behind = ctx.behind?.driverId;
+          return null;
+        }}
+      />,
+    );
+    expect(seen).toEqual({ ahead: undefined, behind: 'two' });
+  });
+
+  it('defaults the panel to the figures it already has, the car behind included', () => {
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} followedId="two" />,
+    );
+    const figures = [...container.querySelectorAll('[data-slot="timing-tower-figure"]')];
+    expect(figures.map((figure) => figure.getAttribute('data-figure'))).toEqual([
+      'last',
+      'ahead',
+      'behind',
+      'tyre',
+    ]);
+    // The gap back to the car behind is that car's interval, not this row's.
+    expect(figures[2]).toHaveTextContent('+0.567');
+    expect(figures[0]).toHaveTextContent('1:31.512');
+  });
+
+  it('shows no gap ahead for the leader and drops the tyre figure with showTyre off', () => {
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} followedId="one" showTyre={false} />,
+    );
+    const figures = [...container.querySelectorAll('[data-slot="timing-tower-figure"]')];
+    expect(figures.map((figure) => figure.getAttribute('data-figure'))).toEqual([
+      'last',
+      'ahead',
+      'behind',
+    ]);
+    expect(figures[1]).toHaveTextContent('—');
+  });
+
+  it('keeps the panel on a car that is out of the race', () => {
+    const live = [makeRow('one', 1), makeRow('two', 2, { finishStatus: 'dnf' })];
+    const { container } = render(
+      <TimingTower rows={live} drivers={drivers} teams={teams} followedId="two" />,
+    );
+    const rendered = [...container.querySelectorAll('[data-slot="timing-tower-row"]')];
+    expect(rendered[1]).toHaveAttribute('data-out', 'true');
+    expect(rendered[1]).not.toHaveClass('opacity-50');
+    expect(rendered[1]?.querySelector('[data-slot="timing-tower-expanded"]')).toBeInTheDocument();
+  });
+
+  it('leaves custom rows alone: no button, no panel', () => {
+    const { container } = render(
+      <TimingTower
+        rows={rows}
+        drivers={drivers}
+        teams={teams}
+        followedId="two"
+        onRowClick={() => {}}
+        renderRow={(row) => <li data-slot="custom-row">{row.driverId}</li>}
+      />,
+    );
+    expect(container.querySelectorAll('[data-slot="timing-tower-row-button"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-slot="timing-tower-expanded"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-slot="custom-row"]')).toHaveLength(3);
   });
 
   it('uses renderRow to replace the default row', () => {

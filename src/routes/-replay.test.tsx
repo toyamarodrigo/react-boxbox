@@ -27,7 +27,18 @@ function renderReplay(path = '/replay') {
   const router = getRouter();
   router.update({ history: createMemoryHistory({ initialEntries: [path] }) });
   render(<RouterProvider router={router} />, { container: document });
+  return router;
 }
+
+/** The search the router is on, which is where the followed driver lives. */
+const searchOf = (router: ReturnType<typeof getRouter>) =>
+  router.state.location.search as { driver?: string; round?: number };
+
+const followedRow = () => document.querySelector('[data-slot="timing-tower-row"][data-followed]');
+const rowButton = (driverId: string) =>
+  document.querySelector<HTMLElement>(
+    `[data-driver="${driverId}"] [data-slot="timing-tower-row-button"]`,
+  );
 
 beforeEach(() => {
   clearReplayCache();
@@ -62,7 +73,8 @@ describe('replay page', () => {
     expect(within(tower).getAllByRole('listitem')).toHaveLength(race.drivers.length);
     expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument();
     // One marker per car running that lap, drawn on the invented circuit, with its pit lane.
-    expect(screen.getByRole('img', { name: 'Track map, 4 cars' })).toBeInTheDocument();
+    // A group rather than an image: every car on it can be clicked to follow that driver.
+    expect(screen.getByRole('group', { name: 'Track map, 4 cars' })).toBeInTheDocument();
     expect(document.querySelector('[data-slot="track-map-pit-lane"]')).not.toBeNull();
     // Both the map caption and the tower note say so.
     expect(screen.getAllByText(/interpolated from lap times/i)).toHaveLength(2);
@@ -178,5 +190,118 @@ describe('replay page', () => {
 
     await waitFor(() => expect(screen.getByText(/This race did not load/)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+});
+
+describe('replay page, followed driver', () => {
+  it('expands the row of the driver the search params name', async () => {
+    renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'charlie'));
+    expect(document.querySelectorAll('[data-slot="timing-tower-expanded"]')).toHaveLength(1);
+    expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
+    expect(rowButton('charlie')).toHaveAttribute('aria-pressed', 'true');
+    expect(rowButton('alpha')).toHaveAttribute('aria-pressed', 'false');
+    // Charlie started fifth and is running third, so it has made up two places.
+    expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
+  });
+
+  it('ignores a code no driver in the race carries', async () => {
+    renderReplay('/replay?driver=ZZZ');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    expect(followedRow()).toBeNull();
+    expect(document.querySelectorAll('[data-slot="timing-tower-expanded"]')).toHaveLength(0);
+  });
+
+  it('follows a driver on a row click and lets it go on a second one', async () => {
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(rowButton('charlie')).not.toBeNull());
+
+    fireEvent.click(rowButton('charlie')!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
+    expect(followedRow()).toHaveAttribute('data-driver', 'charlie');
+
+    fireEvent.click(rowButton('charlie')!);
+    await waitFor(() => expect(searchOf(router).driver).toBeUndefined());
+    expect(followedRow()).toBeNull();
+  });
+
+  it('releases the followed driver on Escape, but not while a slider has the key', async () => {
+    const router = renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'Escape' });
+    expect(searchOf(router).driver).toBe('CHA');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(searchOf(router).driver).toBeUndefined());
+    expect(followedRow()).toBeNull();
+  });
+
+  it('drops the followed driver when the race changes', async () => {
+    const second = { ...race, id: '2030-2', round: 2, name: 'Second Grand Prix' };
+    const races = [
+      index.races[0]!,
+      { ...index.races[0]!, id: second.id, round: 2, name: second.name },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse({ ...index, races });
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(race);
+        if (url.endsWith(`/${second.id}.json`)) return jsonResponse(second);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    const router = renderReplay('/replay?driver=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
+    await waitFor(() => expect(searchOf(router).round).toBe(2));
+    expect(searchOf(router).driver).toBeUndefined();
+    await waitFor(() => expect(followedRow()).toBeNull());
+  });
+
+  it('follows a driver from the map and dims the other cars', async () => {
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    const marker = await screen.findByRole('button', { name: 'CHA' });
+    expect(marker).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(marker);
+    await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
+    expect(followedRow()).toHaveAttribute('data-driver', 'charlie');
+
+    const dimmed = [...document.querySelectorAll('[data-slot="track-map-marker"]')].map(
+      (element) => [element.getAttribute('data-id'), element.getAttribute('data-dimmed')],
+    );
+    expect(dimmed).toEqual([
+      ['alpha', 'true'],
+      ['bravo', 'true'],
+      ['charlie', null],
+      ['delta', 'true'],
+    ]);
+    expect(screen.getByRole('button', { name: 'CHA' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the follow working once the race is over', async () => {
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+    // The results listing replaces the live tower; the row is still there to be followed.
+    await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
+
+    fireEvent.click(rowButton('charlie')!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
+    expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
   });
 });

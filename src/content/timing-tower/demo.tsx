@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { grid } from '@/data/grid';
 import { useRaceSimulation } from '@/data/use-race-simulation';
+import type { TimingRow } from '@/registry/boxbox/lib/types';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
 import type { ControlValues } from '../types';
@@ -17,9 +18,16 @@ export default function TimingTowerDemo({
   showTyre,
   showOvertake,
   overtakeMode,
+  followable,
   speed,
 }: ControlValues<typeof controls.fields>) {
   const { state, finished } = useRaceSimulation({ intervalMs: speed });
+  const [followedId, setFollowedId] = useState<string | null>(null);
+  const onRowClick = useCallback(
+    (row: TimingRow) =>
+      setFollowedId((current) => (current === row.driverId ? null : row.driverId)),
+    [],
+  );
   const fastestLapDriverId = useMemo(() => {
     const best = state.sessionBest.lap;
     if (best === null) return null;
@@ -53,7 +61,14 @@ export default function TimingTowerDemo({
           showOvertake={showOvertake}
           overtakeMode={overtakeMode}
           fastestLapDriverId={fastestLapDriverId}
+          followedId={followable ? followedId : null}
+          onRowClick={followable ? onRowClick : undefined}
         />
+        {followable && (
+          <span className="text-xs text-muted-foreground">
+            Click a row to follow that driver; click it again to let it go.
+          </span>
+        )}
       </div>
     </div>
   );

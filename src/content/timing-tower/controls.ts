@@ -46,6 +46,12 @@ const controls = defineControls({
     default: 'drs',
     options: ['drs', 'overtake'],
   },
+  followable: {
+    kind: 'boolean',
+    label: 'Followable',
+    description: 'Let a click on a row follow that driver and expand it.',
+    default: true,
+  },
   speed: {
     kind: 'number',
     label: 'Speed',

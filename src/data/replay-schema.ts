@@ -51,6 +51,8 @@ export const replayResultSchema = z.object({
   driverId: z.string().min(1),
   position: z.number().int().min(1).nullable(),
   positionText: z.string().min(1),
+  /** The car's grid slot. Zero is a pit-lane start, which has no slot; `null` when unknown. */
+  grid: z.number().int().min(0).nullable().default(null),
   points: z.number().min(0),
   laps: z.number().int().min(0),
   status: z.string().min(1),

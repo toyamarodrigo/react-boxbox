@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { TrackMarker, TrackSector } from '@/registry/boxbox/lib/types';
 import {
   TrackMap,
@@ -314,6 +314,59 @@ describe('TrackMap', () => {
     expect(container.querySelector('[data-slot="track-map-start-finish"]')).toBeInTheDocument();
     rerender(<TrackMap path={PATH} showStartFinish={false} />);
     expect(container.querySelector('[data-slot="track-map-start-finish"]')).toBeNull();
+  });
+
+  it('makes no marker operable until onMarkerClick is given, and keeps the img role', () => {
+    const { container, rerender } = render(<TrackMap path={PATH} markers={[marker()]} />);
+    expect(container.querySelectorAll('[data-slot="track-map-marker-button"]')).toHaveLength(0);
+    expect(screen.getByRole('img')).toBeInTheDocument();
+
+    rerender(<TrackMap path={PATH} markers={[marker()]} onMarkerClick={() => {}} />);
+    expect(container.querySelectorAll('[data-slot="track-map-marker-button"]')).toHaveLength(1);
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.getByRole('group')).toHaveAccessibleName('Track map, 1 car');
+  });
+
+  it('reports the clicked car and presses the emphasised one', () => {
+    const onMarkerClick = vi.fn();
+    render(
+      <TrackMap
+        path={PATH}
+        markers={[
+          marker({ id: 'evo', code: 'EVO', emphasis: true }),
+          marker({ id: 'mso', code: 'MSO' }),
+        ]}
+        onMarkerClick={onMarkerClick}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'EVO' })).toHaveAttribute('aria-pressed', 'true');
+    const other = screen.getByRole('button', { name: 'MSO' });
+    expect(other).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(other);
+    expect(onMarkerClick).toHaveBeenCalledTimes(1);
+    expect(onMarkerClick.mock.calls[0]?.[0]).toMatchObject({ id: 'mso' });
+  });
+
+  it('falls back to the id when a marker has no code', () => {
+    render(<TrackMap path={PATH} markers={[marker({ id: 'evo' })]} onMarkerClick={() => {}} />);
+    expect(screen.getByRole('button', { name: 'evo' })).toBeInTheDocument();
+  });
+
+  it('dims every car but the emphasised one under dimOthers', () => {
+    const markers = [marker({ id: 'evo', emphasis: true }), marker({ id: 'mso' })];
+    const { container, rerender } = render(<TrackMap path={PATH} markers={markers} />);
+    const dimmed = () =>
+      [...container.querySelectorAll('[data-slot="track-map-marker"]')].map((element) =>
+        element.getAttribute('data-dimmed'),
+      );
+    expect(dimmed()).toEqual([null, null]);
+
+    rerender(<TrackMap path={PATH} markers={markers} dimOthers />);
+    expect(dimmed()).toEqual([null, 'true']);
+    expect(container.querySelectorAll('[data-slot="track-map-marker"]')[1]).toHaveClass(
+      'opacity-40',
+    );
   });
 
   it('takes the marker layer size from the viewBox', () => {
