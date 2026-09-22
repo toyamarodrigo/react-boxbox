@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
@@ -28,7 +37,6 @@ import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
-import { GapChart } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
@@ -281,6 +289,14 @@ const CHANGE_TONES = {
   loss: 'text-primary',
   none: 'text-foreground',
 } as const;
+
+/**
+ * Recharts is the one heavy dependency on the page and only the Gaps tab needs it, so the chart
+ * arrives when that tab is first opened rather than in the bundle every viewer downloads.
+ */
+const GapChart = lazy(() =>
+  import('@/registry/boxbox/ui/gap-chart').then((module) => ({ default: module.GapChart })),
+);
 
 /** A car's stints by driver id: one lookup per race rather than a scan per render. */
 type StintsByDriver = Map<string, ReplayStint[]>;
@@ -691,14 +707,17 @@ function StrategyPanel({
                   </ul>
                 </TabsContent>
                 <TabsContent value="gaps">
-                  <GapChart
-                    series={gapSeries}
-                    totalLaps={race.totalLaps}
-                    currentLap={gapLaps}
-                    emphasisedId={followedId}
-                    onSeriesClick={onFollow}
-                    className="h-64 md:h-80"
-                  />
+                  {/* The fallback holds the chart's height, so the panel does not jump when it lands. */}
+                  <Suspense fallback={<div aria-busy="true" className="h-64 md:h-80" />}>
+                    <GapChart
+                      series={gapSeries}
+                      totalLaps={race.totalLaps}
+                      currentLap={gapLaps}
+                      emphasisedId={followedId}
+                      onSeriesClick={onFollow}
+                      className="h-64 md:h-80"
+                    />
+                  </Suspense>
                   <p className="pt-2 text-xs text-muted-foreground">
                     Gaps are the dataset's own, measured at the line. Click a line to follow that
                     driver.
