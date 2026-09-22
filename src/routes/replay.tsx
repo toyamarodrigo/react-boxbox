@@ -429,7 +429,11 @@ function Stage({
   );
 
   return (
-    <div className="flex flex-col gap-4 border border-border bg-card p-5">
+    // On wide screens the tower pins under the site header and never grows past the viewport,
+    // scrolling inside instead. It is the tallest column, so if it set the page's height the
+    // expanded row would grow and shrink the whole document, and a viewer at the bottom of the
+    // page would see the map and the tower ride that accordion.
+    <div className="flex flex-col gap-4 border border-border bg-card p-5 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto">
       <div className="flex flex-wrap items-center gap-3">
         <LapCounter lap={replay.lap} totalLaps={replay.totalLaps} />
         <RaceClock ms={replay.elapsedMs} direction="up" label="ELAPSED" />
