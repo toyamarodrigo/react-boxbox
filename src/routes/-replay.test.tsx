@@ -17,10 +17,16 @@ function jsonResponse(body: unknown): Response {
   } as Response;
 }
 
+/**
+ * Mounted on `document`, as TanStack Start does in the browser. The root route renders `<html>`
+ * and `<body>`, which React 19 resolves to the real ones; a root inside a `div` then sends
+ * React DOM into an endless walk the moment anything portals into `document.body`, such as a
+ * tooltip.
+ */
 function renderReplay(path = '/replay') {
   const router = getRouter();
   router.update({ history: createMemoryHistory({ initialEntries: [path] }) });
-  render(<RouterProvider router={router} />);
+  render(<RouterProvider router={router} />, { container: document });
 }
 
 beforeEach(() => {
@@ -98,6 +104,50 @@ describe('replay page', () => {
     // The clock jumped, so the markers snap instead of sliding across the circuit.
     const marker = document.querySelector<HTMLElement>('[data-slot="track-map-marker"]');
     expect(marker?.style.transitionDuration).toBe('0ms');
+  });
+
+  it('names each pit stop on the timeline and seeks to it', async () => {
+    // Charlie stops on lap one, 20 s in the lane, so one mark hangs under the bar. The stop
+    // starts at 152 s, when the leader is already on lap two.
+    const pitted = {
+      ...race,
+      laps: race.laps.map((lap) =>
+        lap.lap === 1
+          ? {
+              ...lap,
+              rows: lap.rows.map((row) =>
+                row.driverId === 'charlie'
+                  ? { ...row, inPit: true, pitDurationMs: 20_000, pitStop: 1 }
+                  : row,
+              ),
+            }
+          : lap,
+      ),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(pitted);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    const mark = screen.getByRole('button', { name: 'CHA pit stop 1, lap 1, 20.0s' });
+    expect(mark).toHaveAttribute('data-slot', 'timeline-pit-stop');
+
+    // Focus opens the tooltip the way hovering does, without a pointer in jsdom.
+    fireEvent.focus(mark);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('CHA pit stop 1, lap 1, 20.0s');
+
+    fireEvent.click(mark);
+    const slider = screen.getByRole('slider', { name: 'Race time' });
+    expect(slider).toHaveAttribute('aria-valuetext', expect.stringMatching(/^Lap 2 of 3/));
+    expect(Number(slider.getAttribute('aria-valuenow'))).toBeGreaterThan(100_000);
   });
 
   it('honours the season and round in the search params', async () => {

@@ -153,7 +153,9 @@ describe('pit stops on the lane', () => {
   const charlieAt = (ms: number) => carLapsAt(pitted, ms, shape).get('charlie');
 
   it('lists the stop with the moment the car enters the lane', () => {
-    expect(replayPitStops(pitted, shape)).toEqual([{ driverId: 'charlie', lap: 2, atMs: 310_000 }]);
+    expect(replayPitStops(pitted, shape)).toEqual([
+      { driverId: 'charlie', code: 'CHA', lap: 2, stop: 1, atMs: 310_000, durationMs: 20_000 },
+    ]);
     expect(replayPitStops(race, shape)).toEqual([]);
   });
 

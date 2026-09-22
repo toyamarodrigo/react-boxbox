@@ -1,11 +1,16 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { z } from 'zod';
 import type { ReplayIndexEntry, ReplayRace } from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
 import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
-import { formatRaceTime, overtakeModeFor, replayPodium } from '../data/replay-timing';
+import {
+  type ReplayPitStop,
+  formatRaceTime,
+  overtakeModeFor,
+  replayPodium,
+} from '../data/replay-timing';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
@@ -16,6 +21,7 @@ import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { seo } from '../lib/seo';
 
 /**
@@ -105,6 +111,55 @@ function RacePicker({
 }
 
 /**
+ * Pit stops hang under the bar in the pit colour, one mark per stop. Each mark is a button with
+ * a hit area wider than its one-pixel tick: hovering or focusing it names the stop, clicking it
+ * seeks there. The marks sit below the slider so they never take a drag away from it.
+ *
+ * Memoised on the stops alone: the page renders ten times a second while a replay runs and a
+ * race can have forty stops, none of which change until the race does.
+ */
+const PitStopMarks = memo(function PitStopMarks({
+  stops,
+  endMs,
+  disabled,
+  onSeek,
+}: {
+  stops: readonly ReplayPitStop[];
+  endMs: number;
+  disabled: boolean;
+  onSeek: (ms: number) => void;
+}) {
+  if (stops.length === 0) return null;
+  return (
+    <TooltipProvider delayDuration={150}>
+      {stops.map((stop) => {
+        const label = `${stop.code} pit stop${stop.stop === null ? '' : ` ${stop.stop}`}, lap ${stop.lap}, ${(stop.durationMs / 1000).toFixed(1)}s`;
+        return (
+          <Tooltip key={`${stop.driverId}:${stop.lap}`}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-slot="timeline-pit-stop"
+                aria-label={label}
+                disabled={disabled}
+                className="absolute bottom-0 flex h-3 w-3 -translate-x-1/2 justify-center focus-visible:outline-hidden focus-visible:[&>span]:ring-2 focus-visible:[&>span]:ring-ring/50"
+                style={{ left: `${endMs > 0 ? (stop.atMs / endMs) * 100 : 0}%` }}
+                onClick={() => onSeek(stop.atMs)}
+              >
+                <span aria-hidden className="h-1 w-px bg-status-pit" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="font-mono text-[10px] tabular-nums">
+              {label}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </TooltipProvider>
+  );
+});
+
+/**
  * The race on one bar: drag anywhere in the race, with a tick at every lap boundary and the lap
  * in progress riding on the thumb. Seeking is live while dragging; the map snaps rather than
  * slides on those renders (see `RaceReplay.jumped`).
@@ -114,8 +169,8 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
   const percent = (ms: number) => (endMs > 0 ? (ms / endMs) * 100 : 0);
 
   return (
-    <div className="relative pt-6">
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 top-6">
+    <div className="relative pt-6 pb-3">
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-3 top-6">
         {/* Interior boundaries only: the first and last lap end where the bar does. */}
         {lapBoundaries.slice(1, totalLaps).map((ms, index) => (
           <span
@@ -124,16 +179,8 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
             style={{ left: `${percent(ms)}%` }}
           />
         ))}
-        {/* Pit stops hang under the bar in the pit colour, one mark per stop. */}
-        {pitStops.map((stop) => (
-          <span
-            key={`${stop.driverId}:${stop.lap}`}
-            data-slot="timeline-pit-stop"
-            className="absolute top-1/2 mt-2 h-1 w-px bg-status-pit"
-            style={{ left: `${percent(stop.atMs)}%` }}
-          />
-        ))}
       </div>
+      <PitStopMarks stops={pitStops} endMs={endMs} disabled={disabled} onSeek={replay.seek} />
       <Slider
         value={[replay.elapsedMs]}
         min={0}

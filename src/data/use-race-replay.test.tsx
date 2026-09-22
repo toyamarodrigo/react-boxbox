@@ -193,7 +193,9 @@ describe('useRaceReplay', () => {
     };
     const pit = { entry: 0.9, exit: 0.1 };
     const { result } = renderHook(() => useRaceReplay(pitted, { pit }));
-    expect(result.current.pitStops).toEqual([{ driverId: 'charlie', lap: 1, atMs: 150_000 }]);
+    expect(result.current.pitStops).toEqual([
+      { driverId: 'charlie', code: 'CHA', lap: 1, stop: 1, atMs: 150_000, durationMs: 20_000 },
+    ]);
 
     const charlie = () => ({
       marker: result.current.markers.find((marker) => marker.id === 'charlie'),

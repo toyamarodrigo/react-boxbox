@@ -310,16 +310,37 @@ function orderAt(race: ReplayRace, elapsedMs: number, pit?: PitLaneShape): [stri
   return [...carLapsAt(race, elapsedMs, pit)].sort((a, b) => b[1].distance - a[1].distance);
 }
 
+/** A pit stop the timeline can draw and describe. */
+export type ReplayPitStop = {
+  driverId: string;
+  /** The driver's three-letter code, for the mark's label; falls back to the id. */
+  code: string;
+  lap: number;
+  /** Which stop of the driver's race this is, when the dataset counts them. */
+  stop: number | null;
+  /** When the car enters the lane, on the race clock. */
+  atMs: number;
+  /** Time spent in the lane. */
+  durationMs: number;
+};
+
 /** Every drawable pit stop of the race: who, which lap, and when the car enters the lane. */
-export function replayPitStops(
-  race: ReplayRace,
-  pit: PitLaneShape,
-): { driverId: string; lap: number; atMs: number }[] {
-  const stops: { driverId: string; lap: number; atMs: number }[] = [];
+export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitStop[] {
+  const codes = new Map(race.drivers.map((driver) => [driver.id, driver.code]));
+  const stops: ReplayPitStop[] = [];
   for (const [driverId, laps] of indexRace(race)) {
     for (const lap of laps) {
       const window = pitWindow(lap, pit);
-      if (window) stops.push({ driverId, lap: lap.lap, atMs: window.inAt });
+      if (window) {
+        stops.push({
+          driverId,
+          code: codes.get(driverId) ?? driverId,
+          lap: lap.lap,
+          stop: lap.row.pitStop,
+          atMs: window.inAt,
+          durationMs: window.duration,
+        });
+      }
     }
   }
   return stops.sort((a, b) => a.atMs - b.atMs);

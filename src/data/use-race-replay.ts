@@ -3,6 +3,7 @@ import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
 import {
   type PitLaneShape,
+  type ReplayPitStop,
   leaderCumulative,
   replayLiveRows,
   replayPitStops,
@@ -43,7 +44,7 @@ export type RaceReplay = {
   rows: TimingRow[];
   markers: TrackMarker[];
   /** When each drawable pit stop begins, on the race clock, in time order. */
-  pitStops: readonly { driverId: string; lap: number; atMs: number }[];
+  pitStops: readonly ReplayPitStop[];
   finished: boolean;
   isPlaying: boolean;
   speed: ReplaySpeed;
