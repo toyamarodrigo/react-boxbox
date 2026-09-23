@@ -40,6 +40,14 @@ _Avoid_: Run, tyre phase
 The stretch of race time a car spends in the pit lane during one stop.
 _Avoid_: Pit period
 
+**Gap**:
+How far a car is behind the leader, in time. Only ever measured against the leader.
+_Avoid_: Delta, difference, interval
+
+**Interval**:
+How far a car is behind the car one place ahead of it, in time. Never the gap to the leader.
+_Avoid_: Gap, delta, distance to car ahead
+
 **Gap chart**:
 The race drawn as every car's gap to the leader, lap by lap, with the leader on zero along the top. It only draws the laps the leader has finished.
 _Avoid_: Race trace, delta chart, position chart
