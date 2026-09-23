@@ -30,6 +30,8 @@ describe('/components', () => {
 
       const preview = card?.querySelector('[data-slot="component-preview"]');
       expect(preview).toHaveAttribute('aria-hidden', 'true');
+      // Inert, so the chart's own tab stop does not add a hidden one inside the link.
+      expect(preview).toHaveAttribute('inert');
       // The gap chart arrives through `React.lazy`; the rest are there on the first render.
       await waitFor(() => expect(preview?.childElementCount).toBeGreaterThan(0));
       // Hidden from assistive technology, so the card still reads as its heading and text.

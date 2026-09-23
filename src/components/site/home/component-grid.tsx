@@ -17,8 +17,10 @@ export function ComponentGrid() {
             params={{ slug: item.slug }}
             className="group flex h-full flex-col p-5 transition-colors hover:bg-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
+            {/* `inert`: the chart previews carry their own tab stops (Recharts' svg). */}
             <div
               aria-hidden="true"
+              inert
               className="mb-5 flex h-36 items-center justify-center overflow-hidden border border-border bg-card px-3"
             >
               <ComponentPreview slug={item.slug} />

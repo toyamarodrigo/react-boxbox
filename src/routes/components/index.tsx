@@ -36,6 +36,7 @@ function ComponentsIndex() {
             >
               <div
                 aria-hidden="true"
+                inert
                 data-slot="component-preview"
                 className="mb-5 flex h-36 items-center justify-center overflow-hidden border border-border bg-background px-3"
               >
