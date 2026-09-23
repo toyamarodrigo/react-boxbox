@@ -52,6 +52,10 @@ _Avoid_: Gap, delta, distance to car ahead
 The race drawn as every car's gap to the leader, lap by lap, with the leader on zero along the top. It only draws the laps the leader has finished.
 _Avoid_: Race trace, delta chart, position chart
 
+**Lap grid**:
+Every car's laps as a grid of coloured cells, one row per car and one column per lap of that car, for the lap or one sector. A cell is coloured as of the lap it was set: race best, personal best, or slower by how much. Laps that are not pace (lap 1, pit in and out, neutralised) are striped and never count.
+_Avoid_: Lap chart (that is positions per lap), heatmap, pace chart
+
 ### Telemetry
 
 **Speed trap**:
