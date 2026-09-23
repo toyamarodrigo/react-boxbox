@@ -925,3 +925,116 @@ describe('replay page, strategy panel', () => {
     }
   });
 });
+
+describe('replay page, lap grid', () => {
+  const gridRows = () => [...document.querySelectorAll('[data-slot="lap-grid-row"]')];
+  const cells = () => [...document.querySelectorAll('[data-slot="lap-grid-cell"]')];
+  const gridRow = (driverId: string) =>
+    document.querySelector(`[data-slot="lap-grid-row"][data-driver="${driverId}"]`);
+  const cellsOf = (driverId: string) => [
+    ...(gridRow(driverId)?.querySelectorAll('[data-slot="lap-grid-cell"]') ?? []),
+  ];
+  const measureButton = (name: string) =>
+    within(screen.getByRole('group', { name: 'Lap grid measure' })).getByRole('button', { name });
+  const toTheFlag = () =>
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+
+  /** Opens the panel on the Laps tab and waits for the grid. */
+  async function openLaps() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    // Radix switches a tab on mousedown, not on the click that follows it.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Laps' }));
+    return screen.findByRole('list', { name: 'Lap grid' });
+  }
+
+  it('lists every car in tower order and grows with the clock', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openLaps();
+
+    const towerOrder = [...document.querySelectorAll('[data-slot="timing-tower-row"]')].map((row) =>
+      row.getAttribute('data-driver'),
+    );
+    expect(gridRows().map((row) => row.getAttribute('data-driver'))).toEqual(towerOrder);
+    // Nobody has completed a lap on the grid.
+    expect(cells()).toHaveLength(0);
+
+    // At the leader's second line: alpha's first lap, bravo's first two, charlie's and delta's first.
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(cells()).toHaveLength(5));
+    expect(cellsOf('bravo').map((cell) => cell.getAttribute('title'))).toEqual([
+      'Lap 1 · 1:41.000 · opening lap, virtual safety car, not counted',
+      'Lap 2 · 1:38.000 · virtual safety car, not counted',
+    ]);
+
+    // At the flag every lap is drawn, the lapped car's last one included; the retired car's row
+    // stops at its last lap and is faded like the tower's.
+    toTheFlag();
+    await waitFor(() => expect(cells()).toHaveLength(11));
+    expect(cellsOf('bravo')[2]).toHaveAttribute('data-status', 'fastest');
+    expect(cellsOf('bravo')[2]).toHaveAttribute('title', 'Lap 3 · 1:38.000 · race best');
+    expect(cellsOf('delta')).toHaveLength(2);
+    expect(gridRow('delta')).toHaveClass('opacity-50');
+    // One sentence per row stands in for the colours.
+    expect(
+      screen.getByRole('button', {
+        name: 'ALP, best lap 1:39.000 on lap 3, 1 personal best, 0 race bests',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('switches the measure to a sector', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openLaps();
+    toTheFlag();
+    await waitFor(() => expect(cells()).toHaveLength(11));
+
+    expect(measureButton('Lap')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(measureButton('S2'));
+    expect(measureButton('S2')).toHaveAttribute('aria-pressed', 'true');
+    expect(measureButton('Lap')).toHaveAttribute('aria-pressed', 'false');
+    // Charlie's second lap has no S2 in the source: an empty cell, not a guess.
+    expect(cellsOf('charlie')[1]).toHaveAttribute('data-status', 'unset');
+    expect(cellsOf('bravo')[2]).toHaveAttribute('title', 'Lap 3 · S2 34.300 · race best');
+  });
+
+  it('offers no sector picker on a race with no sector times, and shows the lap', async () => {
+    const untimed = untimedRace();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(untimed);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openLaps();
+
+    expect(screen.queryByRole('group', { name: 'Lap grid measure' })).toBeNull();
+    toTheFlag();
+    await waitFor(() => expect(cells()).toHaveLength(11));
+    expect(cellsOf('bravo')[2]).toHaveAttribute('title', 'Lap 3 · 1:38.000 · race best');
+  });
+
+  it('follows the driver whose row is clicked, without dimming the others', async () => {
+    const router = renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    const grid = await openLaps();
+
+    fireEvent.click(within(grid).getByRole('button', { name: /^BRA/ }));
+    await waitFor(() => expect(searchOf(router).driver).toBe('BRA'));
+    expect(followedRow()).toHaveAttribute('data-driver', 'bravo');
+
+    expect(gridRow('bravo')).toHaveAttribute('data-followed', 'true');
+    expect(within(grid).getByRole('button', { name: /^BRA/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(gridRow('alpha')).not.toHaveClass('opacity-50');
+  });
+});
