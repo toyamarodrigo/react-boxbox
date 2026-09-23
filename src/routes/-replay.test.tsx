@@ -44,9 +44,9 @@ function renderReplay(path = '/replay') {
   return router;
 }
 
-/** The search the router is on, which is where the followed driver lives. */
+/** The search the router is on, which is where the followed driver and the column live. */
 const searchOf = (router: ReturnType<typeof getRouter>) =>
-  router.state.location.search as { driver?: string; round?: number };
+  router.state.location.search as { driver?: string; round?: number; value?: string };
 
 const followedRow = () => document.querySelector('[data-slot="timing-tower-row"][data-followed]');
 const sectorCard = () => document.querySelector('[data-slot="sector-times"]');
@@ -81,6 +81,12 @@ const rowButton = (driverId: string) =>
   document.querySelector<HTMLElement>(
     `[data-driver="${driverId}"] [data-slot="timing-tower-row-button"]`,
   );
+/** What one row's value column reads, which is the whole subject of the timing-column control. */
+const rowValueOf = (driverId: string) =>
+  document.querySelector(`[data-driver="${driverId}"] [data-slot="timing-tower-value"]`)
+    ?.textContent;
+const columnButton = (name: string) =>
+  within(screen.getByRole('group', { name: 'Timing column' })).getByRole('button', { name });
 
 beforeEach(() => {
   clearReplayCache();
@@ -308,6 +314,9 @@ describe('replay page, followed driver', () => {
     fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).driver).toBeUndefined();
+    // The new search carries the column mode over, and it is the default here: an absent mode
+    // must stay absent rather than reach the URL as the word `undefined`.
+    expect(router.state.location.searchStr).not.toMatch(/value/);
     await waitFor(() => expect(followedRow()).toBeNull());
   });
 
@@ -406,6 +415,105 @@ describe('replay page, followed driver', () => {
     fireEvent.click(rowButton('charlie')!);
     await waitFor(() => expect(searchOf(router).driver).toBe('CHA'));
     expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
+  });
+});
+
+describe('replay page, timing column', () => {
+  /**
+   * One lap in, with the clock stopped on the boundary. Delta is the row the two modes disagree
+   * about most: three quarters of a minute behind the leader, three seconds behind the car ahead.
+   */
+  async function atLapTwo(path = '/replay') {
+    const router = renderReplay(path);
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+    await waitFor(() => expect(rowValueOf('delta')).not.toBe('—'));
+    return router;
+  }
+
+  it('measures the gap to the leader until it is asked for anything else', async () => {
+    const router = await atLapTwo();
+
+    expect(columnButton('Gap')).toHaveAttribute('aria-pressed', 'true');
+    expect(columnButton('Interval')).toHaveAttribute('aria-pressed', 'false');
+    expect(rowValueOf('delta')).toBe('+39.4');
+    expect(screen.getAllByText('Gap to leader').length).toBe(race.drivers.length);
+    expect(searchOf(router).value).toBeUndefined();
+  });
+
+  it('switches the column to the interval, and says so in the search', async () => {
+    const router = await atLapTwo();
+
+    fireEvent.click(columnButton('Interval'));
+    await waitFor(() => expect(searchOf(router).value).toBe('interval'));
+    await waitFor(() => expect(rowValueOf('delta')).toBe('+3.030'));
+    expect(columnButton('Interval')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByText('Interval').length).toBe(race.drivers.length + 1);
+  });
+
+  // The default is the one every viewer starts on, so it is stripped rather than written out.
+  it('takes the column back out of the search when the gap is picked again', async () => {
+    const router = await atLapTwo('/replay?value=interval');
+
+    fireEvent.click(columnButton('Gap'));
+    await waitFor(() => expect(searchOf(router).value).toBeUndefined());
+    expect(rowValueOf('delta')).toBe('+39.4');
+  });
+
+  it('honours the column in the search params on arrival', async () => {
+    await atLapTwo('/replay?value=interval');
+
+    expect(columnButton('Interval')).toHaveAttribute('aria-pressed', 'true');
+    expect(rowValueOf('delta')).toBe('+3.030');
+  });
+
+  // `validateSearch` parses, so without a `.catch()` this URL would be a route error rather than
+  // a page. A mistyped link is a bad link, not a broken page.
+  it('falls back to the gap on a value it does not know, without erroring', async () => {
+    await atLapTwo('/replay?value=foo');
+
+    expect(screen.queryByText(/Invalid|Error/)).toBeNull();
+    expect(columnButton('Gap')).toHaveAttribute('aria-pressed', 'true');
+    expect(rowValueOf('delta')).toBe('+39.4');
+  });
+
+  it('keeps the column across a race change, though the followed driver still goes', async () => {
+    const second = { ...race, id: '2030-2', round: 2, name: 'Second Grand Prix' };
+    const races = [
+      index.races[0]!,
+      { ...index.races[0]!, id: second.id, round: 2, name: second.name },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse({ ...index, races });
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(race);
+        if (url.endsWith(`/${second.id}.json`)) return jsonResponse(second);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    const router = renderReplay('/replay?driver=CHA&value=interval');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
+    await waitFor(() => expect(searchOf(router).round).toBe(2));
+    expect(searchOf(router).value).toBe('interval');
+    expect(searchOf(router).driver).toBeUndefined();
+    await waitFor(() => expect(columnButton('Interval')).toHaveAttribute('aria-pressed', 'true'));
+  });
+
+  it('takes the control away once the column is the result', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+    await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
+
+    expect(screen.queryByRole('group', { name: 'Timing column' })).toBeNull();
   });
 });
 

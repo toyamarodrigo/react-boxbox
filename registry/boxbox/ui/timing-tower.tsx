@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { AnimatePresence, type HTMLMotionProps, LayoutGroup, motion } from 'motion/react';
 import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
-import type { Driver, GapMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
+import type { Driver, ValueMode, TimingRow, Team } from '@/registry/boxbox/lib/types';
 import { type OvertakeMode, OvertakeIndicator } from '@/registry/boxbox/ui/overtake-indicator';
 import { RollingNumber } from '@/registry/boxbox/ui/rolling-number';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
@@ -49,6 +49,16 @@ export function isClassified(row: TimingRow): boolean {
 }
 
 /**
+ * How far down a lapped car is. One spelling, used both while the race runs and in the results,
+ * so the same car cannot read `+1 LAP` on one screen and `+2 LAPS` on the next. A row that says
+ * it is lapped without saying by how much is one lap down.
+ */
+function lapsBehindValue(row: TimingRow): string {
+  const laps = row.lapsBehind ?? 1;
+  return laps === 1 ? '+1 LAP' : `+${laps} LAPS`;
+}
+
+/**
  * The text of the value cell in `results` mode: the winner, the gap to the
  * winner, the laps a lapped car was behind, or why the car is not classified.
  */
@@ -56,22 +66,22 @@ export function resultValue(row: TimingRow, isLeader: boolean): string {
   const status = row.finishStatus ?? 'finished';
   if (status !== 'finished') return FINISH_LABELS[status];
   if (isLeader) return 'WINNER';
-  if (row.lapped) {
-    const laps = row.lapsBehind ?? 1;
-    return laps === 1 ? '+1 LAP' : `+${laps} LAPS`;
-  }
+  if (row.lapped) return lapsBehindValue(row);
   return formatGap(row.gapToLeader);
 }
 
 /** The text of the value cell for one row. */
-export function rowValue(row: TimingRow, mode: GapMode, isLeader: boolean): string {
+export function rowValue(row: TimingRow, mode: ValueMode, isLeader: boolean): string {
   // The race is over in `results` mode, so pit and interval states no longer apply.
   if (mode === 'results') return resultValue(row, isLeader);
   // A car out of the race has no gap to show while the race is still running.
   if (!isClassified(row)) return 'OUT';
   if (row.inPit) return 'IN PIT';
   if (mode === 'lapTime') return formatLapTime(row.lastLapTime);
-  if (row.lapped) return '+1 LAP';
+  // Only the gap to the leader collapses into whole laps. In `interval` mode the number is the
+  // one thing a lapped car still has to say — the car ahead of it is usually on the same lap,
+  // and a second away. The row keeps its lapped tone, which is what carries the lap down.
+  if (row.lapped && mode === 'leader') return lapsBehindValue(row);
   if (isLeader) return 'LEADER';
   return formatGap(mode === 'interval' ? row.interval : row.gapToLeader);
 }
@@ -86,7 +96,7 @@ const VALUE_TONES: Record<TimingTowerValueTone, string> = {
   retired: 'text-muted-foreground',
 };
 
-function valueTone(row: TimingRow, isFastestLap: boolean, mode: GapMode): TimingTowerValueTone {
+function valueTone(row: TimingRow, isFastestLap: boolean, mode: ValueMode): TimingTowerValueTone {
   // A car out of the race reads muted in every mode; in a settled result nothing else differs.
   if (!isClassified(row)) return 'retired';
   if (mode === 'results') return 'default';
@@ -221,7 +231,7 @@ export function showsOvertake(showOvertake?: boolean, showDrs?: boolean) {
  * The value column means something different per mode, and the digits and the ▲/▼ glyph carry
  * no meaning on their own, so each gets a spoken label.
  */
-const VALUE_LABELS: Record<GapMode, string> = {
+const VALUE_LABELS: Record<ValueMode, string> = {
   leader: 'Gap to leader',
   interval: 'Interval',
   lapTime: 'Last lap',
@@ -401,7 +411,7 @@ export function TimingTowerRow({
   row: TimingRow;
   driver: Driver;
   team?: Team | undefined;
-  mode?: GapMode;
+  mode?: ValueMode;
   isLeader?: boolean;
   isFastestLap?: boolean;
   highlighted?: boolean;
@@ -574,7 +584,7 @@ export function TimingTower({
   rows: TimingRow[];
   drivers: Record<string, Driver>;
   teams: Record<string, Team>;
-  mode?: GapMode;
+  mode?: ValueMode;
   maxRows?: number;
   highlightTop?: number;
   showTyre?: boolean;

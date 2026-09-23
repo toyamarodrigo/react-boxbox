@@ -75,6 +75,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { seo } from '../lib/seo';
 
+/** The two things the tower's value column can measure here; `lapTime` is a docs-only mode. */
+const VALUE_MODES = ['leader', 'interval'] as const;
+type TowerValueMode = (typeof VALUE_MODES)[number];
+
 /**
  * A race is addressed by season and round, the way the source API addresses it, so a link to
  * `/replay?season=2025&round=1` keeps working when the curated list changes order.
@@ -84,6 +88,13 @@ const searchSchema = z.object({
   round: z.coerce.number().int().min(1).optional(),
   /** The followed driver, by the code the tower shows. An unknown one is ignored. */
   driver: z.string().optional(),
+  /**
+   * What the tower's value column measures. `.catch()` rather than a bare enum because
+   * `validateSearch` parses this, so an unknown value would raise a route error and turn a
+   * mistyped link into a broken page instead of the default view. Absent is the default, which
+   * is how `leader` stays out of the URL.
+   */
+  value: z.enum(VALUE_MODES).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -140,6 +151,38 @@ function RacePicker({
           onClick={() => onSelect(race)}
         >
           {`${race.season} ${race.name.replace(/\s*Grand Prix$/, '')}`}
+        </Button>
+      ))}
+    </fieldset>
+  );
+}
+
+/** The glossary words, the ones the tower already speaks over the column. */
+const VALUE_MODE_LABELS: Record<TowerValueMode, string> = { leader: 'Gap', interval: 'Interval' };
+
+/**
+ * What the tower's value column measures: the gap to the leader, or the interval to the car one
+ * place ahead. Two buttons for the same reason `RacePicker` is a row of them — the page renders
+ * ten times a second, which is no place for a popover.
+ */
+function ValueModePicker({
+  value,
+  onSelect,
+}: {
+  value: TowerValueMode;
+  onSelect: (mode: TowerValueMode) => void;
+}) {
+  return (
+    <fieldset aria-label="Timing column" className="ml-auto flex items-center gap-1">
+      {VALUE_MODES.map((mode) => (
+        <Button
+          key={mode}
+          variant={mode === value ? 'default' : 'outline'}
+          size="sm"
+          aria-pressed={mode === value}
+          onClick={() => onSelect(mode)}
+        >
+          {VALUE_MODE_LABELS[mode]}
         </Button>
       ))}
     </fieldset>
@@ -567,6 +610,8 @@ function Stage({
   pit,
   followedId,
   onFollow,
+  valueMode,
+  onValueMode,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -574,6 +619,8 @@ function Stage({
   pit: PitLaneShape | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
+  valueMode: TowerValueMode;
+  onValueMode: (mode: TowerValueMode) => void;
 }) {
   const drivers = useMemo(
     () => Object.fromEntries(race.drivers.map((driver) => [driver.id, driver])),
@@ -653,6 +700,11 @@ function Stage({
       <div className="flex flex-wrap items-center gap-3">
         <LapCounter lap={replay.lap} totalLaps={replay.totalLaps} />
         <RaceClock ms={replay.elapsedMs} direction="up" label="ELAPSED" />
+        {/*
+         * Gone at the finish rather than disabled: the column is the result then, with its points,
+         * and a control that can no longer do anything still asks the eye to read it.
+         */}
+        {!replay.finished && <ValueModePicker value={valueMode} onSelect={onValueMode} />}
       </div>
 
       {podium && <Podium steps={podium} size="sm" />}
@@ -661,7 +713,7 @@ function Stage({
         rows={replay.rows}
         drivers={drivers}
         teams={teams}
-        mode={replay.finished ? 'results' : 'leader'}
+        mode={replay.finished ? 'results' : valueMode}
         maxRows={replay.rows.length}
         showTyre={false}
         overtakeMode={overtakeModeFor(race.season)}
@@ -1074,6 +1126,24 @@ function ReplayPage() {
     [race.data],
   );
   const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
+  const valueMode: TowerValueMode = search.value ?? 'leader';
+
+  /**
+   * Which column the tower shows is a view of the race like the followed driver, so it replaces
+   * the URL rather than stacking history entries. The default is stripped from the search instead
+   * of written into it, so a link only carries a `value` when it is not the one everyone starts on.
+   */
+  const setValueMode = useCallback(
+    (mode: TowerValueMode) => {
+      void navigate({
+        search: ({ value: _value, ...rest }) =>
+          mode === 'leader' ? rest : { ...rest, value: mode },
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate],
+  );
 
   const release = useCallback(() => {
     void navigate({
@@ -1150,8 +1220,14 @@ function ReplayPage() {
         <RacePicker
           races={races}
           value={entry?.id}
-          // A whole new search, so another race starts with no followed driver.
-          onSelect={(next) => void navigate({ search: { season: next.season, round: next.round } })}
+          // A whole new search, so another race starts with no followed driver: that driver
+          // belongs to the race it was picked in. The column mode is a preference about the
+          // tower and means the same thing in every race, so it rides along.
+          onSelect={(next) =>
+            void navigate({
+              search: { season: next.season, round: next.round, value: search.value },
+            })
+          }
         />
         <p className="max-w-3xl border-l-2 border-border pl-4 text-xs leading-relaxed text-muted-foreground">
           Race data from{' '}
@@ -1195,6 +1271,8 @@ function ReplayPage() {
             pit={circuit.pit}
             followedId={followedId}
             onFollow={follow}
+            valueMode={valueMode}
+            onValueMode={setValueMode}
           />
           <div className="flex min-w-0 flex-col gap-6">
             <Circuit

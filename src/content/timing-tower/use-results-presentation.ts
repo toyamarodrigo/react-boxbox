@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import type { Driver, GapMode, Team, TimingRow } from '@/registry/boxbox/lib/types';
+import type { Driver, ValueMode, Team, TimingRow } from '@/registry/boxbox/lib/types';
 import type { PodiumEntry, PodiumSteps } from '@/registry/boxbox/ui/podium';
 import { resultValue } from '@/registry/boxbox/ui/timing-tower';
 
@@ -51,12 +51,12 @@ export function useResultsPresentation({
   teams,
 }: {
   rows: readonly TimingRow[];
-  mode: GapMode;
+  mode: ValueMode;
   finished: boolean;
   drivers: Record<string, Driver>;
   teams: Record<string, Team>;
-}): { mode: GapMode; rows: TimingRow[]; podium: PodiumSteps | null } {
-  const shownMode: GapMode = finished ? 'results' : mode;
+}): { mode: ValueMode; rows: TimingRow[]; podium: PodiumSteps | null } {
+  const shownMode: ValueMode = finished ? 'results' : mode;
   return useMemo(() => {
     if (shownMode !== 'results') return { mode: shownMode, rows: [...rows], podium: null };
     const scored = withResultPoints(rows);

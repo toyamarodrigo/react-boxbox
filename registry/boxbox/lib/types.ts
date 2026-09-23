@@ -3,7 +3,8 @@ export const TYRE_COMPOUNDS = ['S', 'M', 'H', 'I', 'W'] as const;
 export type TyreCompound = (typeof TYRE_COMPOUNDS)[number];
 export type SectorStatus = 'fastest' | 'personal' | 'slower' | 'unset';
 export type TrackStatus = 'green' | 'yellow' | 'red' | 'sc' | 'vsc' | 'chequered' | 'double-yellow';
-export type GapMode = 'leader' | 'interval' | 'lapTime' | 'results';
+/** What the timing tower's value column measures. `leader` is the gap to the leader. */
+export type ValueMode = 'leader' | 'interval' | 'lapTime' | 'results';
 /** How a car ended the race. Anything other than `finished` is unclassified. */
 export type FinishStatus = 'finished' | 'dnf' | 'dsq' | 'dns';
 

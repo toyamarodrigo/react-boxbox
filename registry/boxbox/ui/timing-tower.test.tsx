@@ -111,6 +111,28 @@ describe('rowValue', () => {
     expect(rowValue(pit, 'lapTime', false)).toBe('IN PIT');
     expect(rowValue(makeRow('three', 3, { lapped: true }), 'leader', false)).toBe('+1 LAP');
   });
+
+  it('counts the laps a lapped car is down in gap mode, the way the results do', () => {
+    expect(rowValue(makeRow('three', 3, { lapped: true, lapsBehind: 2 }), 'leader', false)).toBe(
+      '+2 LAPS',
+    );
+    expect(rowValue(makeRow('three', 3, { lapped: true, lapsBehind: 1 }), 'leader', false)).toBe(
+      '+1 LAP',
+    );
+    // A row that says it is lapped without saying by how much is one lap down.
+    expect(rowValue(makeRow('three', 3, { lapped: true }), 'leader', false)).toBe('+1 LAP');
+  });
+
+  it('shows a lapped car its real interval, which is what interval mode is for', () => {
+    const lapped = makeRow('three', 3, { lapped: true, lapsBehind: 2 });
+    expect(rowValue(lapped, 'interval', false)).toBe('+0.567');
+  });
+
+  it('calls the car in front the leader in both modes', () => {
+    const leader = makeRow('one', 1);
+    expect(rowValue(leader, 'leader', true)).toBe('LEADER');
+    expect(rowValue(leader, 'interval', true)).toBe('LEADER');
+  });
 });
 
 describe('rowValue in results mode', () => {
