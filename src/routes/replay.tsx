@@ -47,6 +47,7 @@ import {
   trackStatusAt,
 } from '../data/replay-timing';
 import { byDateDescending, formatRaceDate } from '../data/replay-index';
+import type { LapGridMeasure } from '../data/replay-lap-grid';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
@@ -69,6 +70,7 @@ import {
   positionChangeState,
 } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
+import { LapGrid } from '../components/site/replay/lap-grid';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -917,11 +919,11 @@ const RaceControlLine = memo(function RaceControlLine({
 /** Nothing to show yet: one array, so the feed's memo is not woken by a fresh empty one. */
 const NO_MESSAGES: ReplayRaceControl[] = [];
 
-type StrategyTab = 'strategy' | 'gaps' | 'control';
+type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control';
 
 /** Radix hands back a string; anything the panel does not know falls back to the first tab. */
 function asStrategyTab(value: string): StrategyTab {
-  return value === 'gaps' || value === 'control' ? value : 'strategy';
+  return value === 'gaps' || value === 'laps' || value === 'control' ? value : 'strategy';
 }
 
 /**
@@ -948,6 +950,8 @@ function StrategyPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<StrategyTab>('strategy');
+  // Here rather than in the grid, which Radix unmounts with its tab: coming back keeps the measure.
+  const [measure, setMeasure] = useState<LapGridMeasure>('lap');
 
   const drivers = useMemo(() => new Map(race.drivers.map((d) => [d.id, d])), [race]);
   const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
@@ -1015,6 +1019,8 @@ function StrategyPanel({
                 <TabsList>
                   <TabsTrigger value="strategy">Strategy</TabsTrigger>
                   <TabsTrigger value="gaps">Gaps</TabsTrigger>
+                  {/* Before Race control, which comes and goes with the race: this one never moves. */}
+                  <TabsTrigger value="laps">Laps</TabsTrigger>
                   {/* Nothing to list for a race the source has no messages for. */}
                   {hasControl && <TabsTrigger value="control">Race control</TabsTrigger>}
                 </TabsList>
@@ -1057,6 +1063,18 @@ function StrategyPanel({
                     Gaps are the dataset's own, measured at the line. Click a line to follow that
                     driver.
                   </p>
+                </TabsContent>
+                <TabsContent value="laps">
+                  <LapGrid
+                    race={race}
+                    rows={replay.rows}
+                    elapsedMs={replay.elapsedMs}
+                    finished={replay.finished}
+                    measure={measure}
+                    onMeasure={setMeasure}
+                    followedId={followedId}
+                    onFollow={onFollow}
+                  />
                 </TabsContent>
                 {hasControl && (
                   <TabsContent value="control">
