@@ -7,6 +7,7 @@ import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
+import { TeamRadio } from '@/registry/boxbox/ui/team-radio';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
 
@@ -86,6 +87,19 @@ const components: [string, ReactElement][] = [
       <span>CAM 04</span>
     </ReplayBumper>,
   ],
+  [
+    'Team Radio',
+    <TeamRadio
+      key="m"
+      from="RACE ENGINEER"
+      to="EVO"
+      words={[
+        { text: 'Box,', at: 0.2 },
+        { text: 'box.', at: 0.6 },
+      ]}
+      envelope={[0.3, 0.8, 0.5]}
+    />,
+  ],
 ];
 
 describe('reduced motion', () => {
@@ -120,6 +134,8 @@ describe('reduced motion', () => {
     expect(screen.getByText('PIT')).toBeInTheDocument();
     // Replay Bumper: the content behind the overlay.
     expect(screen.getByText('CAM 04')).toBeInTheDocument();
+    // Team Radio: the transcript is text, not only the painted pop-in.
+    expect(screen.getByText('Team radio, RACE ENGINEER to EVO: Box, box.')).toBeInTheDocument();
   });
 });
 
@@ -175,6 +191,26 @@ describe('accessible names and state', () => {
     expect(panel).toHaveTextContent(', session fastest');
     expect(panel).toHaveTextContent(', personal best');
     expect(panel).toHaveTextContent(', not set');
+  });
+
+  it('hides the Team Radio trace, reads the transcript once and names the control', () => {
+    render(
+      <TeamRadio
+        from="RACE ENGINEER"
+        to="EVO"
+        words={[{ text: 'Box.', at: 0 }]}
+        src="/audio/box.wav"
+      />,
+    );
+    expect(document.querySelector('[data-slot="waveform"]')).toHaveAttribute('aria-hidden');
+    expect(document.querySelector('[data-slot="team-radio-header"]')).toHaveAttribute(
+      'aria-hidden',
+    );
+    expect(screen.getByText('Team radio, RACE ENGINEER to EVO: Box.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play team radio' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 
   it('hides the Replay Bumper overlay from assistive tech and names the run', () => {

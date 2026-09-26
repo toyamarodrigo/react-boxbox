@@ -17,4 +17,5 @@ export const contentSlugs = [
   'gap-chart',
   'speed-trap',
   'gauge',
+  'team-radio',
 ] as const;

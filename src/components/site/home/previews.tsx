@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import type { contentSlugs } from '@/content/slugs';
 import { FICTIONAL_CIRCUIT, FICTIONAL_SECTORS } from '@/content/track-map/circuit';
+import { TEAM_RADIO_ENVELOPE, TEAM_RADIO_WORDS } from '@/content/team-radio/radio';
 import { drivers, grid, teams } from '@/data/grid';
 import { createInitialRace, createSeededRng } from '@/data/simulation';
 import type { TrackMarker, TrackSector } from '@/registry/boxbox/lib/types';
@@ -21,6 +22,7 @@ import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
 import { SpeedTrap } from '@/registry/boxbox/ui/speed-trap';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
 import { StintBar, type StintBarStint } from '@/registry/boxbox/ui/stint-bar';
+import { TeamRadio } from '@/registry/boxbox/ui/team-radio';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { TyreBadge } from '@/registry/boxbox/ui/tyre-badge';
@@ -256,6 +258,20 @@ function GaugePreview() {
   return <Gauge value={11_600} gear={7} size="md" showValue />;
 }
 
+function TeamRadioPreview() {
+  // At rest the card shows the whole message and the tail of its envelope: nothing runs.
+  return (
+    <TeamRadio
+      from="RACE ENGINEER"
+      to={drivers[0]?.code ?? 'EVO'}
+      words={TEAM_RADIO_WORDS}
+      envelope={TEAM_RADIO_ENVELOPE}
+      size="sm"
+      bars={12}
+    />
+  );
+}
+
 type VisibleSlug = Exclude<(typeof contentSlugs)[number], 'example'>;
 
 // A new slug without an entry here is a type error, not a blank card.
@@ -276,6 +292,7 @@ const previews = {
   'gap-chart': GapChartPreviewLazy,
   'speed-trap': SpeedTrapPreview,
   gauge: GaugePreview,
+  'team-radio': TeamRadioPreview,
 } satisfies Record<VisibleSlug, () => ReactNode>;
 
 const hasPreview = (slug: string): slug is VisibleSlug => Object.hasOwn(previews, slug);

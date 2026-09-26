@@ -535,6 +535,33 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "waveform",
+      "type": "registry:ui",
+      "title": "Waveform",
+      "description": "A row of level bars on a canvas, adapted from ElevenLabs UI (MIT): the trace behind the Team Radio.",
+      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/waveform.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "team-radio",
+      "type": "registry:ui",
+      "title": "Team Radio",
+      "description": "A radio message from the pit wall: who is talking to whom, a live trace of the audio and the transcript arriving word by word.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion", "@boxbox/waveform"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/team-radio.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }
