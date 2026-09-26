@@ -115,7 +115,9 @@ export function ComponentPageBody({
 }) {
   const [values, setValues] = useState<Record<string, Value>>(definition.defaults);
   const [manager, setManager] = useState<'bun' | 'pnpm' | 'npm'>('bun');
-  const command = `${manager === 'bun' ? 'bunx' : manager === 'pnpm' ? 'pnpm dlx' : 'npx'} shadcn@latest add @boxbox/${meta.registryName}`;
+  const runner = manager === 'bun' ? 'bunx' : manager === 'pnpm' ? 'pnpm dlx' : 'npx';
+  const setup = `${runner} shadcn@latest registry add @boxbox=https://react-boxbox.vercel.app/r/{name}.json`;
+  const command = `${runner} shadcn@latest add @boxbox/${meta.registryName}`;
   function change(name: string, value: Value) {
     const next = { ...values, [name]: value };
     if (definition.schema.safeParse(next).success) setValues(next);
@@ -182,6 +184,11 @@ export function ComponentPageBody({
                 </SelectContent>
               </Select>
             </div>
+            <p className="text-sm text-muted-foreground">
+              Register the boxbox namespace once per project:
+            </p>
+            <CodeBlock code={setup} language="bash" />
+            <p className="text-sm text-muted-foreground">Then add the component:</p>
             <CodeBlock code={command} language="bash" />
           </TabsContent>
           <TabsContent value="manual">
