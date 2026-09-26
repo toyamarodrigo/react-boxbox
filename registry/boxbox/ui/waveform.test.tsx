@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { Waveform } from '@/registry/boxbox/ui/waveform';
 
 // jsdom has no 2D canvas. A recording stand-in lets the drawing be checked without one.
@@ -66,5 +66,14 @@ describe('Waveform', () => {
     render(<Waveform data={[1]} barWidth={4} barGap={3} fadeEdges={false} barRadius={2} />);
     expect(calls).toHaveLength(0);
     expect(ctx.roundRect).toHaveBeenCalledTimes(10);
+  });
+
+  it('repaints when the theme changes on the root', async () => {
+    const { ctx } = fakeContext(70, 40);
+    render(<Waveform data={[1]} barWidth={4} barGap={3} />);
+    ctx.clearRect.mockClear();
+    document.documentElement.classList.toggle('dark');
+    await waitFor(() => expect(ctx.clearRect).toHaveBeenCalledTimes(1));
+    document.documentElement.classList.toggle('dark');
   });
 });

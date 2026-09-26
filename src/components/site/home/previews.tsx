@@ -260,15 +260,18 @@ function GaugePreview() {
 
 function TeamRadioPreview() {
   // At rest the card shows the whole message and the tail of its envelope: nothing runs.
+  // The card is wider than the narrowest tile, so the thumbnail is scaled down from its centre.
   return (
-    <TeamRadio
-      from="RACE ENGINEER"
-      to={drivers[0]?.code ?? 'EVO'}
-      words={TEAM_RADIO_WORDS}
-      envelope={TEAM_RADIO_ENVELOPE}
-      size="sm"
-      bars={12}
-    />
+    <div className="shrink-0 scale-[0.6]">
+      <TeamRadio
+        from="RACE ENGINEER"
+        to={drivers[0]?.code ?? 'EVO'}
+        words={TEAM_RADIO_WORDS}
+        envelope={TEAM_RADIO_ENVELOPE}
+        size="sm"
+        bars={12}
+      />
+    </div>
   );
 }
 

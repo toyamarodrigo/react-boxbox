@@ -120,7 +120,18 @@ export function Waveform({
     resizeObserver.observe(container);
     renderWaveform();
 
-    return () => resizeObserver.disconnect();
+    // The colour is read at draw time, so a theme switch on the root (a `dark` class, a
+    // `data-theme`, inline variables) repaints the bars instead of leaving the old colour.
+    const themeObserver = new MutationObserver(renderWaveform);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-theme'],
+    });
+
+    return () => {
+      resizeObserver.disconnect();
+      themeObserver.disconnect();
+    };
   }, [data, barWidth, baseBarHeight, barGap, barRadius, barColor, fadeEdges, fadeWidth]);
 
   return (
