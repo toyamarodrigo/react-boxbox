@@ -125,10 +125,10 @@
   --sidebar-ring: oklch(0.708 0 0);
   --sector-fastest: oklch(0.57 0.22 305);
   --sector-fastest-foreground: oklch(1 0 0);
-  --sector-personal: oklch(0.55 0.16 150);
+  --sector-personal: oklch(0.52 0.16 150);
   --sector-personal-foreground: oklch(1 0 0);
-  --sector-slower: oklch(0.82 0.16 95);
-  --sector-slower-foreground: oklch(0.18 0 0);
+  --sector-slower: oklch(0.55 0.13 85);
+  --sector-slower-foreground: oklch(1 0 0);
   --sector-unset: oklch(0.55 0 0);
   --sector-unset-foreground: oklch(1 0 0);
   --status-pit: oklch(0.57 0.23 28);
@@ -145,7 +145,7 @@
   --tyre-inter-foreground: oklch(1 0 0);
   --tyre-wet: oklch(0.51 0.17 255);
   --tyre-wet-foreground: oklch(1 0 0);
-  --flag-green: oklch(0.55 0.16 150);
+  --flag-green: oklch(0.52 0.16 150);
   --flag-green-foreground: oklch(1 0 0);
   --flag-yellow: oklch(0.82 0.16 95);
   --flag-yellow-foreground: oklch(0.18 0 0);
@@ -240,5 +240,26 @@
   }
   html {
     @apply font-display;
+  }
+
+  /*
+   * Decorative CSS motion only: the hover/colour transitions on links and cards
+   * and the tw-animate-css enter/exit keyframes used by the Sheet, Select and
+   * Tooltip primitives. JS animation goes through motion/react, which honours
+   * the same preference via `MotionConfig reducedMotion="user"` in `__root.tsx`.
+   * Durations collapse instead of being removed so `animationend` and
+   * `transitionend` listeners (Radix uses them to unmount) still fire.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

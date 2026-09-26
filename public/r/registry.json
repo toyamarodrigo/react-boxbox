@@ -16,6 +16,19 @@
       ]
     },
     {
+      "name": "boxbox-motion",
+      "type": "registry:lib",
+      "title": "boxbox Motion",
+      "description": "Shared easing curves, durations, and springs so every boxbox component moves the same way.",
+      "dependencies": ["motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/lib/motion.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
       "name": "boxbox-theme",
       "type": "registry:theme",
       "title": "boxbox Theme",
@@ -56,10 +69,10 @@
           "sidebar-ring": "oklch(0.708 0 0)",
           "sector-fastest": "oklch(0.57 0.22 305)",
           "sector-fastest-foreground": "oklch(1 0 0)",
-          "sector-personal": "oklch(0.55 0.16 150)",
+          "sector-personal": "oklch(0.52 0.16 150)",
           "sector-personal-foreground": "oklch(1 0 0)",
-          "sector-slower": "oklch(0.82 0.16 95)",
-          "sector-slower-foreground": "oklch(0.18 0 0)",
+          "sector-slower": "oklch(0.55 0.13 85)",
+          "sector-slower-foreground": "oklch(1 0 0)",
           "sector-unset": "oklch(0.55 0 0)",
           "sector-unset-foreground": "oklch(1 0 0)",
           "status-pit": "oklch(0.57 0.23 28)",
@@ -76,7 +89,7 @@
           "tyre-inter-foreground": "oklch(1 0 0)",
           "tyre-wet": "oklch(0.51 0.17 255)",
           "tyre-wet-foreground": "oklch(1 0 0)",
-          "flag-green": "oklch(0.55 0.16 150)",
+          "flag-green": "oklch(0.52 0.16 150)",
           "flag-green-foreground": "oklch(1 0 0)",
           "flag-yellow": "oklch(0.82 0.16 95)",
           "flag-yellow-foreground": "oklch(0.18 0 0)",
@@ -210,20 +223,11 @@
         "provider": "google",
         "import": "Titillium Web",
         "variable": "--font-display",
-        "weight": [
-          "400",
-          "600",
-          "700",
-          "900"
-        ],
-        "subsets": [
-          "latin"
-        ],
+        "weight": ["400", "600", "700", "900"],
+        "subsets": ["latin"],
         "dependency": "@fontsource/titillium-web"
       },
-      "registryDependencies": [
-        "@boxbox/boxbox-font-mono"
-      ],
+      "registryDependencies": ["@boxbox/boxbox-font-mono"],
       "css": {
         "@import \"@fontsource/titillium-web/600.css\"": {},
         "@import \"@fontsource/titillium-web/700.css\"": {},
@@ -240,13 +244,8 @@
         "provider": "google",
         "import": "JetBrains Mono",
         "variable": "--font-mono",
-        "weight": [
-          "400",
-          "700"
-        ],
-        "subsets": [
-          "latin"
-        ],
+        "weight": ["400", "700"],
+        "subsets": ["latin"],
         "dependency": "@fontsource/jetbrains-mono"
       },
       "css": {
@@ -254,16 +253,30 @@
       }
     },
     {
+      "name": "rolling-number",
+      "type": "registry:ui",
+      "title": "Rolling Number",
+      "description": "A number that rolls to its next value, upward for a gain and downward for a loss.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/rolling-number.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "tyre-badge",
       "type": "registry:ui",
       "title": "Tyre Badge",
       "description": "Broadcast tyre marker showing the compound and the laps on the current set.",
-      "dependencies": [
-        "motion"
-      ],
+      "dependencies": ["motion"],
       "registryDependencies": [
         "@boxbox/boxbox-types",
-        "@boxbox/boxbox-theme"
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
       ],
       "files": [
         {
@@ -277,12 +290,11 @@
       "type": "registry:ui",
       "title": "Sector Times",
       "description": "Broadcast sector bars with colour-coded statuses, mini sectors, and an animated lap time.",
-      "dependencies": [
-        "motion"
-      ],
+      "dependencies": ["motion"],
       "registryDependencies": [
         "@boxbox/boxbox-types",
-        "@boxbox/boxbox-theme"
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion"
       ],
       "files": [
         {
@@ -296,12 +308,12 @@
       "type": "registry:ui",
       "title": "Driver Name Plate",
       "description": "Broadcast lower third that wipes in with the driver position, team colour, name, car number, and race status.",
-      "dependencies": [
-        "motion"
-      ],
+      "dependencies": ["motion"],
       "registryDependencies": [
         "@boxbox/boxbox-types",
-        "@boxbox/boxbox-theme"
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
       ],
       "files": [
         {
@@ -315,15 +327,25 @@
       "type": "registry:ui",
       "title": "Start Lights",
       "description": "A race-start gantry: five columns arm one by one, hold, then go out, with a yellow flash for an aborted start.",
-      "dependencies": [
-        "motion"
-      ],
-      "registryDependencies": [
-        "@boxbox/boxbox-theme"
-      ],
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
       "files": [
         {
           "path": "registry/boxbox/ui/start-lights.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "overtake-indicator",
+      "type": "registry:ui",
+      "title": "Overtake Indicator",
+      "description": "Badge for the overtaking aid: DRS as it ran from 2011 to 2025, or Overtake Mode as the 2026 rules name it.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-motion", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/overtake-indicator.tsx",
           "type": "registry:ui"
         }
       ]
@@ -333,13 +355,14 @@
       "type": "registry:ui",
       "title": "Timing Tower",
       "description": "Live running order tower with animated re-sorting, gap or interval or lap time values, tyres, pit and lapped states.",
-      "dependencies": [
-        "motion"
-      ],
+      "dependencies": ["motion"],
       "registryDependencies": [
         "@boxbox/boxbox-types",
         "@boxbox/boxbox-theme",
-        "@boxbox/tyre-badge"
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number",
+        "@boxbox/tyre-badge",
+        "@boxbox/overtake-indicator"
       ],
       "files": [
         {
@@ -349,19 +372,193 @@
       ]
     },
     {
-      "name": "replay-bumper",
+      "name": "flag-banner",
       "type": "registry:ui",
-      "title": "Replay Bumper",
-      "description": "A broadcast transition that sweeps over a panel so its content can change behind it.",
-      "dependencies": [
-        "motion"
-      ],
+      "title": "Flag Banner",
+      "description": "Full-width race control banner that wipes in with the track status, the sector it applies to, and an optional message.",
+      "dependencies": ["motion"],
       "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-motion",
         "@boxbox/boxbox-theme"
       ],
       "files": [
         {
+          "path": "registry/boxbox/ui/flag-banner.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "replay-bumper",
+      "type": "registry:ui",
+      "title": "Replay Bumper",
+      "description": "A broadcast transition that sweeps over a panel so its content can change behind it.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
+      "files": [
+        {
           "path": "registry/boxbox/ui/replay-bumper.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "lap-counter",
+      "type": "registry:ui",
+      "title": "Lap Counter",
+      "description": "Broadcast lap counter that rolls the lap and calls the last lap the final lap.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/lap-counter.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "race-clock",
+      "type": "registry:ui",
+      "title": "Race Clock",
+      "description": "Broadcast race clock showing time remaining or elapsed as H:MM:SS, driven by its parent.",
+      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/race-clock.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "podium",
+      "type": "registry:ui",
+      "title": "Podium",
+      "description": "Three-step podium laid out second, first, third, with the steps rising last place first.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-motion",
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/podium.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "track-map",
+      "type": "registry:ui",
+      "title": "Track Map",
+      "description": "Circuit map that colours each sector with the flag in force and slides a marker per car round the lap.",
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-motion",
+        "@boxbox/boxbox-theme"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/track-map.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "stint-bar",
+      "type": "registry:ui",
+      "title": "Stint Bar",
+      "description": "A car's tyre strategy as one bar: a segment per stint in its compound colour, filling up to the current lap.",
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/stint-bar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "gap-chart",
+      "type": "registry:ui",
+      "title": "Gap Chart",
+      "description": "Gap to the leader across the race, the leader pinned to zero along the top, with the followed car drawn in colour over the field.",
+      "dependencies": ["recharts"],
+      "registryDependencies": ["chart", "@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/gap-chart.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "speed-trap",
+      "type": "registry:ui",
+      "title": "Speed Trap",
+      "description": "One car's speed trap reading in big figures, with the best of the session under it and a flash when the record changes hands.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/speed-trap.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "gauge",
+      "type": "registry:ui",
+      "title": "Gauge",
+      "description": "Revolutions as an arc round the gear the car is in, turning red past the redline.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/gauge.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "waveform",
+      "type": "registry:ui",
+      "title": "Waveform",
+      "description": "A row of level bars on a canvas, adapted from ElevenLabs UI (MIT): the trace behind the Team Radio.",
+      "registryDependencies": ["@boxbox/boxbox-theme"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/waveform.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "team-radio",
+      "type": "registry:ui",
+      "title": "Team Radio",
+      "description": "A radio message from the pit wall: who is talking to whom, a live trace of the audio and the transcript arriving word by word.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion", "@boxbox/waveform"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/team-radio.tsx",
           "type": "registry:ui"
         }
       ]

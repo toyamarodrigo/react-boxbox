@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "boxbox-motion",
+  "title": "boxbox Motion",
+  "description": "Shared easing curves, durations, and springs so every boxbox component moves the same way.",
+  "dependencies": [
+    "motion"
+  ],
+  "files": [
+    {
+      "path": "registry/boxbox/lib/motion.ts",
+      "content": "import type { Transition } from 'motion/react';\n\n/**\n * Shared motion tokens for boxbox components.\n *\n * Broadcast graphics are watched, not operated: motion is how a state change is\n * shown. Keep it crisp. Enters use `EASE_OUT`, movement on screen uses\n * `EASE_IN_OUT` or `SPRING_ROW`, and `EASE_IN` is only for elements that leave\n * the screen entirely. Exits are always shorter than enters.\n */\n\n/** Strong ease-out: starts fast, settles gently. For anything entering or changing value. */\nexport const EASE_OUT = [0.23, 1, 0.32, 1] as const;\n\n/** Strong ease-in-out: for elements that move from one on-screen place to another. */\nexport const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;\n\n/** Ease-in: only for elements accelerating off screen, never for UI that stays visible. */\nexport const EASE_IN = [0.68, 0, 0.77, 0] as const;\n\n/** Durations in seconds. `tick` is for values that change on every data update. */\nexport const DURATION = { tick: 0.15, fast: 0.2, base: 0.3, slow: 0.45 } as const;\n\n/** Bounce-less spring for rows that change position in a list. */\nexport const SPRING_ROW: Transition = { type: 'spring', duration: 0.45, bounce: 0 };\n",
+      "type": "registry:lib"
+    }
+  ],
+  "type": "registry:lib"
+}

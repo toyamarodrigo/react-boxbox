@@ -9,8 +9,19 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
+import { seo } from '../../lib/seo';
 
-export const Route = createFileRoute('/docs/theming')({ component: Theming });
+export const Route = createFileRoute('/docs/theming')({
+  head: () => ({
+    meta: seo({
+      title: 'Theming — boxbox',
+      description:
+        'Semantic tokens for sectors, track status, tyres and flags, each with a light and dark value.',
+      path: '/docs/theming',
+    }),
+  }),
+  component: Theming,
+});
 
 const theme = registry.items.find((item) => item.name === 'boxbox-theme');
 const light: Record<string, string> = theme?.cssVars?.light ?? {};
@@ -44,8 +55,13 @@ function Theming() {
             {tokens.map(([key, value]) => (
               <TableRow key={key}>
                 <TableCell className="font-mono text-xs">--{key}</TableCell>
-                {[value, dark[key]].map((colour, index) => (
-                  <TableCell key={index} className="font-mono text-xs">
+                {(
+                  [
+                    ['light', value],
+                    ['dark', dark[key]],
+                  ] as const
+                ).map(([scheme, colour]) => (
+                  <TableCell key={scheme} className="font-mono text-xs">
                     {key.startsWith('font-') ? null : (
                       <span
                         aria-hidden="true"

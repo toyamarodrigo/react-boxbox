@@ -9,6 +9,8 @@ export type ComponentMeta = {
   registryName: string;
   dependencies: string[];
   status: 'stable' | 'beta' | 'hidden';
+  /** Extra paragraphs shown under the description, for caveats the props table cannot carry. */
+  notes?: string[];
 };
 
 type BaseField<T> = { label: string; description?: string; default: T };

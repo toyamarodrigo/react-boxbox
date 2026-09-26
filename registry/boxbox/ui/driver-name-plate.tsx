@@ -1,5 +1,7 @@
 import { AnimatePresence, motion, type Variants } from 'motion/react';
+import { DURATION, EASE_OUT, SPRING_ROW } from '@/registry/boxbox/lib/motion';
 import type { Driver, Team } from '@/registry/boxbox/lib/types';
+import { RollingNumber } from '@/registry/boxbox/ui/rolling-number';
 import { cn } from '@/lib/utils';
 
 export type DriverNamePlateVariant = 'compact' | 'full';
@@ -32,17 +34,26 @@ const STATUS_COLORS: Record<DriverNamePlateStatusValue, string> = {
   out: 'bg-muted text-muted-foreground',
 };
 
-const PLATE_TRANSITION = { duration: 0.32, ease: [0.2, 0, 0, 1] } as const;
+const PLATE_TRANSITION = { duration: DURATION.base, ease: EASE_OUT } as const;
 
 const partVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.18 } },
+  hidden: { opacity: 0, transform: 'translateY(8px)' },
+  visible: {
+    opacity: 1,
+    transform: 'translateY(0px)',
+    transition: { duration: DURATION.fast, ease: EASE_OUT },
+  },
 } satisfies Variants;
+
+/** The plate and its status tag both wipe from the edge the plate is aligned to. */
+function hiddenClip(align: DriverNamePlateAlign) {
+  return align === 'left' ? 'inset(0 100% 0 0)' : 'inset(0 0 0 100%)';
+}
 
 function plateVariants(align: DriverNamePlateAlign): Variants {
   return {
     hidden: {
-      clipPath: align === 'left' ? 'inset(0 100% 0 0)' : 'inset(0 0 0 100%)',
+      clipPath: hiddenClip(align),
       transition: PLATE_TRANSITION,
     },
     visible: {
@@ -60,9 +71,10 @@ export function driverDisplayName(driver: Driver, variant: DriverNamePlateVarian
 
 export function DriverNamePlatePosition({
   position,
+  positionChange = 0,
   className,
   ...props
-}: { position: number } & MotionSafeProps<'div'>) {
+}: { position: number; positionChange?: number } & MotionSafeProps<'div'>) {
   return (
     <motion.div
       data-slot="driver-name-plate-position"
@@ -73,7 +85,7 @@ export function DriverNamePlatePosition({
       )}
       {...props}
     >
-      {position}
+      <RollingNumber value={position} direction={positionChange < 0 ? 'down' : 'up'} />
     </motion.div>
   );
 }
@@ -148,13 +160,23 @@ export function DriverNamePlateTeam({
 
 export function DriverNamePlateStatus({
   status,
+  align = 'left',
   className,
   ...props
-}: { status: DriverNamePlateStatusValue } & MotionSafeProps<'div'>) {
+}: {
+  status: DriverNamePlateStatusValue;
+  align?: DriverNamePlateAlign;
+} & MotionSafeProps<'div'>) {
   return (
     <motion.div
       data-slot="driver-name-plate-status"
-      variants={partVariants}
+      initial={{ clipPath: hiddenClip(align) }}
+      animate={{ clipPath: 'inset(0 0 0 0)' }}
+      exit={{
+        clipPath: hiddenClip(align),
+        transition: { duration: DURATION.tick, ease: EASE_OUT },
+      }}
+      transition={{ duration: DURATION.fast, ease: EASE_OUT }}
       className={cn(
         'flex shrink-0 items-center self-stretch px-2 font-display text-[0.625rem] font-bold uppercase leading-none tracking-[0.2em]',
         STATUS_COLORS[status],
@@ -171,6 +193,7 @@ export function DriverNamePlate({
   driver,
   team,
   position,
+  positionChange = 0,
   variant = 'full',
   status,
   visible = true,
@@ -181,6 +204,8 @@ export function DriverNamePlate({
   driver: Driver;
   team?: Team;
   position?: number;
+  /** Places gained (positive) or lost (negative); decides which way the position digit rolls. */
+  positionChange?: number;
   variant?: DriverNamePlateVariant;
   status?: DriverNamePlateStatusValue;
   visible?: boolean;
@@ -194,21 +219,27 @@ export function DriverNamePlate({
           data-variant={variant}
           data-align={align}
           data-status={status}
+          layout
           initial="hidden"
           animate="visible"
           exit="hidden"
           variants={plateVariants(align)}
+          transition={{ layout: SPRING_ROW }}
           className={cn(
-            'inline-flex items-stretch overflow-hidden rounded-none bg-card text-card-foreground',
+            'relative inline-flex items-stretch overflow-hidden rounded-none bg-card text-card-foreground',
             align === 'right' && 'flex-row-reverse text-right',
             className,
           )}
           {...props}
         >
-          {position !== undefined && <DriverNamePlatePosition position={position} />}
+          {position !== undefined && (
+            <DriverNamePlatePosition position={position} positionChange={positionChange} />
+          )}
           <DriverNamePlateTeam team={team} driver={driver} variant={variant} />
           <DriverNamePlateName driver={driver} variant={variant} />
-          {status && <DriverNamePlateStatus status={status} />}
+          <AnimatePresence mode="popLayout" initial={false}>
+            {status && <DriverNamePlateStatus key={status} status={status} align={align} />}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

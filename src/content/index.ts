@@ -6,6 +6,17 @@ import driverNamePlate from './driver-name-plate/meta';
 import startLights from './start-lights/meta';
 import timingTower from './timing-tower/meta';
 import replayBumper from './replay-bumper/meta';
+import lapCounter from './lap-counter/meta';
+import raceClock from './race-clock/meta';
+import flagBanner from './flag-banner/meta';
+import overtakeIndicator from './overtake-indicator/meta';
+import podium from './podium/meta';
+import trackMap from './track-map/meta';
+import stintBar from './stint-bar/meta';
+import gapChart from './gap-chart/meta';
+import speedTrap from './speed-trap/meta';
+import gauge from './gauge/meta';
+import teamRadio from './team-radio/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -15,6 +26,17 @@ export const manifest: readonly ComponentMeta[] = [
   startLights,
   timingTower,
   replayBumper,
+  lapCounter,
+  raceClock,
+  flagBanner,
+  overtakeIndicator,
+  podium,
+  trackMap,
+  stintBar,
+  gapChart,
+  speedTrap,
+  gauge,
+  teamRadio,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -38,44 +60,80 @@ export const contentModules = {
   example: {
     controls: () => import('./example/controls'),
     demo: () => import('./example/demo'),
-    source: () => import('./example/demo.tsx?raw'),
   },
   'tyre-badge': {
     controls: () => import('./tyre-badge/controls'),
     demo: () => import('./tyre-badge/demo'),
-    source: () => import('./tyre-badge/demo.tsx?raw'),
   },
   'sector-times': {
     controls: () => import('./sector-times/controls'),
     demo: () => import('./sector-times/demo'),
-    source: () => import('./sector-times/demo.tsx?raw'),
   },
   'driver-name-plate': {
     controls: () => import('./driver-name-plate/controls'),
     demo: () => import('./driver-name-plate/demo'),
-    source: () => import('./driver-name-plate/demo.tsx?raw'),
   },
   'start-lights': {
     controls: () => import('./start-lights/controls'),
     demo: () => import('./start-lights/demo'),
-    source: () => import('./start-lights/demo.tsx?raw'),
   },
   'timing-tower': {
     controls: () => import('./timing-tower/controls'),
     demo: () => import('./timing-tower/demo'),
-    source: () => import('./timing-tower/demo.tsx?raw'),
   },
   'replay-bumper': {
     controls: () => import('./replay-bumper/controls'),
     demo: () => import('./replay-bumper/demo'),
-    source: () => import('./replay-bumper/demo.tsx?raw'),
+  },
+  'lap-counter': {
+    controls: () => import('./lap-counter/controls'),
+    demo: () => import('./lap-counter/demo'),
+  },
+  'race-clock': {
+    controls: () => import('./race-clock/controls'),
+    demo: () => import('./race-clock/demo'),
+  },
+  'flag-banner': {
+    controls: () => import('./flag-banner/controls'),
+    demo: () => import('./flag-banner/demo'),
+  },
+  'overtake-indicator': {
+    controls: () => import('./overtake-indicator/controls'),
+    demo: () => import('./overtake-indicator/demo'),
+  },
+  podium: {
+    controls: () => import('./podium/controls'),
+    demo: () => import('./podium/demo'),
+  },
+  'track-map': {
+    controls: () => import('./track-map/controls'),
+    demo: () => import('./track-map/demo'),
+  },
+  'stint-bar': {
+    controls: () => import('./stint-bar/controls'),
+    demo: () => import('./stint-bar/demo'),
+  },
+  'gap-chart': {
+    controls: () => import('./gap-chart/controls'),
+    demo: () => import('./gap-chart/demo'),
+  },
+  'speed-trap': {
+    controls: () => import('./speed-trap/controls'),
+    demo: () => import('./speed-trap/demo'),
+  },
+  gauge: {
+    controls: () => import('./gauge/controls'),
+    demo: () => import('./gauge/demo'),
+  },
+  'team-radio': {
+    controls: () => import('./team-radio/controls'),
+    demo: () => import('./team-radio/demo'),
   },
 } satisfies Record<
   string,
   {
     controls: () => Promise<{ default: unknown }>;
     demo: () => Promise<{ default: unknown }>;
-    source: () => Promise<{ default: string }>;
   }
 >;
 

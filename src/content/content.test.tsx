@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import registry from '../../registry.json';
 import { ComponentPageBody } from '../components/site/component-page';
+import { manualBundle } from '../lib/registry-items';
 import { contentSlugs } from './slugs';
 import { manifest, visible, categoryOrder } from './index';
 import { defineControls } from './types';
@@ -57,7 +58,7 @@ describe('component page', () => {
         meta={example}
         definition={controls}
         Demo={ExampleSignal as unknown as ComponentProps<typeof ComponentPageBody>['Demo']}
-        source="export default function ExampleSignal() {}"
+        bundle={manualBundle('tyre-badge')}
       />,
     );
     expect(screen.getByRole('heading', { name: 'Example Signal' })).toBeInTheDocument();

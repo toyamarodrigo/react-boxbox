@@ -20,6 +20,8 @@ const config = defineConfig({
           '/docs/installation',
           '/docs/theming',
           '/components',
+          // The shell only: the race JSON is fetched in the browser, never prerendered in.
+          '/replay',
           ...contentSlugs.map((slug) => `/components/${slug}`),
         ].map((path) => ({ path, prerender: { enabled: true } })),
       ],

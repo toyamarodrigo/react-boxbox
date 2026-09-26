@@ -1,12 +1,29 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { CodeBlock } from '../../components/site/code-block';
+import { seo } from '../../lib/seo';
 
-export const Route = createFileRoute('/docs/installation')({ component: Installation });
+export const Route = createFileRoute('/docs/installation')({
+  head: () => ({
+    meta: seo({
+      title: 'Installation — boxbox',
+      description:
+        'Bring broadcast components into your React project, one registry item at a time.',
+      path: '/docs/installation',
+    }),
+  }),
+  component: Installation,
+});
 
 const registry = `{
   "registries": {
     "@boxbox": "https://react-boxbox.vercel.app/r/{name}.json"
   }
+}`;
+
+const motionConfig = `import { MotionConfig } from 'motion/react';
+
+export function App({ children }: { children: React.ReactNode }) {
+  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }`;
 
 function Step({
@@ -73,6 +90,39 @@ function Installation() {
           Choose a component page, then run its CLI command in your project.
         </p>
         <CodeBlock language="bash" code="bunx shadcn@latest add @boxbox/<component-name>" />
+      </Step>
+      <Step number="06" title="Without the CLI">
+        <p className="text-muted-foreground">
+          Every component page has a <strong>Manual</strong> tab next to the CLI command. It lists
+          the component and every <code className="font-mono">@boxbox/*</code> item it depends on as
+          separate files, each with its target path, plus the theme tokens it needs and a{' '}
+          <em>Copy all files</em> button. Paste them in and you are done.
+        </p>
+        <p className="text-muted-foreground">
+          The sources there already carry the two rewrites the CLI would apply on install:
+        </p>
+        <ul className="space-y-2 text-sm text-muted-foreground">
+          <li className="border-l-2 border-border pl-3 font-mono">
+            @/registry/boxbox/ui/&lt;name&gt; → @/components/ui/&lt;name&gt;
+          </li>
+          <li className="border-l-2 border-border pl-3 font-mono">
+            @/registry/boxbox/lib/&lt;name&gt; → @/lib/&lt;name&gt;
+          </li>
+        </ul>
+        <p className="text-sm text-muted-foreground">
+          <code className="font-mono">@/lib/utils</code> is left alone: shadcn already puts{' '}
+          <code className="font-mono">cn</code> there. If your project has no{' '}
+          <code className="font-mono">components.json</code>, the Manual tab&apos;s last step shows
+          the helper to add.
+        </p>
+      </Step>
+      <Step number="07" title="Respect reduced motion">
+        <p className="text-muted-foreground">
+          Components animate with <code className="font-mono">motion</code>. Wrap your app once so
+          position and layout motion follows the visitor&apos;s system setting. Colour and opacity
+          changes stay on, so every state is still readable.
+        </p>
+        <CodeBlock language="tsx" code={motionConfig} />
       </Step>
     </article>
   );

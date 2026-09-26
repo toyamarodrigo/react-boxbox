@@ -4,9 +4,10 @@ const controls = defineControls({
   mode: {
     kind: 'select',
     label: 'Mode',
-    description: 'Value column: gap to the leader, interval to the car ahead, or last lap time.',
+    description:
+      'Value column: gap to the leader, interval to the car ahead, last lap time, or the classification once the race is over.',
     default: 'leader',
-    options: ['leader', 'interval', 'lapTime'],
+    options: ['leader', 'interval', 'lapTime', 'results'],
   },
   maxRows: {
     kind: 'number',
@@ -32,10 +33,23 @@ const controls = defineControls({
     description: 'Show the tyre compound and its age on each row.',
     default: true,
   },
-  showDrs: {
+  showOvertake: {
     kind: 'boolean',
-    label: 'Show DRS',
-    description: 'Show the DRS tag when a car is in range.',
+    label: 'Show overtake',
+    description: 'Show the overtake tag when a car is in range.',
+    default: true,
+  },
+  overtakeMode: {
+    kind: 'select',
+    label: 'Overtake mode',
+    description: 'DRS up to 2025, Overtake Mode from 2026.',
+    default: 'drs',
+    options: ['drs', 'overtake'],
+  },
+  followable: {
+    kind: 'boolean',
+    label: 'Followable',
+    description: 'Let a click on a row follow that driver and expand it.',
     default: true,
   },
   speed: {

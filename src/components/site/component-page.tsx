@@ -10,6 +10,9 @@ import { Switch } from '../ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { CodeBlock } from './code-block';
+import { ManualInstall } from './manual-install';
+import type { PackageManager } from './manual-install';
+import type { ManualBundle } from '../../lib/registry-items';
 import { categoryNames } from '../../content';
 
 type Value = boolean | number | string;
@@ -106,18 +109,30 @@ export function ComponentPageBody({
   meta,
   definition,
   Demo,
-  source,
+  bundle,
 }: {
   meta: ComponentMeta;
   definition: Definition;
   Demo: ComponentType<Record<string, Value>>;
-  source: string;
+  bundle: ManualBundle;
 }) {
   const [values, setValues] = useState<Record<string, Value>>(definition.defaults);
-  const [manager, setManager] = useState<'bun' | 'pnpm' | 'npm'>('bun');
+  const [manager, setManager] = useState<PackageManager>('bun');
   const runner = manager === 'bun' ? 'bunx' : manager === 'pnpm' ? 'pnpm dlx' : 'npx';
   const setup = `${runner} shadcn@latest registry add @boxbox=https://react-boxbox.vercel.app/r/{name}.json`;
   const command = `${runner} shadcn@latest add @boxbox/${meta.registryName}`;
+  const managerSelect = (
+    <Select value={manager} onValueChange={(value) => setManager(value as PackageManager)}>
+      <SelectTrigger className="w-32" aria-label="Package manager">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="bun">bun</SelectItem>
+        <SelectItem value="pnpm">pnpm</SelectItem>
+        <SelectItem value="npm">npm</SelectItem>
+      </SelectContent>
+    </Select>
+  );
   function change(name: string, value: Value) {
     const next = { ...values, [name]: value };
     if (definition.schema.safeParse(next).success) setValues(next);
@@ -131,13 +146,19 @@ export function ComponentPageBody({
         </div>
         <h1 className="font-display text-5xl font-black tracking-tight md:text-6xl">{meta.name}</h1>
         <p className="mt-4 max-w-2xl text-lg text-muted-foreground">{meta.description}</p>
+        {meta.notes?.map((note) => (
+          <p key={note} className="mt-3 max-w-2xl text-sm text-muted-foreground">
+            {note}
+          </p>
+        ))}
       </header>
       <section aria-labelledby="preview-title">
         <h2 id="preview-title" className="mb-5 font-display text-3xl font-bold tracking-tight">
           Preview
         </h2>
         <div className="grid border border-border xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="flex min-h-80 items-center justify-center bg-[oklch(0.1_0_0)] p-8">
+          {/* The stage follows the site theme so both light and dark renderings can be previewed. */}
+          <div className="flex min-h-80 items-center justify-center bg-background p-8 text-foreground">
             <Demo {...values} />
           </div>
           <div className="border-t border-border bg-card p-5 xl:border-l xl:border-t-0">
@@ -170,19 +191,7 @@ export function ComponentPageBody({
           <TabsContent value="cli" className="space-y-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>Package manager</span>
-              <Select
-                value={manager}
-                onValueChange={(value) => setManager(value as 'bun' | 'pnpm' | 'npm')}
-              >
-                <SelectTrigger className="w-32" aria-label="Package manager">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bun">bun</SelectItem>
-                  <SelectItem value="pnpm">pnpm</SelectItem>
-                  <SelectItem value="npm">npm</SelectItem>
-                </SelectContent>
-              </Select>
+              {managerSelect}
             </div>
             <p className="text-sm text-muted-foreground">
               Register the boxbox namespace once per project:
@@ -192,10 +201,7 @@ export function ComponentPageBody({
             <CodeBlock code={command} language="bash" />
           </TabsContent>
           <TabsContent value="manual">
-            <p className="mb-3 text-sm text-muted-foreground">
-              Copy the source into your project, then install its dependencies.
-            </p>
-            <CodeBlock code={source} language="tsx" />
+            <ManualInstall bundle={bundle} manager={manager} managerSelect={managerSelect} />
           </TabsContent>
         </Tabs>
       </section>

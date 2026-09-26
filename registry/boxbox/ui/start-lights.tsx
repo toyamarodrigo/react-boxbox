@@ -1,6 +1,7 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- the gantry is a live region, not a form output */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import { DURATION, EASE_IN_OUT, EASE_OUT } from '@/registry/boxbox/lib/motion';
 import { cn } from '@/lib/utils';
 
 export type StartLightsPhase = 'idle' | 'arming' | 'lit' | 'out' | 'aborted';
@@ -173,8 +174,8 @@ export function StartLight({
       }
       transition={
         aborted
-          ? { duration: 0.6, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }
-          : { duration: 0.15, ease: 'easeOut' }
+          ? { duration: 0.6, repeat: Number.POSITIVE_INFINITY, ease: EASE_IN_OUT }
+          : { duration: DURATION.tick, ease: EASE_OUT }
       }
     />
   );
