@@ -25,12 +25,15 @@ export type WaveformProps = React.ComponentProps<'div'> & {
   height?: string | number;
 };
 
+// A stable empty default, so an omitted `data` does not redraw on every render.
+const NO_LEVELS: number[] = [];
+
 /**
  * A row of level bars on a canvas, redrawn whenever the levels or the box change. The canvas is
  * scaled to the device pixel ratio so the bars stay crisp; the container carries the size.
  */
 export function Waveform({
-  data = [],
+  data = NO_LEVELS,
   barWidth = 4,
   barHeight: baseBarHeight = 4,
   barGap = 2,

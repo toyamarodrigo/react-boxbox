@@ -195,6 +195,7 @@ export function TeamRadio({
       if (!built) return;
       player.current = null;
       built.audio.pause();
+      built.audio.onended = null;
       built.analyser?.disconnect();
       void built.context?.close();
     };
@@ -219,7 +220,7 @@ export function TeamRadio({
   const build = (url: string) => {
     const audio = new Audio(url);
     audio.preload = 'metadata';
-    audio.addEventListener('ended', finish);
+    audio.onended = finish;
     if (typeof AudioContext === 'undefined') return { audio, context: null, analyser: null };
     const context = new AudioContext();
     const analyser = context.createAnalyser();
@@ -250,7 +251,7 @@ export function TeamRadio({
     audio.play().catch(stop);
   };
 
-  const spoken = elapsed === null ? words : spokenWords(words, elapsed);
+  const spoken = new Set(elapsed === null ? words : spokenWords(words, elapsed));
 
   return (
     <motion.div
@@ -323,7 +324,7 @@ export function TeamRadio({
       >
         <span className="sr-only">{sentence}</span>
         {words.map((word, index) => {
-          const shown = spoken.includes(word);
+          const shown = spoken.has(word);
           return (
             <motion.span
               key={index}
