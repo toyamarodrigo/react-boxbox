@@ -63,6 +63,11 @@ describe('component page', () => {
     );
     expect(screen.getByRole('heading', { name: 'Example Signal' })).toBeInTheDocument();
     expect(screen.getAllByText('BOXBOX').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        'bunx shadcn@latest registry add @boxbox=https://react-boxbox.vercel.app/r/{name}.json',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('bunx shadcn@latest add @boxbox/example')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Playground' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'level' })).toBeInTheDocument();
