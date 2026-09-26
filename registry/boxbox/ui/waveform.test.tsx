@@ -20,17 +20,8 @@ function fakeContext(width: number, height: number) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
     ctx as unknown as CanvasRenderingContext2D,
   );
-  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({
-    width,
-    height,
-    top: 0,
-    left: 0,
-    right: width,
-    bottom: height,
-    x: 0,
-    y: 0,
-    toJSON: () => ({}),
-  });
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(height);
   return { ctx, calls };
 }
 
@@ -46,6 +37,15 @@ describe('Waveform', () => {
     expect(root).toHaveAttribute('aria-hidden');
     expect(root).toHaveStyle({ height: '40px' });
     expect(root?.querySelector('canvas')).toBeInTheDocument();
+  });
+
+  it('keeps its height when given a style of its own', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const { container } = render(<Waveform height={24} style={{ width: 60 }} />);
+    expect(container.querySelector('[data-slot="waveform"]')).toHaveStyle({
+      width: '60px',
+      height: '24px',
+    });
   });
 
   it('draws one square bar per step, silent bars kept at the base height', () => {

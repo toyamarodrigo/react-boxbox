@@ -40,6 +40,7 @@ export function Waveform({
   fadeWidth = 24,
   height = 128,
   className,
+  style,
   ...props
 }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,7 +56,8 @@ export function Waveform({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const rect = canvas.getBoundingClientRect();
+      // Layout size, not `getBoundingClientRect`: a scaled ancestor must not shrink the drawing.
+      const rect = { width: canvas.clientWidth, height: canvas.clientHeight };
       ctx.clearRect(0, 0, rect.width, rect.height);
 
       const computedBarColor =
@@ -102,7 +104,7 @@ export function Waveform({
     };
 
     const resizeObserver = new ResizeObserver(() => {
-      const rect = container.getBoundingClientRect();
+      const rect = { width: container.clientWidth, height: container.clientHeight };
       const dpr = window.devicePixelRatio || 1;
 
       canvas.width = rect.width * dpr;
@@ -140,7 +142,7 @@ export function Waveform({
       aria-hidden
       className={cn('relative', className)}
       ref={containerRef}
-      style={{ height: heightStyle }}
+      style={{ ...style, height: heightStyle }}
       {...props}
     >
       <canvas className="block h-full w-full" ref={canvasRef} />
