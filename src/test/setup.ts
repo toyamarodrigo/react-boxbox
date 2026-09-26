@@ -22,6 +22,10 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver = ResizeObserverStub;
 
+// jsdom has no 2D canvas and logs a "not implemented" error for every `getContext` call. The
+// Waveform draws nothing without a context, which is the right outcome here.
+HTMLCanvasElement.prototype.getContext = () => null;
+
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
