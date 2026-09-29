@@ -4,12 +4,17 @@ import { ComponentGrid } from '../components/site/home/component-grid';
 import { HeroSequence } from '../components/site/home/hero-sequence';
 import { ReplaySection } from '../components/site/home/replay-section';
 import { Button } from '../components/ui/button';
+import { visible } from '../content';
 
 export const Route = createFileRoute('/')({ component: Home });
 
 const steps = [
   ['01', 'Install the theme', 'One registry item brings the tokens, the fonts, and dark mode.'],
-  ['02', 'Choose a component', 'Six broadcast pieces, each with a playground and its source.'],
+  [
+    '02',
+    'Choose a component',
+    `${visible().length} broadcast pieces, each with a playground and its source.`,
+  ],
   ['03', 'Make it yours', 'Own the code: semantic tokens, render slots, and named parts.'],
 ] as const;
 
