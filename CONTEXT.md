@@ -36,6 +36,14 @@ _Avoid_: Selected driver, focus driver, tracked driver
 A driver the viewer puts next to the followed driver, up to three at a time. Every comparison is measured against the followed driver, never between compared drivers. There is no compared driver without a followed driver.
 _Avoid_: Rival, second followed driver, pinned driver
 
+**Standings**:
+The championship table of drivers or of teams, by points, as it stood after one round of a season.
+_Avoid_: Leaderboard, classification, table
+
+**Projected standings**:
+The standings as they would be if the race ended at the current race time: the standings before the race plus the points each car's position is worth now. Replaced by the official standings at the chequered flag.
+_Avoid_: Live standings, provisional standings, predicted table
+
 **Classic race**:
 A curated race from a season before the current one, chosen by hand for being well known. The current season is offered in full; earlier seasons only through classic races.
 _Avoid_: Popular race, archive race, featured race
