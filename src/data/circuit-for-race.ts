@@ -18,10 +18,22 @@ export type ReplayCircuit = {
  */
 const BY_RACE_CIRCUIT_NAME: Record<string, string> = {
   'Albert Park Grand Prix Circuit': 'au-1953',
+  'Autodromo Nazionale di Monza': 'it-1922',
   'Autódromo José Carlos Pace': 'br-1940',
   'Baku City Circuit': 'az-2016',
+  'Circuit de Barcelona-Catalunya': 'es-1991',
+  'Circuit de Monaco': 'mc-1929',
+  'Circuit de Spa-Francorchamps': 'be-1925',
+  'Circuit Gilles Villeneuve': 'ca-1978',
+  'Circuit Park Zandvoort': 'nl-1948',
+  Hungaroring: 'hu-1986',
   'Las Vegas Strip Street Circuit': 'us-2023',
   Madring: 'es-2026',
+  'Miami International Autodrome': 'us-2022',
+  'Red Bull Ring': 'at-1969',
+  'Shanghai International Circuit': 'cn-2004',
+  'Silverstone Circuit': 'gb-1948',
+  'Suzuka Circuit': 'jp-1962',
   'Yas Marina Circuit': 'ae-2009',
 };
 

@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronsUpDown,
   Link2,
   Pause,
   Play,
@@ -55,7 +56,7 @@ import {
   stintAt,
   trackStatusAt,
 } from '../data/replay-timing';
-import { byDateDescending, formatRaceDate } from '../data/replay-index';
+import { byDateDescending, formatRaceDate, raceGroups, raceLabel } from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
@@ -81,6 +82,16 @@ import {
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { LapGrid } from '../components/site/replay/lap-grid';
 import { Button } from '../components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '../components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Slider } from '../components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
@@ -143,12 +154,34 @@ function Message({ children, onRetry }: { children: React.ReactNode; onRetry?: (
   );
 }
 
+function RaceOption({
+  race,
+  chosen,
+  onSelect,
+}: {
+  race: ReplayIndexEntry;
+  chosen: boolean;
+  onSelect: (entry: ReplayIndexEntry) => void;
+}) {
+  return (
+    <CommandItem
+      value={raceLabel(race)}
+      keywords={[race.circuit]}
+      aria-current={chosen || undefined}
+      onSelect={() => onSelect(race)}
+    >
+      <Check className={cn('size-4', chosen ? 'opacity-100' : 'opacity-0')} aria-hidden />
+      {raceLabel(race)}
+    </CommandItem>
+  );
+}
+
 /**
- * A row of buttons rather than a `Select`: the curated list is short, every race stays one
- * click away, and the page re-renders ten times a second while a replay runs, which is no place
- * for a popover that has to re-measure itself on every tick.
+ * A combobox: the current season in full plus the classic races is too many for a row of
+ * buttons. Memoised, because the page re-renders ten times a second while a replay runs and
+ * the list only changes when the index does.
  */
-function RacePicker({
+const RacePicker = memo(function RacePicker({
   races,
   value,
   onSelect,
@@ -157,30 +190,69 @@ function RacePicker({
   value: string | undefined;
   onSelect: (entry: ReplayIndexEntry) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const groups = useMemo(() => raceGroups(races), [races]);
+  const chosen = races.find((race) => race.id === value);
+  const select = (entry: ReplayIndexEntry) => {
+    setOpen(false);
+    onSelect(entry);
+  };
+
   return (
-    <fieldset aria-label="Race" className="flex flex-wrap gap-2">
-      {races.map((race) => (
-        <Button
-          key={race.id}
-          variant={race.id === value ? 'default' : 'outline'}
-          size="sm"
-          aria-pressed={race.id === value}
-          onClick={() => onSelect(race)}
-        >
-          {`${race.season} ${race.name.replace(/\s*Grand Prix$/, '')}`}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        {/* A plain button: the trigger sets `aria-haspopup`, `aria-expanded` and `aria-controls`. */}
+        <Button variant="outline" size="sm" aria-label="Race" className="w-64 justify-between">
+          {chosen ? raceLabel(chosen) : 'Pick a race'}
+          <ChevronsUpDown className="size-4 opacity-50" aria-hidden />
         </Button>
-      ))}
-    </fieldset>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0">
+        <Command>
+          <CommandInput placeholder="Search races…" />
+          <CommandList>
+            <CommandEmpty>No race matches.</CommandEmpty>
+            {groups.current.length > 0 && (
+              <CommandGroup heading={String(groups.season)}>
+                {groups.current.map((race) => (
+                  <RaceOption
+                    key={race.id}
+                    race={race}
+                    chosen={race.id === value}
+                    onSelect={select}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {groups.classics.length > 0 && (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Classics">
+                  {groups.classics.map((race) => (
+                    <RaceOption
+                      key={race.id}
+                      race={race}
+                      chosen={race.id === value}
+                      onSelect={select}
+                    />
+                  ))}
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
-}
+});
 
 /** The glossary words, the ones the tower already speaks over the column. */
 const VALUE_MODE_LABELS: Record<TowerValueMode, string> = { leader: 'Gap', interval: 'Interval' };
 
 /**
  * What the tower's value column measures: the gap to the leader, or the interval to the car one
- * place ahead. Two buttons for the same reason `RacePicker` is a row of them — the page renders
- * ten times a second, which is no place for a popover.
+ * place ahead. Two buttons rather than a popover: there are only two choices, and both stay one
+ * click away.
  */
 function ValueModePicker({
   value,
@@ -1197,6 +1269,17 @@ function ReplayPage() {
       : `${search.season}-${search.round}`;
   const entry = races.find((race) => race.id === requested) ?? races[0];
 
+  // A whole new search, so another race starts with no followed driver: that driver belongs to
+  // the race it was picked in. The column mode is a preference about the tower and means the
+  // same thing in every race, so it rides along. Stable, so the memoised picker skips the ticks.
+  const selectRace = useCallback(
+    (next: ReplayIndexEntry) =>
+      void navigate({
+        search: { season: next.season, round: next.round, value: search.value },
+      }),
+    [navigate, search.value],
+  );
+
   const race = useReplayRace(entry?.id);
   const circuit = useMemo(
     () => (race.data ? circuitForRace(race.data.circuit) : undefined),
@@ -1330,18 +1413,7 @@ function ReplayPage() {
               : 'Pick a race to play back.'}
           </p>
         </div>
-        <RacePicker
-          races={races}
-          value={entry?.id}
-          // A whole new search, so another race starts with no followed driver: that driver
-          // belongs to the race it was picked in. The column mode is a preference about the
-          // tower and means the same thing in every race, so it rides along.
-          onSelect={(next) =>
-            void navigate({
-              search: { season: next.season, round: next.round, value: search.value },
-            })
-          }
-        />
+        <RacePicker races={races} value={entry?.id} onSelect={selectRace} />
         <p className="max-w-3xl border-l-2 border-border pl-4 text-xs leading-relaxed text-muted-foreground">
           Race data from{' '}
           <a

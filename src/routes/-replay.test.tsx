@@ -87,9 +87,18 @@ const rowValueOf = (driverId: string) =>
     ?.textContent;
 const columnButton = (name: string) =>
   within(screen.getByRole('group', { name: 'Timing column' })).getByRole('button', { name });
+const racePicker = () => screen.getByRole('button', { name: 'Race' });
+/** Opens the race picker and picks the race with this label. */
+async function pickRace(label: string) {
+  fireEvent.click(racePicker());
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+}
 
 beforeEach(() => {
   clearReplayCache();
+  // jsdom has no `scrollIntoView`, and the race picker's list scrolls its selected option into
+  // view as soon as it opens.
+  Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -222,7 +231,7 @@ describe('replay page', () => {
   it('honours the season and round in the search params', async () => {
     renderReplay(`/replay?season=${race.season}&round=${race.round}`);
     expect(await screen.findByRole('heading', { name: race.name })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Test$/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(racePicker()).toHaveTextContent('2030 Test');
   });
 
   it('offers a retry when the race does not load', async () => {
@@ -238,6 +247,101 @@ describe('replay page', () => {
 
     await waitFor(() => expect(screen.getByText(/This race did not load/)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+});
+
+describe('replay page, race picker', () => {
+  // Two races of the season on screen and one classic race from an earlier one.
+  const second = { ...race, id: '2030-2', round: 2, name: 'Second Grand Prix', date: '2030-03-15' };
+  const classic = {
+    ...race,
+    id: '2029-5',
+    season: 2029,
+    round: 5,
+    name: 'Classic Grand Prix',
+    circuit: 'Old Circuit',
+    date: '2029-06-01',
+  };
+  const entryOf = (from: typeof race) => ({
+    ...index.races[0]!,
+    id: from.id,
+    season: from.season,
+    round: from.round,
+    name: from.name,
+    circuit: from.circuit,
+    date: from.date,
+  });
+
+  beforeEach(() => {
+    const byId = new Map([race, second, classic].map((entry) => [entry.id, entry]));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) {
+          return jsonResponse({ ...index, races: [race, classic, second].map(entryOf) });
+        }
+        const found = byId.get(url.replace(/^.*\//, '').replace(/\.json$/, ''));
+        if (found) return jsonResponse(found);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  });
+
+  const optionNames = (group: HTMLElement) =>
+    within(group)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+
+  it('shows the newest race on the trigger', async () => {
+    renderReplay();
+    expect(await screen.findByRole('heading', { name: second.name })).toBeInTheDocument();
+    expect(racePicker()).toHaveTextContent('2030 Second');
+  });
+
+  it('groups the season on screen, newest first, above the classics', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: second.name });
+    fireEvent.click(racePicker());
+
+    const season = await screen.findByRole('group', { name: '2030' });
+    expect(optionNames(season)).toEqual(['2030 Second', '2030 Test']);
+    expect(optionNames(screen.getByRole('group', { name: 'Classics' }))).toEqual(['2029 Classic']);
+    expect(document.querySelector('[data-slot="command-separator"]')).not.toBeNull();
+    // The race on screen is the one marked.
+    expect(screen.getByRole('option', { name: '2030 Second' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(screen.getByRole('option', { name: '2030 Test' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('filters the races as the viewer types, by name or circuit', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: second.name });
+    fireEvent.click(racePicker());
+    const input = await screen.findByPlaceholderText('Search races…');
+
+    fireEvent.change(input, { target: { value: 'old circ' } });
+    await waitFor(() =>
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        '2029 Classic',
+      ]),
+    );
+
+    fireEvent.change(input, { target: { value: 'nowhere at all' } });
+    expect(await screen.findByText('No race matches.')).toBeInTheDocument();
+  });
+
+  it('opens the picked race, closes, and drops the moment and the followed driver', async () => {
+    const router = renderReplay('/replay?driver=CHA&t=30&value=interval');
+    await screen.findByRole('heading', { name: second.name });
+
+    await pickRace('2029 Classic');
+    expect(await screen.findByRole('heading', { name: classic.name })).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({ season: 2029, round: 5, value: 'interval' });
+    expect(racePicker()).toHaveTextContent('2029 Classic');
+    await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
   });
 });
 
@@ -311,7 +415,7 @@ describe('replay page, followed driver', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(followedRow()).not.toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
+    await pickRace('2030 Second');
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).driver).toBeUndefined();
     // The new search carries the column mode over, and it is the default here: an absent mode
@@ -365,7 +469,7 @@ describe('replay page, followed driver', () => {
     await waitFor(() => expect(searchOf(router).driver).toBeUndefined());
     expect(scrollTo).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: /Test$/ }));
+    await pickRace('2030 Test');
     await waitFor(() =>
       expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 })),
     );
@@ -498,7 +602,7 @@ describe('replay page, timing column', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(followedRow()).not.toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
+    await pickRace('2030 Second');
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).value).toBe('interval');
     expect(searchOf(router).driver).toBeUndefined();

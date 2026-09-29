@@ -12,6 +12,8 @@ describe('circuitForRace', () => {
     expect(circuitForRace('Autódromo José Carlos Pace').real).toBe(true);
     expect(circuitForRace('Madring').name).toBe('Circuito de Madring');
     expect(circuitForRace('Baku City Circuit').name).toBe('Baku City Circuit');
+    // Neither the location nor the hyphenated name would match this spelling on its own.
+    expect(circuitForRace('Circuit Gilles Villeneuve').name).toBe('Circuit Gilles-Villeneuve');
   });
 
   it('matches an unknown spelling by location, ignoring accents and case', () => {

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +23,13 @@ import type {
   RawResult,
   RawTiming,
 } from '../src/data/replay-derive.ts';
-import { REPLAY_LIST } from '../src/data/replay-list.ts';
+import {
+  CLASSIC_RACES,
+  REPLAY_SEASONS,
+  notOnDisk,
+  raceId,
+  seasonSelections,
+} from '../src/data/replay-list.ts';
 import type { ReplaySelection } from '../src/data/replay-list.ts';
 import {
   replayIndexSchema,
@@ -43,7 +49,8 @@ const BASE_URL = 'https://api.jolpi.ca/ergast/f1';
 const USER_AGENT = 'react-boxbox-replays/0.1 (+https://react-boxbox.vercel.app)';
 // The published unauthenticated budget is 4 requests/second and 500/hour. Two per second still
 // tripped Cloudflare's rate limiter (error 1015) on a back-to-back rebuild, so stay under one
-// per second. A full rebuild is around 70 requests: a couple of minutes costs nothing.
+// per second. A race is 15 to 20 requests, so a whole season can outrun the hourly budget: the
+// run skips the races already on disk, and a rerun after a 429 carries on where it stopped.
 const THROTTLE_MS = 1100;
 const PAGE_SIZE = 100;
 
@@ -78,6 +85,7 @@ type ApiResult = RawResult & {
   Constructor: { constructorId: string; name: string };
 };
 type ApiRace = Partial<RaceInfo> & {
+  round?: string;
   Laps?: RawLap[];
   PitStops?: RawPitStop[];
   Results?: ApiResult[];
@@ -170,7 +178,7 @@ async function openF1Request<T>(query: string): Promise<T[]> {
   return Array.isArray(body) ? (body as T[]) : [];
 }
 
-/** Meetings are fetched once per season per run: five races share three seasons at most. */
+/** Meetings are fetched once per season per run: a whole season shares one request. */
 const meetingsBySeason = new Map<number, OpenF1Meeting[]>();
 async function openF1Meetings(season: number): Promise<OpenF1Meeting[]> {
   const cached = meetingsBySeason.get(season);
@@ -256,8 +264,6 @@ async function fetchOpenF1Session(
 const raceUrl = ({ season, round }: ReplaySelection, resource = '') =>
   `${BASE_URL}/${season}/${round}${resource}.json`;
 
-const raceId = ({ season, round }: ReplaySelection) => `${season}-${round}`;
-
 async function fetchRaceInfo(selection: ReplaySelection): Promise<RaceInfo | null> {
   const payload = await request(raceUrl(selection));
   const race = payload.MRData.RaceTable.Races[0];
@@ -265,6 +271,30 @@ async function fetchRaceInfo(selection: ReplaySelection): Promise<RaceInfo | nul
     return null;
   }
   return { raceName: race.raceName, date: race.date, Circuit: race.Circuit };
+}
+
+type Planned = { selection: ReplaySelection; info: RaceInfo };
+
+/**
+ * The rounds of a season that have a result, with each race's info, in one request: the
+ * winners' rows (`results/1`) carry the race name, circuit and date too, so a season costs one
+ * request to plan however many rounds it has run.
+ */
+async function fetchSeasonRaces(season: number): Promise<Planned[]> {
+  const payload = await request(`${BASE_URL}/${season}/results/1.json?limit=${PAGE_SIZE}`);
+  const races = payload.MRData.RaceTable.Races;
+  const planned: Planned[] = [];
+  for (const selection of seasonSelections(season, races)) {
+    const race = races.find((entry) => entry.round === String(selection.round));
+    if (race?.raceName === undefined || race.date === undefined || race.Circuit === undefined) {
+      continue;
+    }
+    planned.push({
+      selection,
+      info: { raceName: race.raceName, date: race.date, Circuit: race.Circuit },
+    });
+  }
+  return planned;
 }
 
 /** `total` on the laps and pitstops endpoints counts rows, not laps, so paginate over rows. */
@@ -544,48 +574,126 @@ function indexEntry(race: ReplayRace): ReplayIndexEntry {
   };
 }
 
-/** A `--only` rebuild must keep the races it did not touch in the index. */
-async function readExistingIndex(): Promise<ReplayIndexEntry[]> {
+const RACE_FILE = /^\d{4}-\d{1,2}\.json$/;
+
+async function raceFilesOnDisk(): Promise<string[]> {
   try {
-    const file = await readFile(path.join(outDir, 'index.json'), 'utf8');
-    return replayIndexSchema.parse(JSON.parse(file)).races;
+    return (await readdir(outDir)).filter((name) => RACE_FILE.test(name));
   } catch {
     return [];
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
-  const onlyFlag = args.indexOf('--only');
-  const only = onlyFlag === -1 ? undefined : args[onlyFlag + 1];
+/**
+ * The index is rebuilt from every race file on disk rather than patched, so a race skipped
+ * because it is already there, or written by a run a 429 cut short, is listed all the same.
+ */
+async function writeIndex(generatedAt: string): Promise<string> {
+  const entries: ReplayIndexEntry[] = [];
+  for (const name of await raceFilesOnDisk()) {
+    const file = await readFile(path.join(outDir, name), 'utf8');
+    entries.push(indexEntry(replayRaceSchema.parse(JSON.parse(file))));
+  }
+  const index = replayIndexSchema.parse({
+    generatedAt,
+    races: entries.sort((a, b) => b.date.localeCompare(a.date)),
+  });
+  const indexJson = `${JSON.stringify(index, null, 2)}\n`;
+  await writeFile(path.join(outDir, 'index.json'), indexJson);
+  return indexJson;
+}
 
-  const selections = only ? REPLAY_LIST.filter((entry) => raceId(entry) === only) : REPLAY_LIST;
-  if (selections.length === 0) {
-    console.error(
-      `No curated race matches --only ${only}. Known: ${REPLAY_LIST.map(raceId).join(', ')}`,
-    );
-    process.exitCode = 1;
-    return;
+function flagValue(args: readonly string[], flag: string): string | undefined {
+  const at = args.indexOf(flag);
+  return at === -1 ? undefined : args[at + 1];
+}
+
+/**
+ * What a run fetches. `--only <id>` rebuilds that one race even when it is on disk. `--season
+ * <year>` takes the rounds of that season with a result; no flag takes every classic race and
+ * every full season. Those two skip the races already on disk, so rerunning after each grand
+ * prix, or after a 429, only fetches what is missing: delete a file to fetch it again.
+ * Returns the reason instead when the flags name nothing curated.
+ */
+async function planRun(args: readonly string[]): Promise<Planned[] | string> {
+  const only = flagValue(args, '--only');
+  const seasonFlag = flagValue(args, '--season');
+
+  if (only !== undefined) {
+    const [season = Number.NaN, round = Number.NaN] = only
+      .split('-')
+      .map((part) => Number.parseInt(part, 10));
+    const selection = { season, round };
+    const curated =
+      raceId(selection) === only &&
+      (REPLAY_SEASONS.includes(season) || CLASSIC_RACES.some((race) => raceId(race) === only));
+    if (!curated) {
+      return `No curated race matches --only ${only}. Classics: ${CLASSIC_RACES.map(raceId).join(', ')}; full seasons: ${REPLAY_SEASONS.join(', ')}.`;
+    }
+    const info = await fetchRaceInfo(selection);
+    return info === null ? `${only}: unknown race on jolpica.` : [{ selection, info }];
   }
 
-  console.log(`Selected ${selections.length} race(s) from the curated list:`);
-  const planned: { selection: ReplaySelection; info: RaceInfo }[] = [];
-  for (const selection of selections) {
+  let seasons = REPLAY_SEASONS;
+  let classics = CLASSIC_RACES;
+  if (seasonFlag !== undefined) {
+    const season = Number.parseInt(seasonFlag, 10);
+    if (!REPLAY_SEASONS.includes(season)) {
+      return `--season ${seasonFlag} is not a full season. Full seasons: ${REPLAY_SEASONS.join(', ')}; earlier races go in CLASSIC_RACES.`;
+    }
+    seasons = [season];
+    classics = [];
+  }
+
+  const onDisk = await raceFilesOnDisk();
+  const planned: Planned[] = [];
+  for (const selection of notOnDisk(classics, onDisk)) {
     const info = await fetchRaceInfo(selection);
     if (info === null) {
       console.warn(`  ! ${raceId(selection)}: unknown race, skipping`);
       continue;
     }
+    planned.push({ selection, info });
+  }
+  for (const season of seasons) {
+    const races = await fetchSeasonRaces(season);
+    const missing = new Set(
+      notOnDisk(
+        races.map((race) => race.selection),
+        onDisk,
+      ).map(raceId),
+    );
+    console.log(`${season}: ${races.length} round(s) with a result, ${missing.size} not on disk`);
+    planned.push(...races.filter((race) => missing.has(raceId(race.selection))));
+  }
+  return planned;
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run');
+
+  const planned = await planRun(args);
+  if (typeof planned === 'string') {
+    console.error(planned);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`Selected ${planned.length} race(s) to fetch:`);
+  for (const { selection, info } of planned) {
     console.log(
       `  ${raceId(selection).padEnd(8)} ${info.raceName} — ${info.Circuit.circuitName} — ${info.date}`,
     );
-    planned.push({ selection, info });
   }
 
   if (dryRun) {
     console.log(`\nDry run: would write ${planned.length} race file(s) plus index.json.`);
     console.log(`Requests made while planning: ${requestCount}.`);
+    return;
+  }
+  if (planned.length === 0) {
+    console.log('\nNothing to fetch: every selected race is already on disk.');
     return;
   }
 
@@ -603,43 +711,40 @@ async function main() {
     control: string;
     meeting: string;
   }[] = [];
-  const races: ReplayRace[] = [];
 
-  for (const { selection, info } of planned) {
-    const before = requestCount + openF1RequestCount;
-    const built = await buildRace(selection, info, fetchedAt);
-    if (built === null) continue;
-    const { race, meeting, control } = built;
+  // A 429 ends the run, but only after the races it did write are in the index.
+  let aborted: FetchAbort | undefined;
+  try {
+    for (const { selection, info } of planned) {
+      const before = requestCount + openF1RequestCount;
+      const built = await buildRace(selection, info, fetchedAt);
+      if (built === null) continue;
+      const { race, meeting, control } = built;
 
-    const json = `${JSON.stringify(race, null, 2)}\n`;
-    await writeFile(path.join(outDir, `${race.id}.json`), json);
-    races.push(race);
-    const coverage = compoundCoverage(race.stints);
-    const timed = timingCoverage(race.laps);
-    summary.push({
-      id: race.id,
-      laps: race.totalLaps,
-      drivers: race.drivers.length,
-      requests: requestCount + openF1RequestCount - before,
-      bytes: byteLength(json),
-      stints: `${coverage.total} over ${coverage.cars} cars`,
-      compounds: `${coverage.known}/${coverage.total}`,
-      timing: `${timed.sectors}+${timed.speeds}/${timed.rows}`,
-      control,
-      meeting,
-    });
-    console.log(`  wrote ${race.id}.json`);
+      const json = `${JSON.stringify(race, null, 2)}\n`;
+      await writeFile(path.join(outDir, `${race.id}.json`), json);
+      const coverage = compoundCoverage(race.stints);
+      const timed = timingCoverage(race.laps);
+      summary.push({
+        id: race.id,
+        laps: race.totalLaps,
+        drivers: race.drivers.length,
+        requests: requestCount + openF1RequestCount - before,
+        bytes: byteLength(json),
+        stints: `${coverage.total} over ${coverage.cars} cars`,
+        compounds: `${coverage.known}/${coverage.total}`,
+        timing: `${timed.sectors}+${timed.speeds}/${timed.rows}`,
+        control,
+        meeting,
+      });
+      console.log(`  wrote ${race.id}.json`);
+    }
+  } catch (error) {
+    if (!(error instanceof FetchAbort)) throw error;
+    aborted = error;
   }
 
-  const kept = (await readExistingIndex()).filter(
-    (entry) => !races.some((race) => race.id === entry.id),
-  );
-  const index = replayIndexSchema.parse({
-    generatedAt: fetchedAt,
-    races: [...kept, ...races.map(indexEntry)].sort((a, b) => b.date.localeCompare(a.date)),
-  });
-  const indexJson = `${JSON.stringify(index, null, 2)}\n`;
-  await writeFile(path.join(outDir, 'index.json'), indexJson);
+  const indexJson = await writeIndex(fetchedAt);
 
   const bytes = summary.reduce((total, row) => total + row.bytes, 0) + byteLength(indexJson);
   // `timing` reads sectors+speedTrap over the race's lap rows; `control` reads the race-control
@@ -656,6 +761,7 @@ async function main() {
     `\n${summary.length} race(s), ${requestCount} jolpica + ${openF1RequestCount} OpenF1 requests, ${bytes} bytes written.`,
   );
   if (openF1Stopped !== null) console.warn(`\n${openF1Stopped}`);
+  if (aborted) throw aborted;
 }
 
 try {
