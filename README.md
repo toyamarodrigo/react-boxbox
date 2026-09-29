@@ -33,10 +33,10 @@ library at once: lap counter, race clock, timing tower, track map, flag banners,
 stints, gap chart, and podium.
 
 <a href="docs/media/demo-replay.mp4">
-  <img src="docs/media/demo-replay-poster.png" alt="The Replay page at 20× speed: the timing tower and the track map follow the 2026 Spanish Grand Prix. Click to play the video." width="800" />
+  <img src="docs/media/demo-replay-poster.png" alt="The Replay page at 20× speed: the timing tower and the track map follow the 2026 Spanish Grand Prix. Click to open the video." width="800" />
 </a>
 
-<sub>Click the image to play the video (27 s, MP4).</sub>
+<sub>Click the image to open the video file (27 s, MP4).</sub>
 
 ## Components
 
@@ -131,9 +131,10 @@ The visual language is that of sports television in general.
 The components ship no data. You pass in your own.
 
 - **Component demos and tests** use invented drivers, teams, colours, and lap times.
-- **The Replay page** plays a small, curated set of real races. Timing comes from
-  [jolpica-f1](https://github.com/jolpica/jolpica-f1), tyre stints and race control from
-  [OpenF1](https://openf1.org), and circuit outlines from
+- **The Replay page** plays a small, curated set of real races. Race results, lap times, and
+  pit stops come from [jolpica-f1](https://github.com/jolpica/jolpica-f1). Tyre stints, sector
+  times, speed trap readings, and race control come from [OpenF1](https://openf1.org), for
+  races from 2023 on. Circuit outlines come from
   [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT). Team colours are
   approximations chosen by this project. The data is fetched at build time into static JSON.
 
