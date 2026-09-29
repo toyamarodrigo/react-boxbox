@@ -8,12 +8,7 @@ export type OvertakeMode = 'drs' | 'overtake';
 export type OvertakeState = 'off' | 'available' | 'active';
 export type OvertakeIndicatorSize = 'sm' | 'md' | 'lg';
 
-export const OVERTAKE_LABELS: Record<OvertakeMode, string> = {
-  drs: 'DRS',
-  overtake: 'OVT',
-};
-
-/** The spoken name of the system; the painted label is an abbreviation. */
+/** The spoken name of the system; what is painted is `DRS` or a bolt. */
 const MODE_NAMES: Record<OvertakeMode, string> = {
   drs: 'DRS',
   overtake: 'Overtake',
@@ -31,6 +26,18 @@ const SIZES: Record<OvertakeIndicatorSize, string> = {
   md: 'px-1.5 text-[0.625rem] leading-[1.5] tracking-widest',
   lg: 'px-2 text-xs leading-[1.6] tracking-[0.2em]',
 };
+
+/**
+ * Overtake Mode is extra electric power, so its badge carries a bolt: an `OVT` set this small
+ * in the display face reads as `OUT`, and the tower already has `OUT` rows for cars that retired.
+ */
+function OvertakeBolt() {
+  return (
+    <svg viewBox="0 0 12 16" fill="currentColor" className="h-[1.1em] w-auto">
+      <path d="M7 0 0 9h5l-1 7 8-10H7z" />
+    </svg>
+  );
+}
 
 /** `DRS active`, `Overtake available`; the label only replaces the system name when it is given. */
 export function overtakeAriaLabel(mode: OvertakeMode, state: OvertakeState, label?: string) {
@@ -50,7 +57,7 @@ export function OvertakeIndicator({
   label?: string;
   size?: OvertakeIndicatorSize;
 } & React.ComponentProps<'span'>) {
-  const text = label ?? OVERTAKE_LABELS[mode];
+  const text = label ?? (mode === 'overtake' ? <OvertakeBolt /> : 'DRS');
   const badgeClass = cn(
     'inline-flex items-center justify-center border font-display font-bold uppercase transition-colors',
     SIZES[size],

@@ -21,7 +21,7 @@ import type {
   ReplayStint,
 } from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
-import { REPLAY_SPEEDS, REPLAY_TICK_MS, useRaceReplay } from '../data/use-race-replay';
+import { REPLAY_MARKER_TRANSITION_MS, REPLAY_SPEEDS, useRaceReplay } from '../data/use-race-replay';
 import {
   type NeutralisationPeriod,
   type NeutralisationStatus,
@@ -792,7 +792,7 @@ function Circuit({
         markers={markers}
         sectors={flagged}
         // After a seek the cars snap to the new time; sliding there would cross the circuit.
-        transitionMs={replay.jumped ? 0 : REPLAY_TICK_MS}
+        transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
         onMarkerClick={handleMarkerClick}
         dimOthers={followedId !== undefined}
       />

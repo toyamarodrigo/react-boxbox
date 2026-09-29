@@ -30,18 +30,18 @@ describe('OvertakeIndicator', () => {
     expect(root).toHaveTextContent('DRS');
   });
 
-  it.each([
-    ['drs', 'DRS'],
-    ['overtake', 'OVT'],
-  ] as [OvertakeMode, string][])('labels %s mode as %s', (mode, expected) => {
-    const { container } = render(<OvertakeIndicator mode={mode} />);
-    expect(indicator(container)).toHaveTextContent(expected);
+  it('paints overtake mode as a bolt rather than letters that read as OUT', () => {
+    const { container } = render(<OvertakeIndicator mode="overtake" />);
+    const root = indicator(container);
+    expect(root?.querySelector('svg')).toBeInTheDocument();
+    expect(root).toHaveTextContent('');
+    expect(root).toHaveAttribute('aria-label', 'Overtake off');
   });
 
   it('paints a custom label instead of the default one', () => {
     const { container } = render(<OvertakeIndicator mode="overtake" label="PUSH" />);
     expect(indicator(container)).toHaveTextContent('PUSH');
-    expect(screen.queryByText('OVT')).not.toBeInTheDocument();
+    expect(indicator(container)?.querySelector('svg')).not.toBeInTheDocument();
   });
 
   it.each(['off', 'available', 'active'] as OvertakeState[])(
