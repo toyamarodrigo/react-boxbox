@@ -23,6 +23,15 @@ export const REPLAY_TICK_MS = 100;
 const TICK_MS = REPLAY_TICK_MS;
 
 /**
+ * How long a Track Map marker takes to reach each new sample: half a tick longer than the tick.
+ * A tick that lands late — the tower reordering on an overtake is enough — would otherwise find
+ * every car already arrived and stopped, and at 5× or 20× that stop-and-jump is plain to see.
+ * Each new sample retargets the marker from where it is, so the cars run half a tick behind the
+ * clock instead, at a steady speed.
+ */
+export const REPLAY_MARKER_TRANSITION_MS = REPLAY_TICK_MS * 1.5;
+
+/**
  * How often the tower's gaps and intervals refresh, in race time. The order updates every tick;
  * the numbers once a second, the way a timing screen refreshes at each timing loop rather than
  * running like a stopwatch.

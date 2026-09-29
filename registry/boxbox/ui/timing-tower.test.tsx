@@ -297,14 +297,14 @@ describe('TimingTower', () => {
     expect(screen.getAllByText('DRS')).toHaveLength(1);
   });
 
-  it('renders the tag in overtake mode as OVT', () => {
+  it('renders the tag in overtake mode as a bolt', () => {
     const { container } = render(
       <TimingTower rows={rows} drivers={drivers} teams={teams} overtakeMode="overtake" />,
     );
     const tag = container.querySelector('[data-slot="overtake-indicator"]');
     expect(tag).toHaveAttribute('data-mode', 'overtake');
     expect(tag).toHaveAttribute('data-state', 'active');
-    expect(tag).toHaveTextContent('OVT');
+    expect(tag?.querySelector('svg')).toBeInTheDocument();
   });
 
   it('paints the fastest lap holder and the leading rows differently', () => {

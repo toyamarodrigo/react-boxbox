@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { type ReplayCircuit, circuitForRace } from '@/data/circuit-for-race';
 import { formatRaceDate, latestRace } from '@/data/replay-index';
 import type { ReplayRace } from '@/data/replay-schema';
-import { REPLAY_TICK_MS, useRaceReplay } from '@/data/use-race-replay';
+import { REPLAY_MARKER_TRANSITION_MS, useRaceReplay } from '@/data/use-race-replay';
 import { useReplayIndex, useReplayRace } from '@/data/use-replay-data';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { Button } from '@/components/ui/button';
@@ -58,7 +58,7 @@ function ReplayMap({ race, circuit }: { race: ReplayRace; circuit: ReplayCircuit
             pitLane={circuit.pit.d}
             viewBox={circuit.viewBox}
             markers={replay.markers}
-            transitionMs={replay.jumped ? 0 : REPLAY_TICK_MS}
+            transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
           />
         </div>
       </div>
