@@ -10,4 +10,5 @@ export const REPLAY_LIST: readonly ReplaySelection[] = [
   { season: 2023, round: 21 },
   { season: 2025, round: 1 },
   { season: 2026, round: 14 },
+  { season: 2026, round: 15 },
 ];
