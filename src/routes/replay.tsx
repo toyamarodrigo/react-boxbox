@@ -9,9 +9,18 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Link2,
+  Pause,
+  Play,
+  RotateCcw,
+} from 'lucide-react';
 import { cn } from 'cn';
 import { z } from 'zod';
 import type {
@@ -97,6 +106,12 @@ const searchSchema = z.object({
    * is how `leader` stays out of the URL.
    */
   value: z.enum(VALUE_MODES).optional().catch(undefined),
+  /**
+   * The race time a moment link opens on, in seconds. Read once when the race loads and never
+   * written back while the clock runs, so playing does not rewrite the URL ten times a second.
+   * `.catch()` for the same reason as `value`: a bad time opens the race at the start.
+   */
+  t: z.coerce.number().min(0).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -365,7 +380,56 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
   );
 }
 
-function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean }) {
+/** How long the copy button says what happened before it reads as itself again. */
+const COPY_FEEDBACK_MS = 2000;
+
+const COPY_LABELS = {
+  idle: 'Copy link to this moment',
+  copied: 'Copied',
+  failed: 'Could not copy',
+} as const;
+
+/**
+ * Copies a moment link: the link is built on the click, at the race time the viewer is on, not
+ * on every tick. A browser without the clipboard API, or one that refuses it, says so on the
+ * button rather than failing in silence.
+ */
+function CopyMomentLink({ link, disabled }: { link: () => string; disabled: boolean }) {
+  const [status, setStatus] = useState<keyof typeof COPY_LABELS>('idle');
+
+  useEffect(() => {
+    if (status === 'idle') return;
+    const timer = setTimeout(() => setStatus('idle'), COPY_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link());
+      setStatus('copied');
+    } catch {
+      // No `navigator.clipboard` throws here too, so one path covers both.
+      setStatus('failed');
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" disabled={disabled} onClick={() => void copy()}>
+      {status === 'copied' ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+      <span aria-live="polite">{COPY_LABELS[status]}</span>
+    </Button>
+  );
+}
+
+function Controls({
+  replay,
+  disabled,
+  momentLink,
+}: {
+  replay: RaceReplay;
+  disabled: boolean;
+  momentLink: () => string;
+}) {
   return (
     <div className="flex flex-col gap-3 border border-border bg-card p-3">
       <fieldset aria-label="Replay controls" className="flex flex-wrap items-center gap-2">
@@ -381,6 +445,7 @@ function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
           <RotateCcw aria-hidden="true" />
           Restart
         </Button>
+        <CopyMomentLink link={momentLink} disabled={disabled} />
 
         <div className="ml-auto flex items-center gap-2">
           <fieldset className="flex items-center gap-1" aria-label="Replay speed">
@@ -1146,6 +1211,36 @@ function ReplayPage() {
   const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
   const valueMode: TowerValueMode = search.value ?? 'leader';
 
+  // A moment link opens its race paused at its time: once per race loaded, never again on a
+  // tick or a follow. The replay does not play on its own, so seeking is all it takes.
+  const openAtMoment = useEffectEvent(() => {
+    if (search.t !== undefined) replay.seek(search.t * 1000);
+  });
+  useEffect(() => {
+    if (race.data) openAtMoment();
+  }, [race.data]);
+
+  /**
+   * The link to the race time on the clock, whole seconds, with the view the viewer has: the
+   * followed driver and a column other than the default. Built through the router so the search
+   * is written the way the page reads it back.
+   */
+  const router = useRouter();
+  const momentLink = () => {
+    const code = race.data?.drivers.find((driver) => driver.id === followedId)?.code;
+    const { href } = router.buildLocation({
+      to: '/replay',
+      search: {
+        season: entry?.season,
+        round: entry?.round,
+        driver: code,
+        value: valueMode === 'leader' ? undefined : valueMode,
+        t: Math.floor(replay.elapsedMs / 1000),
+      },
+    });
+    return new URL(href, window.location.origin).href;
+  };
+
   /**
    * Which column the tower shows is a view of the race like the followed driver, so it replaces
    * the URL rather than stacking history entries. The default is stripped from the search instead
@@ -1276,7 +1371,7 @@ function ReplayPage() {
         <Message>Loading the race…</Message>
       )}
 
-      <Controls replay={replay} disabled={race.data === undefined} />
+      <Controls replay={replay} disabled={race.data === undefined} momentLink={momentLink} />
 
       {race.data && circuit && (
         // The page has the whole width now, so the tower column grows with it while the map,

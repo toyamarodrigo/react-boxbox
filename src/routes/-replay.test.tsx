@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testReplayIndex, testReplayRace } from '../data/replay-fixtures';
@@ -514,6 +514,121 @@ describe('replay page, timing column', () => {
     await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
 
     expect(screen.queryByRole('group', { name: 'Timing column' })).toBeNull();
+  });
+});
+
+describe('replay page, moment link', () => {
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+  const copyButton = () => screen.getByRole('button', { name: 'Copy link to this moment' });
+
+  /** jsdom has no clipboard, which is also what the page must survive. */
+  function stubClipboard() {
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    return writeText;
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('opens the race at the time in the search, paused', async () => {
+    renderReplay('/replay?t=160');
+    await screen.findByRole('heading', { name: race.name });
+
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '160000'));
+    expect(screen.getByText('Lap 2 of 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    // Long enough for a running clock to have ticked.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+    expect(raceTime()).toHaveAttribute('aria-valuenow', '160000');
+  });
+
+  it('opens at the start on a time it cannot read, without erroring', async () => {
+    for (const t of ['soon', '-5']) {
+      renderReplay(`/replay?t=${t}`);
+      await screen.findByRole('heading', { name: race.name });
+      await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+      expect(screen.queryByText(/Invalid|Error/)).toBeNull();
+      expect(raceTime()).toHaveAttribute('aria-valuenow', '0');
+      cleanup();
+    }
+  });
+
+  it('copies the race, the view and the race time in whole seconds', async () => {
+    const writeText = stubClipboard();
+    renderReplay('/replay?driver=CHA&value=interval&t=100.7');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '100700'));
+
+    fireEvent.click(copyButton());
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const url = new URL(writeText.mock.calls[0]![0]);
+    expect(url.origin).toBe(window.location.origin);
+    expect(url.pathname).toBe('/replay');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      season: String(race.season),
+      round: String(race.round),
+      driver: 'CHA',
+      value: 'interval',
+      t: '100',
+    });
+    // The label says so where a screen reader hears it, then goes back.
+    const copied = await screen.findByRole('button', { name: 'Copied' });
+    expect(within(copied).getByText('Copied')).toHaveAttribute('aria-live', 'polite');
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Copy link to this moment' },
+        {
+          timeout: 3000,
+        },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the defaults out of the link', async () => {
+    const writeText = stubClipboard();
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.click(copyButton());
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const url = new URL(writeText.mock.calls[0]![0]);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      season: String(race.season),
+      round: String(race.round),
+      t: '0',
+    });
+  });
+
+  it('says so when there is no clipboard to write to', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.click(copyButton());
+    expect(await screen.findByRole('button', { name: 'Could not copy' })).toBeInTheDocument();
+  });
+
+  it('does not write the race time to the URL while the replay plays', async () => {
+    const router = renderReplay('/replay?t=10');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '10000'));
+    const href = router.state.location.href;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    await waitFor(() =>
+      expect(Number(raceTime().getAttribute('aria-valuenow'))).toBeGreaterThan(10000),
+    );
+    fireEvent.keyDown(raceTime(), { key: 'End' });
+    await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
+
+    expect(router.state.location.href).toBe(href);
   });
 });
 
