@@ -976,6 +976,7 @@ describe('race control on the generated dataset', () => {
     '2024-21.json': ['vsc', 'sc', 'red', 'sc'],
     '2025-1.json': ['sc', 'sc', 'sc'],
     '2026-14.json': ['vsc'],
+    '2026-15.json': ['sc', 'sc'],
   };
 
   it.each(files.map((file) => [path.basename(file), file] as const))(

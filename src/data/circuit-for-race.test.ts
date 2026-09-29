@@ -11,6 +11,7 @@ describe('circuitForRace', () => {
     });
     expect(circuitForRace('Autódromo José Carlos Pace').real).toBe(true);
     expect(circuitForRace('Madring').name).toBe('Circuito de Madring');
+    expect(circuitForRace('Baku City Circuit').name).toBe('Baku City Circuit');
   });
 
   it('matches an unknown spelling by location, ignoring accents and case', () => {

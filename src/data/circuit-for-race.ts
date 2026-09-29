@@ -19,6 +19,7 @@ export type ReplayCircuit = {
 const BY_RACE_CIRCUIT_NAME: Record<string, string> = {
   'Albert Park Grand Prix Circuit': 'au-1953',
   'Autódromo José Carlos Pace': 'br-1940',
+  'Baku City Circuit': 'az-2016',
   'Las Vegas Strip Street Circuit': 'us-2023',
   Madring: 'es-2026',
   'Yas Marina Circuit': 'ae-2009',
