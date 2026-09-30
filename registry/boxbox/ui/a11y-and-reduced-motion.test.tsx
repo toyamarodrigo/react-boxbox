@@ -4,6 +4,7 @@ import { MotionConfig } from 'motion/react';
 import type { ReactElement } from 'react';
 import type { Driver, Team, TimingRow } from '@/registry/boxbox/lib/types';
 import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
+import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
@@ -100,6 +101,19 @@ const components: [string, ReactElement][] = [
       envelope={[0.3, 0.8, 0.5]}
     />,
   ],
+  [
+    'Pit Stop Card',
+    <PitStopCard
+      key="p"
+      code="MSO"
+      stop={2}
+      laneTime={22.4}
+      compoundOff="M"
+      compoundOn="H"
+      positionIn={3}
+      positionOut={5}
+    />,
+  ],
 ];
 
 describe('reduced motion', () => {
@@ -136,6 +150,12 @@ describe('reduced motion', () => {
     expect(screen.getByText('CAM 04')).toBeInTheDocument();
     // Team Radio: the transcript is text, not only the painted pop-in.
     expect(screen.getByText('Team radio, RACE ENGINEER to EVO: Box, box.')).toBeInTheDocument();
+    // Pit Stop Card: the wipe is a clip path, so the stop reads in full from the first frame.
+    expect(
+      screen.getByText(
+        'MSO pit stop 2, medium tyres off, hard on, pit lane 22.4 seconds, in P3, out P5.',
+      ),
+    ).toBeInTheDocument();
   });
 });
 
@@ -211,6 +231,15 @@ describe('accessible names and state', () => {
       'aria-pressed',
       'false',
     );
+  });
+
+  it('hides the painted Pit Stop Card and reads the stop once', () => {
+    render(<PitStopCard code="EVO" stop={1} laneTime={9.8} compoundOff="S" positionIn={4} />);
+    const card = document.querySelector('[data-slot="pit-stop-card"]');
+    for (const painted of card?.querySelectorAll(':scope > :not(.sr-only)') ?? []) {
+      expect(painted).toHaveAttribute('aria-hidden');
+    }
+    expect(screen.getByText('EVO pit stop 1, pit lane 9.8 seconds, in P4.')).toBeInTheDocument();
   });
 
   it('hides the Replay Bumper overlay from assistive tech and names the run', () => {

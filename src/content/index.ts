@@ -17,6 +17,7 @@ import gapChart from './gap-chart/meta';
 import speedTrap from './speed-trap/meta';
 import gauge from './gauge/meta';
 import teamRadio from './team-radio/meta';
+import pitStopCard from './pit-stop-card/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -37,6 +38,7 @@ export const manifest: readonly ComponentMeta[] = [
   speedTrap,
   gauge,
   teamRadio,
+  pitStopCard,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -128,6 +130,10 @@ export const contentModules = {
   'team-radio': {
     controls: () => import('./team-radio/controls'),
     demo: () => import('./team-radio/demo'),
+  },
+  'pit-stop-card': {
+    controls: () => import('./pit-stop-card/controls'),
+    demo: () => import('./pit-stop-card/demo'),
   },
 } satisfies Record<
   string,

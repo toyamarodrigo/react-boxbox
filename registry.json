@@ -562,6 +562,25 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "pit-stop-card",
+      "type": "registry:ui",
+      "title": "Pit Stop Card",
+      "description": "One pit stop on a broadcast card: which stop, the tyres off and on, the pit lane time and the position in and out.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/tyre-badge"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/pit-stop-card.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

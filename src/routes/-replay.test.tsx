@@ -1306,3 +1306,119 @@ describe('replay page, lap grid', () => {
     expect(gridRow('alpha')).not.toHaveClass('opacity-50');
   });
 });
+
+describe('replay page, pit stop card', () => {
+  const stopCard = () => document.querySelector('[data-slot="pit-stop-card"]');
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+
+  /**
+   * Charlie stops at the end of lap one, 20 s in the lane, from mediums to softs: on the invented
+   * circuit's pit lane that is in at 152 s and out at 172 s, so the card is up until 180 s.
+   */
+  function servePittedRace(compounds = true) {
+    const pitted = {
+      ...race,
+      laps: race.laps.map((lap) =>
+        lap.lap === 1
+          ? {
+              ...lap,
+              rows: lap.rows.map((row) =>
+                row.driverId === 'charlie'
+                  ? { ...row, inPit: true, pitDurationMs: 20_000, pitStop: 1 }
+                  : row,
+              ),
+            }
+          : lap,
+      ),
+      stints: race.stints.map((car) =>
+        car.driverId === 'charlie'
+          ? {
+              driverId: 'charlie',
+              stints: [
+                { fromLap: 1, toLap: 1, compound: compounds ? 'M' : null },
+                { fromLap: 2, toLap: 3, compound: compounds ? 'S' : null },
+              ],
+            }
+          : car,
+      ),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(pitted);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  }
+
+  it('shows the followed driver’s stop over the map during the pit window', async () => {
+    servePittedRace();
+    renderReplay('/replay?driver=CHA&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '155000'));
+
+    await waitFor(() => expect(stopCard()).not.toBeNull());
+    expect(stopCard()?.closest('figure')?.querySelector('[data-slot="track-map"]')).not.toBeNull();
+    expect(
+      screen.getByText('CHA pit stop 1, medium tyres off, soft on, pit lane 3.0 seconds, in P3.'),
+    ).toBeInTheDocument();
+    expect(stopCard()).toHaveAttribute('data-out', 'false');
+  });
+
+  it('settles on the lane time at the exit and goes eight seconds later', async () => {
+    servePittedRace();
+    renderReplay('/replay?driver=CHA&t=175');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '175000'));
+
+    await waitFor(() => expect(stopCard()).toHaveAttribute('data-out', 'true'));
+    expect(
+      screen.getByText(
+        'CHA pit stop 1, medium tyres off, soft on, pit lane 20.0 seconds, in P3, out P3.',
+      ),
+    ).toBeInTheDocument();
+
+    // Ten seconds on is past the exit and the eight seconds after it.
+    fireEvent.keyDown(raceTime(), { key: 'PageUp' });
+    expect(raceTime()).toHaveAttribute('aria-valuenow', '185000');
+    await waitFor(() => expect(stopCard()).toBeNull());
+  });
+
+  it('shows nothing without a followed driver, or for another car', async () => {
+    servePittedRace();
+    renderReplay('/replay?t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '155000'));
+    expect(stopCard()).toBeNull();
+
+    cleanup();
+    servePittedRace();
+    renderReplay('/replay?driver=ALP&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'alpha'));
+    expect(raceTime()).toHaveAttribute('aria-valuenow', '155000');
+    expect(stopCard()).toBeNull();
+  });
+
+  it('goes when the followed driver is released', async () => {
+    servePittedRace();
+    renderReplay('/replay?driver=CHA&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(stopCard()).not.toBeNull());
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(stopCard()).toBeNull());
+  });
+
+  it('shows the stop without the tyre pair in a race with no compounds', async () => {
+    servePittedRace(false);
+    renderReplay('/replay?driver=CHA&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(stopCard()).not.toBeNull());
+
+    expect(stopCard()?.querySelector('[data-slot="pit-stop-card-tyres"]')).toBeNull();
+    expect(screen.getByText('CHA pit stop 1, pit lane 3.0 seconds, in P3.')).toBeInTheDocument();
+  });
+});

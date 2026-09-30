@@ -64,6 +64,7 @@ import {
   raceName,
 } from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
+import { pitStopCardAt } from '../data/replay-pit-stop';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
@@ -71,6 +72,7 @@ import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registr
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
+import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
@@ -916,6 +918,15 @@ function Circuit({
   const status = replay.finished ? 'chequered' : trackStatusAt(race, replay.elapsedMs);
   const flagged = useMemo(() => flaggedSectorsAt(race, replay.elapsedMs), [race, replay.elapsedMs]);
 
+  // The followed car's stop, from the lane entry to a moment after the exit; nobody else's.
+  const stopCard =
+    followedId === undefined
+      ? null
+      : pitStopCardAt(race, followedId, replay.elapsedMs, replay.pitStops, circuit.pit);
+  const stopDriver = stopCard
+    ? race.drivers.find((driver) => driver.id === stopCard.driverId)
+    : undefined;
+
   return (
     <figure className="flex flex-col gap-3 border border-border bg-card p-5">
       {/*
@@ -925,19 +936,45 @@ function Circuit({
        * a change of flag rather than ten times a second.
        */}
       <FlagBanner status={status} visible={status !== 'green'} />
-      <TrackMap
-        // A new outline restarts the markers, so their lap counters do not carry over.
-        key={circuit.name}
-        path={circuit.d}
-        pitLane={circuit.pit.d}
-        viewBox={circuit.viewBox}
-        markers={markers}
-        sectors={flagged}
-        // After a seek the cars snap to the new time; sliding there would cross the circuit.
-        transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
-        onMarkerClick={handleMarkerClick}
-        dimOthers={followedId !== undefined}
-      />
+      <div className="relative">
+        <TrackMap
+          // A new outline restarts the markers, so their lap counters do not carry over.
+          key={circuit.name}
+          path={circuit.d}
+          pitLane={circuit.pit.d}
+          viewBox={circuit.viewBox}
+          markers={markers}
+          sectors={flagged}
+          // After a seek the cars snap to the new time; sliding there would cross the circuit.
+          transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
+          onMarkerClick={handleMarkerClick}
+          dimOthers={followedId !== undefined}
+        />
+        {/*
+         * Over the map's corner, the way a broadcast lays a graphic over the picture: the card
+         * comes and goes with every stop, and a slot in the flow would either move the page each
+         * time or hold an empty box for the rest of the race. It takes no clicks, so the cars
+         * under it can still be followed.
+         */}
+        <div className="pointer-events-none absolute bottom-0 left-0">
+          <AnimatePresence>
+            {stopCard && stopDriver && (
+              <PitStopCard
+                key={stopCard.key}
+                code={stopDriver.code}
+                color={race.teams.find((team) => team.id === stopDriver.teamId)?.color}
+                stop={stopCard.stop}
+                laneTime={stopCard.laneTime}
+                compoundOff={stopCard.compoundOff}
+                compoundOn={stopCard.compoundOn}
+                positionIn={stopCard.positionIn}
+                positionOut={stopCard.positionOut}
+                size="sm"
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
       <figcaption className="text-xs text-muted-foreground">
         {circuit.real
           ? `${circuit.name}, unofficial layout from public GeoJSON, approximate pit lane. `

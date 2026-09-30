@@ -10,6 +10,7 @@ import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { Gauge } from '@/registry/boxbox/ui/gauge';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { OvertakeIndicator } from '@/registry/boxbox/ui/overtake-indicator';
+import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import {
   Podium,
   PodiumStep,
@@ -275,6 +276,25 @@ function TeamRadioPreview() {
   );
 }
 
+function PitStopCardPreview() {
+  // A stop that is over: the lane time has settled and the position out is known.
+  const driver = drivers[2];
+  if (!driver) return null;
+  return (
+    <PitStopCard
+      code={driver.code}
+      color={teamColor(driver.teamId)}
+      stop={2}
+      laneTime={22.4}
+      compoundOff="M"
+      compoundOn="H"
+      positionIn={3}
+      positionOut={5}
+      size="sm"
+    />
+  );
+}
+
 type VisibleSlug = Exclude<(typeof contentSlugs)[number], 'example'>;
 
 // A new slug without an entry here is a type error, not a blank card.
@@ -296,6 +316,7 @@ const previews = {
   'speed-trap': SpeedTrapPreview,
   gauge: GaugePreview,
   'team-radio': TeamRadioPreview,
+  'pit-stop-card': PitStopCardPreview,
 } satisfies Record<VisibleSlug, () => ReactNode>;
 
 const hasPreview = (slug: string): slug is VisibleSlug => Object.hasOwn(previews, slug);

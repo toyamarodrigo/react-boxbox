@@ -18,4 +18,5 @@ export const contentSlugs = [
   'speed-trap',
   'gauge',
   'team-radio',
+  'pit-stop-card',
 ] as const;
