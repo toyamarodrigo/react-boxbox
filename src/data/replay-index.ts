@@ -30,9 +30,14 @@ export function raceGroups(races: readonly ReplayIndexEntry[]): {
   };
 }
 
+/** A race's name without "Grand Prix": `Abu Dhabi`. */
+export function raceName(race: Pick<ReplayIndexEntry, 'name'>): string {
+  return race.name.replace(/\s*Grand Prix$/, '');
+}
+
 /** How a race reads in a list of them: `2025 Abu Dhabi`. */
 export function raceLabel(race: Pick<ReplayIndexEntry, 'season' | 'name'>): string {
-  return `${race.season} ${race.name.replace(/\s*Grand Prix$/, '')}`;
+  return `${race.season} ${raceName(race)}`;
 }
 
 /** The stored date is a plain `YYYY-MM-DD`, so it is read as UTC and never drifts a day. */

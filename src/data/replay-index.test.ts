@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { raceGroups, raceLabel } from './replay-index';
+import { raceGroups, raceLabel, raceName } from './replay-index';
 import type { ReplayIndexEntry } from './replay-schema';
 
 const entry = (season: number, round: number, date: string, name: string): ReplayIndexEntry => ({
@@ -37,6 +37,10 @@ describe('raceGroups', () => {
 
   it('has no season at all for an empty index', () =>
     expect(raceGroups([])).toEqual({ season: undefined, current: [], classics: [] }));
+});
+
+describe('raceName', () => {
+  it('drops "Grand Prix"', () => expect(raceName({ name: 'Spanish Grand Prix' })).toBe('Spanish'));
 });
 
 describe('raceLabel', () => {

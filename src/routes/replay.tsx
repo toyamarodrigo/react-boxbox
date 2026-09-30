@@ -56,7 +56,13 @@ import {
   stintAt,
   trackStatusAt,
 } from '../data/replay-timing';
-import { byDateDescending, formatRaceDate, raceGroups, raceLabel } from '../data/replay-index';
+import {
+  byDateDescending,
+  formatRaceDate,
+  raceGroups,
+  raceLabel,
+  raceName,
+} from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
@@ -154,13 +160,20 @@ function Message({ children, onRetry }: { children: React.ReactNode; onRetry?: (
   );
 }
 
+/**
+ * One race in the picker. Under its season's heading the season goes without saying, so it reads
+ * `Spanish`; among the classics, which mix seasons, it reads `2025 Abu Dhabi`. The full label stays
+ * the filter value either way, so typing the year still finds it.
+ */
 function RaceOption({
   race,
   chosen,
+  withSeason,
   onSelect,
 }: {
   race: ReplayIndexEntry;
   chosen: boolean;
+  withSeason: boolean;
   onSelect: (entry: ReplayIndexEntry) => void;
 }) {
   return (
@@ -171,7 +184,7 @@ function RaceOption({
       onSelect={() => onSelect(race)}
     >
       <Check className={cn('size-4', chosen ? 'opacity-100' : 'opacity-0')} aria-hidden />
-      {raceLabel(race)}
+      {withSeason ? raceLabel(race) : raceName(race)}
     </CommandItem>
   );
 }
@@ -219,6 +232,7 @@ const RacePicker = memo(function RacePicker({
                     key={race.id}
                     race={race}
                     chosen={race.id === value}
+                    withSeason={false}
                     onSelect={select}
                   />
                 ))}
@@ -233,6 +247,7 @@ const RacePicker = memo(function RacePicker({
                       key={race.id}
                       race={race}
                       chosen={race.id === value}
+                      withSeason
                       onSelect={select}
                     />
                   ))}

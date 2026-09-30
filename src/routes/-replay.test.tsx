@@ -305,15 +305,13 @@ describe('replay page, race picker', () => {
     fireEvent.click(racePicker());
 
     const season = await screen.findByRole('group', { name: '2030' });
-    expect(optionNames(season)).toEqual(['2030 Second', '2030 Test']);
+    // Under the season's heading the year goes without saying; the classics mix seasons.
+    expect(optionNames(season)).toEqual(['Second', 'Test']);
     expect(optionNames(screen.getByRole('group', { name: 'Classics' }))).toEqual(['2029 Classic']);
     expect(document.querySelector('[data-slot="command-separator"]')).not.toBeNull();
     // The race on screen is the one marked.
-    expect(screen.getByRole('option', { name: '2030 Second' })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
-    expect(screen.getByRole('option', { name: '2030 Test' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('option', { name: 'Second' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: 'Test' })).not.toHaveAttribute('aria-current');
   });
 
   it('filters the races as the viewer types, by name or circuit', async () => {
@@ -326,6 +324,15 @@ describe('replay page, race picker', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
         '2029 Classic',
+      ]),
+    );
+
+    // The year still finds the races listed without it.
+    fireEvent.change(input, { target: { value: '2030' } });
+    await waitFor(() =>
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'Second',
+        'Test',
       ]),
     );
 
@@ -457,7 +464,7 @@ describe('replay page, followed driver', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(followedRow()).not.toBeNull());
 
-    await pickRace('2030 Second');
+    await pickRace('Second');
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).driver).toBeUndefined();
     // The new search carries the column mode over, and it is the default here: an absent mode
@@ -511,7 +518,7 @@ describe('replay page, followed driver', () => {
     await waitFor(() => expect(searchOf(router).driver).toBeUndefined());
     expect(scrollTo).not.toHaveBeenCalled();
 
-    await pickRace('2030 Test');
+    await pickRace('Test');
     await waitFor(() =>
       expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 })),
     );
@@ -644,7 +651,7 @@ describe('replay page, timing column', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(followedRow()).not.toBeNull());
 
-    await pickRace('2030 Second');
+    await pickRace('Second');
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).value).toBe('interval');
     expect(searchOf(router).driver).toBeUndefined();
