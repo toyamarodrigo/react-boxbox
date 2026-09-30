@@ -10,7 +10,7 @@ import {
   useState,
 } from 'react';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   Check,
   ChevronDown,
@@ -941,8 +941,9 @@ function CardSlot({
 }) {
   return (
     <div className={cn('grid', className)}>
+      {/* Still: a sizer that animated would join the page's layout animations for nothing. */}
       <div aria-hidden inert className="invisible [grid-area:1/1]">
-        {sizer}
+        <MotionConfig reducedMotion="always">{sizer}</MotionConfig>
       </div>
       <div data-card="live" className="[grid-area:1/1]">
         <AnimatePresence>{children}</AnimatePresence>
