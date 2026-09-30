@@ -77,7 +77,7 @@ How many places a car is ahead of where it started the race. A pit lane start co
 _Avoid_: Places gained, position delta, net positions
 
 **Battle**:
-Two cars one place apart whose interval at the line stays at 1.0 s or less for two laps in a row. It ends when the interval grows past 1.5 s. It does not start or run under a neutralisation. An overtake inside a battle swaps the two cars and keeps the battle.
+Two cars one place apart whose interval at the line stays at 1.0 s or less for two laps in a row. It ends when the interval grows past 1.5 s. It does not start or run under a neutralisation, and a pit stop by either car ends it. An overtake inside a battle swaps the two cars and keeps the battle.
 _Avoid_: Fight, duel, DRS train
 
 **Battle card**:
