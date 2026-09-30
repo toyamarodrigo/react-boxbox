@@ -67,6 +67,7 @@ import type { LapGridMeasure } from '../data/replay-lap-grid';
 import { battleCardAt } from '../data/replay-battle';
 import { comparedDriverIds, comparedSearch } from '../data/replay-compare';
 import { pitStopCardAt } from '../data/replay-pit-stop';
+import { type StandingsTable, pointScorers } from '../data/replay-standings';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
@@ -93,6 +94,7 @@ import {
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { Compare } from '../components/site/replay/compare';
 import { LapGrid } from '../components/site/replay/lap-grid';
+import { StandingsPanel } from '../components/site/replay/standings';
 import { Button } from '../components/ui/button';
 import {
   Command,
@@ -1191,11 +1193,15 @@ const NO_COMPARED: string[] = [];
 /** Nothing to show yet: one array, so the feed's memo is not woken by a fresh empty one. */
 const NO_MESSAGES: ReplayRaceControl[] = [];
 
-type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control' | 'compare';
+type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control' | 'compare' | 'standings';
 
 /** Radix hands back a string; anything the panel does not know falls back to the first tab. */
 function asStrategyTab(value: string): StrategyTab {
-  return value === 'gaps' || value === 'laps' || value === 'control' || value === 'compare'
+  return value === 'gaps' ||
+    value === 'laps' ||
+    value === 'control' ||
+    value === 'compare' ||
+    value === 'standings'
     ? value
     : 'strategy';
 }
@@ -1230,6 +1236,7 @@ function StrategyPanel({
   const [tab, setTab] = useState<StrategyTab>('strategy');
   // Here rather than in the grid, which Radix unmounts with its tab: coming back keeps the measure.
   const [measure, setMeasure] = useState<LapGridMeasure>('lap');
+  const [standingsTable, setStandingsTable] = useState<StandingsTable>('drivers');
 
   const drivers = useMemo(() => new Map(race.drivers.map((d) => [d.id, d])), [race]);
   const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
@@ -1270,6 +1277,16 @@ function StrategyPanel({
   );
   const hasControl = race.raceControl.length > 0;
 
+  /**
+   * The cars in the points, in race order, as one string: the projection moves only when that
+   * does, so the memoised table skips every other tick. Read only while the tab is on screen, and
+   * empty before the start, when nobody holds a race position yet.
+   */
+  const scorers =
+    open && tab === 'standings' && !replay.finished && replay.elapsedMs > 0
+      ? pointScorers(replay.rows).join(',')
+      : '';
+
   return (
     <section data-slot="strategy-panel" className="border border-border bg-card">
       <h2>
@@ -1302,6 +1319,7 @@ function StrategyPanel({
                   {/* Nothing to list for a race the source has no messages for. */}
                   {hasControl && <TabsTrigger value="control">Race control</TabsTrigger>}
                   <TabsTrigger value="compare">Compare</TabsTrigger>
+                  <TabsTrigger value="standings">Standings</TabsTrigger>
                 </TabsList>
                 <TabsContent value="strategy">
                   <ul aria-label="Strategy" className="flex list-none flex-col">
@@ -1398,6 +1416,15 @@ function StrategyPanel({
                     followedId={followedId}
                     comparedIds={comparedIds}
                     onCompare={onCompare}
+                  />
+                </TabsContent>
+                <TabsContent value="standings">
+                  <StandingsPanel
+                    race={race}
+                    scorers={scorers}
+                    finished={replay.finished}
+                    table={standingsTable}
+                    onTable={setStandingsTable}
                   />
                 </TabsContent>
               </Tabs>

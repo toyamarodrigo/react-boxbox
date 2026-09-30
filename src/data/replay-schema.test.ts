@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { generatedReplayFiles, readJson, replayIndexFile } from './replay-fixtures';
+import { generatedReplayFiles, readJson, replayIndexFile, testReplayRace } from './replay-fixtures';
 import { replayIndexSchema, replayLapRowSchema, replayRaceSchema } from './replay-schema';
+import { standingsBefore } from './replay-standings';
 
 const files = generatedReplayFiles();
 
@@ -34,6 +35,30 @@ describe('replayLapRowSchema', () => {
     });
     expect(parsed.sectorMs).toEqual([30_384, null, 34_056]);
     expect(parsed.speedTrapKph).toBe(291);
+  });
+});
+
+describe('replayRaceSchema standings', () => {
+  it('defaults the standings to none, so a race built before them still parses', () => {
+    const { standings: _standings, ...built } = testReplayRace();
+    const parsed = replayRaceSchema.parse(built);
+    expect(parsed.standings).toBeNull();
+    expect(parsed.source.standings).toBeUndefined();
+  });
+
+  it('keeps the standings and their source it is given', () => {
+    const race = testReplayRace();
+    const source = {
+      provider: 'jolpica-f1',
+      fetchedAt: '2030-03-02T12:00:00.000Z',
+      url: 'https://example.invalid/2030/1/driverStandings.json',
+    } as const;
+    const parsed = replayRaceSchema.parse({
+      ...race,
+      source: { ...race.source, standings: source },
+    });
+    expect(parsed.standings).toEqual(race.standings);
+    expect(parsed.source.standings).toEqual(source);
   });
 });
 
@@ -77,6 +102,16 @@ describe('generated replay dataset', () => {
       const timed = race.laps.flatMap((lap) => lap.rows).filter((row) => row.speedTrapKph !== null);
       if (race.source.timing === undefined) expect(timed).toHaveLength(0);
       else expect(timed.length).toBeGreaterThan(0);
+
+      // Standings come with their source, and taking this race's points off them never leaves
+      // anyone below zero: the results and the standings agree.
+      if (race.standings !== null) {
+        expect(race.source.standings).toBeDefined();
+        const before = standingsBefore(race)!;
+        for (const entry of [...before.drivers, ...before.teams]) {
+          expect(entry.points).toBeGreaterThanOrEqual(0);
+        }
+      }
     },
   );
 

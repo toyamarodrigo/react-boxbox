@@ -22,6 +22,7 @@ import { RaceClock } from '@/registry/boxbox/ui/race-clock';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
 import { SpeedTrap } from '@/registry/boxbox/ui/speed-trap';
+import { Standings, type StandingsEntry } from '@/registry/boxbox/ui/standings';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
 import { StintBar, type StintBarStint } from '@/registry/boxbox/ui/stint-bar';
 import { TeamRadio } from '@/registry/boxbox/ui/team-radio';
@@ -312,6 +313,34 @@ function BattleCardPreview() {
   );
 }
 
+// The top of an invented table mid-race, as `[points, gained, positionChange]`: the car leading
+// the race has just taken the lead of the championship too.
+const standingsEntries: StandingsEntry[] = [
+  [186, 25, 1],
+  [176, 8, -1],
+  [170, 10, 0],
+  [165, 15, 0],
+  [131, 0, 0],
+].flatMap(([points = 0, gained = 0, positionChange = 0], index) => {
+  const driver = drivers[index];
+  if (!driver) return [];
+  return [
+    {
+      id: driver.id,
+      name: driver.code,
+      color: teamColor(driver.teamId),
+      position: index + 1,
+      points,
+      gained,
+      positionChange,
+    },
+  ];
+});
+
+function StandingsPreview() {
+  return <Standings entries={standingsEntries} size="sm" className="w-56" />;
+}
+
 type VisibleSlug = Exclude<(typeof contentSlugs)[number], 'example'>;
 
 // A new slug without an entry here is a type error, not a blank card.
@@ -335,6 +364,7 @@ const previews = {
   'team-radio': TeamRadioPreview,
   'pit-stop-card': PitStopCardPreview,
   'battle-card': BattleCardPreview,
+  standings: StandingsPreview,
 } satisfies Record<VisibleSlug, () => ReactNode>;
 
 const hasPreview = (slug: string): slug is VisibleSlug => Object.hasOwn(previews, slug);

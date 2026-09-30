@@ -7,6 +7,7 @@ import {
   deriveLaps,
   deriveRaceControl,
   deriveResults,
+  deriveStandings,
   deriveStints,
   withTiming,
 } from '../src/data/replay-derive.ts';
@@ -19,6 +20,8 @@ import type {
   RawOpenF1Lap,
   RawOpenF1RaceControl,
   RawOpenF1Stint,
+  RawConstructorStanding,
+  RawDriverStanding,
   RawPitStop,
   RawResult,
   RawTiming,
@@ -40,6 +43,7 @@ import {
   type ReplayLap,
   type ReplayOpenF1Source,
   type ReplayRace,
+  type ReplayStandings,
   type ReplayTeam,
 } from '../src/data/replay-schema.ts';
 import { teamColour } from '../src/data/team-colours.ts';
@@ -91,6 +95,17 @@ type ApiRace = Partial<RaceInfo> & {
   Results?: ApiResult[];
 };
 type ApiResponse = { MRData: { total: string; RaceTable: { Races: ApiRace[] } } };
+/** The standings endpoints: one list per round asked for, so at most one here. */
+type StandingsResponse = {
+  MRData: {
+    StandingsTable: {
+      StandingsLists: {
+        DriverStandings?: RawDriverStanding[];
+        ConstructorStandings?: RawConstructorStanding[];
+      }[];
+    };
+  };
+};
 
 /** Thrown when the API tells us to back off. It ends the run rather than retrying in a loop. */
 class FetchAbort extends Error {}
@@ -101,7 +116,7 @@ const byteLength = (value: string) => new TextEncoder().encode(value).length;
 let requestCount = 0;
 let lastRequestAt = 0;
 
-async function request(url: string): Promise<ApiResponse> {
+async function request<T = ApiResponse>(url: string): Promise<T> {
   const wait = THROTTLE_MS - (Date.now() - lastRequestAt);
   if (wait > 0) await sleep(wait);
 
@@ -128,7 +143,7 @@ async function request(url: string): Promise<ApiResponse> {
     }
     if (!response.ok) throw new FetchAbort(`${response.status} ${response.statusText} from ${url}`);
 
-    return (await response.json()) as ApiResponse;
+    return (await response.json()) as T;
   }
   throw new FetchAbort(`Unreachable: ${url}`);
 }
@@ -274,6 +289,22 @@ async function fetchRaceInfo(selection: ReplaySelection): Promise<RaceInfo | nul
 }
 
 type Planned = { selection: ReplaySelection; info: RaceInfo };
+
+const standingsUrl = (selection: ReplaySelection, table: 'driver' | 'constructor') =>
+  raceUrl(selection, `/${table}Standings`);
+
+/**
+ * The drivers' and the teams' standings after the round, two requests. `null` when jolpica has
+ * not published them, which the page reads as a race without a Standings table.
+ */
+async function fetchStandings(selection: ReplaySelection): Promise<ReplayStandings | null> {
+  const drivers = await request<StandingsResponse>(standingsUrl(selection, 'driver'));
+  const teams = await request<StandingsResponse>(standingsUrl(selection, 'constructor'));
+  return deriveStandings(
+    drivers.MRData.StandingsTable.StandingsLists[0]?.DriverStandings ?? [],
+    teams.MRData.StandingsTable.StandingsLists[0]?.ConstructorStandings ?? [],
+  );
+}
 
 /**
  * The rounds of a season that have a result, with each race's info, in one request: the
@@ -511,6 +542,7 @@ async function buildRace(
   const { drivers, teams } = driversAndTeams(season, results);
   const derived = deriveLaps(rawLaps, pitStops);
   const classification = deriveResults(results);
+  const standings = await fetchStandings(selection);
 
   const openF1 = await openF1For(selection, info, drivers, fetchedAt);
   const laps = openF1.timing ? withTiming(derived, openF1.timing) : derived;
@@ -541,6 +573,7 @@ async function buildRace(
       compounds: openF1.compoundSource,
       timing: openF1.timingSource,
       raceControl: control.messages.length > 0 ? openF1.raceControlSource : undefined,
+      standings: standings === null ? undefined : standingsSource(selection, fetchedAt),
     },
     drivers,
     teams,
@@ -548,6 +581,7 @@ async function buildRace(
     results: classification,
     stints: deriveStints(laps, classification, openF1.compounds),
     raceControl: control.messages,
+    standings,
   } satisfies ReplayRace);
 
   const fetched = openF1.raceControl?.messages.length ?? 0;
@@ -556,6 +590,14 @@ async function buildRace(
     meeting: openF1.meeting,
     control: fetched === 0 ? '—' : `${control.messages.length}/${fetched}`,
   };
+}
+
+function standingsSource(selection: ReplaySelection, fetchedAt: string) {
+  return {
+    provider: 'jolpica-f1',
+    fetchedAt,
+    url: standingsUrl(selection, 'driver'),
+  } as const;
 }
 
 function indexEntry(race: ReplayRace): ReplayIndexEntry {
@@ -669,9 +711,70 @@ async function planRun(args: readonly string[]): Promise<Planned[] | string> {
   return planned;
 }
 
+/**
+ * `--standings`: adds the standings to the race files already on disk, two requests a race and
+ * no laps refetched, since the default run skips a race that is on disk. A file that already
+ * has them is skipped, so a rerun after a 429 carries on where it stopped. The file is patched
+ * as raw JSON rather than rewritten from the parsed race, so nothing else in it moves; run
+ * `bun run format` afterwards, as after any build.
+ */
+async function backfillStandings(dryRun: boolean) {
+  const names = await raceFilesOnDisk();
+  const missing: { name: string; raw: Record<string, unknown>; race: ReplayRace }[] = [];
+  for (const name of names) {
+    const raw = JSON.parse(await readFile(path.join(outDir, name), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const race = replayRaceSchema.parse(raw);
+    if (race.standings === null) missing.push({ name, raw, race });
+  }
+  console.log(`${names.length} race file(s) on disk, ${missing.length} without standings.`);
+  if (dryRun) {
+    console.log(`\nDry run: would make ${missing.length * 2} request(s).`);
+    return;
+  }
+
+  const fetchedAt = new Date().toISOString();
+  let written = 0;
+  const without: string[] = [];
+  try {
+    for (const { name, raw, race } of missing) {
+      const selection = { season: race.season, round: race.round };
+      const standings = await fetchStandings(selection);
+      if (standings === null) {
+        without.push(race.id);
+        console.warn(`  ! ${race.id}: no standings published`);
+        continue;
+      }
+      const patched = {
+        ...raw,
+        source: { ...(raw.source as object), standings: standingsSource(selection, fetchedAt) },
+        standings,
+      };
+      // Parsed before it is written, so a bad payload fails here rather than on the page.
+      replayRaceSchema.parse(patched);
+      await writeFile(path.join(outDir, name), `${JSON.stringify(patched, null, 2)}\n`);
+      written += 1;
+      console.log(
+        `  wrote ${race.id}.json: ${standings.drivers.length} drivers, ${standings.teams.length} teams`,
+      );
+    }
+  } finally {
+    console.log(
+      `\n${written} race(s) given standings, ${without.length} without (${without.join(', ') || 'none'}), ${requestCount} jolpica requests.`,
+    );
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+
+  if (args.includes('--standings')) {
+    await backfillStandings(dryRun);
+    return;
+  }
 
   const planned = await planRun(args);
   if (typeof planned === 'string') {

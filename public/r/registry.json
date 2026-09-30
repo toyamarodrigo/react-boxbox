@@ -595,6 +595,24 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "standings",
+      "type": "registry:ui",
+      "title": "Standings",
+      "description": "A championship table of drivers or teams: points, what the race gained, and the change of place, with rows that move when the order does.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/standings.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

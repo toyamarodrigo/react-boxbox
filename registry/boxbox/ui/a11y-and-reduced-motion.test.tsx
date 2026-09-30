@@ -8,6 +8,7 @@ import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
 import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
+import { Standings } from '@/registry/boxbox/ui/standings';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
 import { TeamRadio } from '@/registry/boxbox/ui/team-radio';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
@@ -127,6 +128,16 @@ const components: [string, ReactElement][] = [
       overtake
     />,
   ],
+  [
+    'Standings',
+    <Standings
+      key="st"
+      entries={[
+        { id: 'tre', name: 'TRE', position: 1, points: 204, gained: 25, positionChange: 1 },
+        { id: 'nva', name: 'NVA', position: 2, points: 198 },
+      ]}
+    />,
+  ],
 ];
 
 describe('reduced motion', () => {
@@ -175,6 +186,11 @@ describe('reduced motion', () => {
         'Battle for P4, TRE overtook NVA, interval 0.482 seconds, closing 0.3 seconds a lap.',
       ),
     ).toBeInTheDocument();
+    // Standings: the reorder and the roll are motion only, so every row reads in full.
+    expect(
+      screen.getByText('P1 TRE, 204 points, 25 in this race, up 1 place.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('P2 NVA, 198 points.')).toBeInTheDocument();
   });
 });
 
@@ -272,6 +288,23 @@ describe('accessible names and state', () => {
     expect(
       screen.getByText('Battle for P2, EVO ahead of MSO, interval 1.200 seconds.'),
     ).toBeInTheDocument();
+  });
+
+  it('hides the painted Standings columns and reads each row once', () => {
+    render(
+      <Standings
+        entries={[
+          { id: 'evo', name: 'EVO', position: 3, points: 142, gained: 8, positionChange: -1 },
+        ]}
+      />,
+    );
+    const row = document.querySelector('[data-slot="standings-row-line"]');
+    for (const painted of row?.querySelectorAll(':scope > :not(.sr-only)') ?? []) {
+      expect(painted).toHaveAttribute('aria-hidden');
+    }
+    expect(screen.getByRole('listitem')).toHaveTextContent(
+      'P3 EVO, 142 points, 8 in this race, down 1 place.',
+    );
   });
 
   it('hides the Replay Bumper overlay from assistive tech and names the run', () => {

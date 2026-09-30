@@ -126,6 +126,45 @@ export const replayRaceControlSchema = z.object({
 });
 
 /**
+ * One driver's line in the championship after the race's round, as jolpica-f1 publishes it.
+ * `code` and `constructorId` are carried so a driver who is in the standings but not in this
+ * race still has a name and a colour to show; the constructor is the driver's latest one.
+ */
+export const replayDriverStandingSchema = z.object({
+  driverId: z.string().min(1),
+  code: z.string().min(1),
+  constructorId: z.string().min(1),
+  position: z.number().int().min(1),
+  points: z.number().min(0),
+  wins: z.number().int().min(0),
+});
+
+/** One team's line in the championship after the race's round. */
+export const replayTeamStandingSchema = z.object({
+  constructorId: z.string().min(1),
+  name: z.string().min(1),
+  position: z.number().int().min(1),
+  points: z.number().min(0),
+  wins: z.number().int().min(0),
+});
+
+/**
+ * The drivers' and the teams' standings **after** the race's round, sprint included. The
+ * standings before the race are derived from these and the race's own results, not stored.
+ */
+export const replayStandingsSchema = z.object({
+  drivers: z.array(replayDriverStandingSchema),
+  teams: z.array(replayTeamStandingSchema),
+});
+
+/** Where a jolpica-f1 block fetched after the race itself came from. */
+export const replayJolpicaSourceSchema = z.object({
+  provider: z.literal('jolpica-f1'),
+  fetchedAt: z.iso.datetime(),
+  url: z.url(),
+});
+
+/**
  * Where one OpenF1-sourced field came from. Absent when a race has none: each block is filled
  * on its own, so a race can carry compounds without timing and the other way round.
  */
@@ -147,6 +186,8 @@ export const replaySourceSchema = z.object({
   timing: replayOpenF1SourceSchema.optional(),
   /** Where the race-control messages came from. */
   raceControl: replayOpenF1SourceSchema.optional(),
+  /** Where the standings came from: the drivers' table, with the teams' table beside it. */
+  standings: replayJolpicaSourceSchema.optional(),
 });
 
 export const replayRaceSchema = z.object({
@@ -166,6 +207,8 @@ export const replayRaceSchema = z.object({
   stints: z.array(replayDriverStintsSchema).default([]),
   /** Race control's own messages, oldest first. Empty for a race the source does not cover. */
   raceControl: z.array(replayRaceControlSchema).default([]),
+  /** The standings after this round. `null` for a race built before them, or with none published. */
+  standings: replayStandingsSchema.nullable().default(null),
 });
 
 export const replayIndexEntrySchema = z.object({
@@ -195,6 +238,9 @@ export type ReplayStint = z.infer<typeof replayStintSchema>;
 export type ReplayDriverStints = z.infer<typeof replayDriverStintsSchema>;
 export type ReplayResult = z.infer<typeof replayResultSchema>;
 export type ReplayRaceControl = z.infer<typeof replayRaceControlSchema>;
+export type ReplayDriverStanding = z.infer<typeof replayDriverStandingSchema>;
+export type ReplayTeamStanding = z.infer<typeof replayTeamStandingSchema>;
+export type ReplayStandings = z.infer<typeof replayStandingsSchema>;
 export type ReplaySource = z.infer<typeof replaySourceSchema>;
 export type ReplayOpenF1Source = z.infer<typeof replayOpenF1SourceSchema>;
 export type ReplayCompoundSource = ReplayOpenF1Source;

@@ -1714,3 +1714,102 @@ describe('replay page, compare', () => {
     );
   });
 });
+
+describe('replay page, standings', () => {
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+  const tableButton = (name: string) =>
+    within(screen.getByRole('group', { name: 'Standings table' })).getByRole('button', { name });
+  const standingsRows = () =>
+    [...document.querySelectorAll('[data-slot="standings-row"] [data-slot="standings-name"]')].map(
+      (name) => name.textContent,
+    );
+
+  /** Opens the panel on the Standings tab. */
+  async function openStandings() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    // Radix switches a tab on mousedown, not on the click that follows it.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Standings' }));
+  }
+
+  it('projects the drivers at race time, the car that retires later still scoring', async () => {
+    // At 250 s the order is BRA, ALP, CHA, DEL: 25, 18, 15 and 12 on top of the standings before.
+    renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+    await openStandings();
+
+    expect(await screen.findByRole('heading', { name: 'Projected' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: "Drivers' standings" })).toBeInTheDocument();
+    expect(standingsRows()).toEqual(['ALP', 'BRA', 'CHA', 'DEL', 'ECH']);
+    expect(screen.getByText('P3 CHA, 40 points, 15 in this race, up 1 place.')).toBeInTheDocument();
+    // Echo is not in this race: it keeps its points and drops two places.
+    expect(screen.getByText('P5 ECH, 30 points, down 2 places.')).toBeInTheDocument();
+    expect(tableButton('Drivers')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('switches to the teams, each scoring what its cars do, and keeps the choice', async () => {
+    const router = renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+    await openStandings();
+    const search = router.state.location.searchStr;
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Teams' }));
+    expect(await screen.findByRole('list', { name: "Teams' standings" })).toBeInTheDocument();
+    expect(tableButton('Teams')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('P1 Blue Team, 152 points, 37 in this race.')).toBeInTheDocument();
+    expect(screen.getByText('P2 Red Team, 140 points, 33 in this race.')).toBeInTheDocument();
+    // How the page is being read, like the tab: not in the URL.
+    expect(router.state.location.searchStr).toBe(search);
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Gaps' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Standings' }));
+    expect(await screen.findByRole('list', { name: "Teams' standings" })).toBeInTheDocument();
+  });
+
+  it('shows the standings before the race until the start', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openStandings();
+
+    expect(await screen.findByRole('heading', { name: 'Projected' })).toBeInTheDocument();
+    expect(standingsRows()).toEqual(['ALP', 'BRA', 'ECH', 'CHA', 'DEL']);
+    expect(screen.getByText('P3 ECH, 30 points.')).toBeInTheDocument();
+  });
+
+  it('replaces the projection with the official standings at the chequered flag', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openStandings();
+    fireEvent.keyDown(raceTime(), { key: 'End' });
+
+    expect(await screen.findByRole('heading', { name: 'After round 1' })).toBeInTheDocument();
+    expect(standingsRows()).toEqual(['ALP', 'BRA', 'CHA', 'ECH', 'DEL']);
+    expect(screen.getByText('P4 ECH, 30 points, down 1 place.')).toBeInTheDocument();
+    fireEvent.click(tableButton('Teams'));
+    // Level on 140 with blue: the published order has red ahead on wins.
+    expect(
+      await screen.findByText('P1 Red Team, 140 points, 33 in this race, up 1 place.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says so for a race without standings', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse({ ...race, standings: null });
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openStandings();
+
+    expect(
+      await screen.findByText('There are no standings for this race in the dataset.'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="standings"]')).toBeNull();
+  });
+});

@@ -19,6 +19,7 @@ import gauge from './gauge/meta';
 import teamRadio from './team-radio/meta';
 import pitStopCard from './pit-stop-card/meta';
 import battleCard from './battle-card/meta';
+import standings from './standings/meta';
 
 export const manifest: readonly ComponentMeta[] = [
   example,
@@ -41,6 +42,7 @@ export const manifest: readonly ComponentMeta[] = [
   teamRadio,
   pitStopCard,
   battleCard,
+  standings,
 ];
 export const categoryOrder = ['timing', 'broadcast', 'race-control', 'pit-lane'] as const;
 export const categoryNames = {
@@ -140,6 +142,10 @@ export const contentModules = {
   'battle-card': {
     controls: () => import('./battle-card/controls'),
     demo: () => import('./battle-card/demo'),
+  },
+  standings: {
+    controls: () => import('./standings/controls'),
+    demo: () => import('./standings/demo'),
   },
 } satisfies Record<
   string,
