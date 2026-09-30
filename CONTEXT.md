@@ -32,6 +32,22 @@ _Avoid_: Playhead, cursor
 The one driver the viewer has chosen on the Replay page. The Timing Tower expands that driver's row and the Track Map emphasises that car; at most one at a time.
 _Avoid_: Selected driver, focus driver, tracked driver
 
+**Compared driver**:
+A driver the viewer puts next to the followed driver, up to three at a time. Every comparison is measured against the followed driver, never between compared drivers. There is no compared driver without a followed driver.
+_Avoid_: Rival, second followed driver, pinned driver
+
+**Standings**:
+The championship table of drivers or of teams, by points, as it stood after one round of a season.
+_Avoid_: Leaderboard, classification, table
+
+**Projected standings**:
+The standings as they would be if the race ended at the current race time: the standings before the race plus the points each car's position is worth now. Replaced by the official standings at the chequered flag.
+_Avoid_: Live standings, provisional standings, predicted table
+
+**Classic race**:
+A curated race from a season before the current one, chosen by hand for being well known. The current season is offered in full; earlier seasons only through classic races.
+_Avoid_: Popular race, archive race, featured race
+
 **Stint**:
 The laps a car runs on one set of tyres, from one pit stop (or the start) to the next (or the finish).
 _Avoid_: Run, tyre phase
@@ -51,6 +67,26 @@ _Avoid_: Gap, delta, distance to car ahead
 **Gap chart**:
 The race drawn as every car's gap to the leader, lap by lap, with the leader on zero along the top. It only draws the laps the leader has finished.
 _Avoid_: Race trace, delta chart, position chart
+
+**Moment link**:
+A link that opens the Replay paused at one race time of one curated race, with the same followed driver, compared drivers and tower value.
+_Avoid_: Timestamp link, deep link, share link
+
+**Positions gained**:
+How many places a car is ahead of where it started the race. A pit lane start counts as the last grid slot. Retired cars have none.
+_Avoid_: Places gained, position delta, net positions
+
+**Battle**:
+Two cars one place apart whose interval at the line stays at 1.0 s or less for two laps in a row. It ends when the interval grows past 1.5 s. It does not start or run under a neutralisation, and a pit stop by either car ends it. An overtake inside a battle swaps the two cars and keeps the battle.
+_Avoid_: Fight, duel, DRS train
+
+**Battle card**:
+The card that shows one battle: both cars, the interval and its trend over the last three laps. On the Replay page it shows the followed driver's battle (the one with the car ahead when the followed driver is in two), otherwise the battle highest up the order.
+_Avoid_: Head-to-head card, fight graphic
+
+**Pit stop card**:
+The card that shows one stop of the followed driver during its pit window and a moment after: stop number, compound off and on, pit lane time, position in and out.
+_Avoid_: Pit timer, stop graphic
 
 **Lap grid**:
 Every car's laps as a grid of coloured cells, one row per car and one column per lap of that car, for the lap or one sector. A cell is coloured as of the lap it was set: race best, personal best, or slower by how much. Laps that are not pace (lap 1, pit in and out, neutralised) are striped and never count.

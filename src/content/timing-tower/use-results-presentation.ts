@@ -20,6 +20,26 @@ export function withResultPoints(rows: readonly TimingRow[]): TimingRow[] {
   }));
 }
 
+/**
+ * Adds positions gained against the order the field started in. The demo's back-of-the-grid car
+ * is its pit lane start: the rule counts it from the last slot anyway, so only the `PL` mark is
+ * added. A car missing from the start order has nothing to count from.
+ */
+export function withPositionsGained(
+  rows: readonly TimingRow[],
+  startOrder: readonly string[],
+): TimingRow[] {
+  return rows.map((row) => {
+    const slot = startOrder.indexOf(row.driverId) + 1;
+    if (slot === 0) return { ...row };
+    return {
+      ...row,
+      positionsGained: slot - row.position,
+      ...(slot === startOrder.length && { pitLaneStart: true }),
+    };
+  });
+}
+
 /** P1, P2 and P3, each with the value its tower row carries. Null while the field is short. */
 export function podiumSteps(
   rows: readonly TimingRow[],
@@ -40,8 +60,9 @@ export function podiumSteps(
 
 /**
  * What the demo shows once the race is over: the tower flips to `results`, the
- * rows carry points, and the podium gets its top three. Selecting `results` by
- * hand does the same thing, so the mode can be inspected before the last lap.
+ * rows carry points (and positions gained, given the start order), and the
+ * podium gets its top three. Selecting `results` by hand does the same thing,
+ * so the mode can be inspected before the last lap.
  */
 export function useResultsPresentation({
   rows,
@@ -49,17 +70,21 @@ export function useResultsPresentation({
   finished,
   drivers,
   teams,
+  startOrder,
 }: {
   rows: readonly TimingRow[];
   mode: ValueMode;
   finished: boolean;
   drivers: Record<string, Driver>;
   teams: Record<string, Team>;
+  /** Driver ids in grid order, for positions gained. */
+  startOrder?: readonly string[];
 }): { mode: ValueMode; rows: TimingRow[]; podium: PodiumSteps | null } {
   const shownMode: ValueMode = finished ? 'results' : mode;
   return useMemo(() => {
     if (shownMode !== 'results') return { mode: shownMode, rows: [...rows], podium: null };
-    const scored = withResultPoints(rows);
+    const points = withResultPoints(rows);
+    const scored = startOrder ? withPositionsGained(points, startOrder) : points;
     return { mode: shownMode, rows: scored, podium: podiumSteps(scored, drivers, teams) };
-  }, [shownMode, rows, drivers, teams]);
+  }, [shownMode, rows, drivers, teams, startOrder]);
 }

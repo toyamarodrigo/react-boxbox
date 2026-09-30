@@ -3,6 +3,7 @@ import {
   deriveLaps,
   deriveRaceControl,
   deriveResults,
+  deriveStandings,
   deriveStints,
   finishStatusOf,
   parseGap,
@@ -671,5 +672,62 @@ describe('deriveRaceControl', () => {
     );
     expect(messages[0]?.driverId).toBe(null);
     expect(messages[0]?.flag).toBe('BLUE');
+  });
+});
+
+describe('deriveStandings', () => {
+  it('reads both tables, with the code and the latest constructor of each driver', () => {
+    const standings = deriveStandings(
+      [
+        {
+          position: '1',
+          points: '120.5',
+          wins: '3',
+          Driver: { driverId: 'alpha', code: 'ALP', familyName: 'Alpha' },
+          Constructors: [{ constructorId: 'red' }, { constructorId: 'blue' }],
+        },
+        // No position and no code: the place in the list stands in, the family name gives a code.
+        { points: '0', wins: '0', Driver: { driverId: 'zulu', familyName: 'Zuluman' } },
+      ],
+      [
+        {
+          position: '1',
+          points: '200',
+          wins: '3',
+          Constructor: { constructorId: 'blue', name: 'Blue Team' },
+        },
+      ],
+    );
+    expect(standings).toEqual({
+      drivers: [
+        {
+          driverId: 'alpha',
+          code: 'ALP',
+          constructorId: 'blue',
+          position: 1,
+          points: 120.5,
+          wins: 3,
+        },
+        {
+          driverId: 'zulu',
+          code: 'ZUL',
+          constructorId: 'unknown',
+          position: 2,
+          points: 0,
+          wins: 0,
+        },
+      ],
+      teams: [{ constructorId: 'blue', name: 'Blue Team', position: 1, points: 200, wins: 3 }],
+    });
+  });
+
+  it('has none when either table is empty', () => {
+    expect(deriveStandings([], [])).toBeNull();
+    expect(
+      deriveStandings(
+        [{ position: '1', points: '1', wins: '0', Driver: { driverId: 'a', familyName: 'A' } }],
+        [],
+      ),
+    ).toBeNull();
   });
 });

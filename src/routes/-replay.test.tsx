@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testReplayIndex, testReplayRace } from '../data/replay-fixtures';
@@ -87,9 +87,18 @@ const rowValueOf = (driverId: string) =>
     ?.textContent;
 const columnButton = (name: string) =>
   within(screen.getByRole('group', { name: 'Timing column' })).getByRole('button', { name });
+const racePicker = () => screen.getByRole('button', { name: 'Race' });
+/** Opens the race picker and picks the race with this label. */
+async function pickRace(label: string) {
+  fireEvent.click(racePicker());
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+}
 
 beforeEach(() => {
   clearReplayCache();
+  // jsdom has no `scrollIntoView`, and the race picker's list scrolls its selected option into
+  // view as soon as it opens.
+  Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -222,7 +231,7 @@ describe('replay page', () => {
   it('honours the season and round in the search params', async () => {
     renderReplay(`/replay?season=${race.season}&round=${race.round}`);
     expect(await screen.findByRole('heading', { name: race.name })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Test$/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(racePicker()).toHaveTextContent('2030 Test');
   });
 
   it('offers a retry when the race does not load', async () => {
@@ -241,6 +250,108 @@ describe('replay page', () => {
   });
 });
 
+describe('replay page, race picker', () => {
+  // Two races of the season on screen and one classic race from an earlier one.
+  const second = { ...race, id: '2030-2', round: 2, name: 'Second Grand Prix', date: '2030-03-15' };
+  const classic = {
+    ...race,
+    id: '2029-5',
+    season: 2029,
+    round: 5,
+    name: 'Classic Grand Prix',
+    circuit: 'Old Circuit',
+    date: '2029-06-01',
+  };
+  const entryOf = (from: typeof race) => ({
+    ...index.races[0]!,
+    id: from.id,
+    season: from.season,
+    round: from.round,
+    name: from.name,
+    circuit: from.circuit,
+    date: from.date,
+  });
+
+  beforeEach(() => {
+    const byId = new Map([race, second, classic].map((entry) => [entry.id, entry]));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) {
+          return jsonResponse({ ...index, races: [race, classic, second].map(entryOf) });
+        }
+        const found = byId.get(url.replace(/^.*\//, '').replace(/\.json$/, ''));
+        if (found) return jsonResponse(found);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  });
+
+  const optionNames = (group: HTMLElement) =>
+    within(group)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+
+  it('shows the newest race on the trigger', async () => {
+    renderReplay();
+    expect(await screen.findByRole('heading', { name: second.name })).toBeInTheDocument();
+    expect(racePicker()).toHaveTextContent('2030 Second');
+  });
+
+  it('groups the season on screen, newest first, above the classics', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: second.name });
+    fireEvent.click(racePicker());
+
+    const season = await screen.findByRole('group', { name: '2030' });
+    // Under the season's heading the year goes without saying; the classics mix seasons.
+    expect(optionNames(season)).toEqual(['Second', 'Test']);
+    expect(optionNames(screen.getByRole('group', { name: 'Classics' }))).toEqual(['2029 Classic']);
+    expect(document.querySelector('[data-slot="command-separator"]')).not.toBeNull();
+    // The race on screen is the one marked.
+    expect(screen.getByRole('option', { name: 'Second' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: 'Test' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('filters the races as the viewer types, by name or circuit', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: second.name });
+    fireEvent.click(racePicker());
+    const input = await screen.findByPlaceholderText('Search races…');
+
+    fireEvent.change(input, { target: { value: 'old circ' } });
+    await waitFor(() =>
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        '2029 Classic',
+      ]),
+    );
+
+    // The year still finds the races listed without it.
+    fireEvent.change(input, { target: { value: '2030' } });
+    await waitFor(() =>
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'Second',
+        'Test',
+      ]),
+    );
+
+    fireEvent.change(input, { target: { value: 'nowhere at all' } });
+    expect(await screen.findByText('No race matches.')).toBeInTheDocument();
+  });
+
+  it('opens the picked race, closes, and drops the moment and the followed and compared drivers', async () => {
+    const router = renderReplay('/replay?driver=CHA&vs=ALP&t=30&value=interval');
+    await screen.findByRole('heading', { name: second.name });
+
+    await pickRace('2029 Classic');
+    expect(await screen.findByRole('heading', { name: classic.name })).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({ season: 2029, round: 5, value: 'interval' });
+    expect(racePicker()).toHaveTextContent('2029 Classic');
+    await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
+  });
+});
+
 describe('replay page, followed driver', () => {
   it('expands the row of the driver the search params name', async () => {
     renderReplay('/replay?driver=CHA');
@@ -251,8 +362,50 @@ describe('replay page, followed driver', () => {
     expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
     expect(rowButton('charlie')).toHaveAttribute('aria-pressed', 'true');
     expect(rowButton('alpha')).toHaveAttribute('aria-pressed', 'false');
-    // Charlie started fifth and is running third, so it has made up two places.
-    expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
+    // Charlie started fifth and is running third, so it has gained two places.
+    const gained = document.querySelector('[data-figure="gained"]');
+    expect(gained).toHaveTextContent('+2');
+    expect(gained).toHaveTextContent('gained 2 places');
+    // During the race only the followed car shows positions gained, in its panel.
+    expect(document.querySelectorAll('[data-slot="timing-tower-positions-gained"]')).toHaveLength(
+      1,
+    );
+  });
+
+  it('marks a pit lane start in the followed row, counted from the last slot', async () => {
+    renderReplay('/replay?driver=DEL');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'delta'));
+
+    const gained = document.querySelector('[data-figure="gained"]');
+    const position = Number(followedRow()?.getAttribute('data-position'));
+    // Four cars started, so the pit lane counts as fourth.
+    expect(gained).toHaveTextContent('PL');
+    expect(gained?.querySelector('[data-slot="timing-tower-positions-gained"]')).toHaveAttribute(
+      'data-pit-lane-start',
+      'true',
+    );
+    expect(gained).toHaveTextContent(
+      `started from the pit lane, ${position === 4 ? 'no places gained' : `gained ${4 - position}`}`,
+    );
+  });
+
+  it('shows positions gained on every classified row of the results, and none for a retirement', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+    await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
+
+    const gained = (driverId: string) =>
+      document.querySelector(
+        `[data-slot="timing-tower-row"][data-driver="${driverId}"] [data-slot="timing-tower-positions-gained"]`,
+      );
+    expect(gained('bravo')).toHaveTextContent('+1');
+    expect(gained('alpha')).toHaveTextContent('−1');
+    expect(gained('charlie')).toHaveTextContent('+2');
+    expect(gained('delta')).toBeEmptyDOMElement();
   });
 
   it('ignores a code no driver in the race carries', async () => {
@@ -311,7 +464,7 @@ describe('replay page, followed driver', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(followedRow()).not.toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
+    await pickRace('Second');
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).driver).toBeUndefined();
     // The new search carries the column mode over, and it is the default here: an absent mode
@@ -365,7 +518,7 @@ describe('replay page, followed driver', () => {
     await waitFor(() => expect(searchOf(router).driver).toBeUndefined());
     expect(scrollTo).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: /Test$/ }));
+    await pickRace('Test');
     await waitFor(() =>
       expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 })),
     );
@@ -498,7 +651,7 @@ describe('replay page, timing column', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(followedRow()).not.toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '2030 Second' }));
+    await pickRace('Second');
     await waitFor(() => expect(searchOf(router).round).toBe(2));
     expect(searchOf(router).value).toBe('interval');
     expect(searchOf(router).driver).toBeUndefined();
@@ -514,6 +667,123 @@ describe('replay page, timing column', () => {
     await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
 
     expect(screen.queryByRole('group', { name: 'Timing column' })).toBeNull();
+  });
+});
+
+describe('replay page, moment link', () => {
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+  const copyButton = () => screen.getByRole('button', { name: 'Copy link to this moment' });
+
+  /** jsdom has no clipboard, which is also what the page must survive. */
+  function stubClipboard() {
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    return writeText;
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('opens the race at the time in the search, paused', async () => {
+    renderReplay('/replay?t=160');
+    await screen.findByRole('heading', { name: race.name });
+
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '160000'));
+    expect(screen.getByText('Lap 2 of 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    // Long enough for a running clock to have ticked.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+    expect(raceTime()).toHaveAttribute('aria-valuenow', '160000');
+  });
+
+  it('opens at the start on a time it cannot read, without erroring', async () => {
+    for (const t of ['soon', '-5']) {
+      renderReplay(`/replay?t=${t}`);
+      await screen.findByRole('heading', { name: race.name });
+      await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+      expect(screen.queryByText(/Invalid|Error/)).toBeNull();
+      expect(raceTime()).toHaveAttribute('aria-valuenow', '0');
+      cleanup();
+    }
+  });
+
+  it('copies the race, the view and the race time in whole seconds', async () => {
+    const writeText = stubClipboard();
+    renderReplay('/replay?driver=CHA&vs=bra,xyz,ALP&value=interval&t=100.7');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '100700'));
+
+    fireEvent.click(copyButton());
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const url = new URL(writeText.mock.calls[0]![0]);
+    expect(url.origin).toBe(window.location.origin);
+    expect(url.pathname).toBe('/replay');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      season: String(race.season),
+      round: String(race.round),
+      driver: 'CHA',
+      // The compared drivers as the page read them: known codes only, in the tower's spelling.
+      vs: 'BRA,ALP',
+      value: 'interval',
+      t: '100',
+    });
+    // The label says so where a screen reader hears it, then goes back.
+    const copied = await screen.findByRole('button', { name: 'Copied' });
+    expect(within(copied).getByText('Copied')).toHaveAttribute('aria-live', 'polite');
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Copy link to this moment' },
+        {
+          timeout: 3000,
+        },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the defaults out of the link, and compared drivers nobody is followed for', async () => {
+    const writeText = stubClipboard();
+    renderReplay('/replay?vs=BRA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.click(copyButton());
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const url = new URL(writeText.mock.calls[0]![0]);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      season: String(race.season),
+      round: String(race.round),
+      t: '0',
+    });
+  });
+
+  it('says so when there is no clipboard to write to', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.click(copyButton());
+    expect(await screen.findByRole('button', { name: 'Could not copy' })).toBeInTheDocument();
+  });
+
+  it('does not write the race time to the URL while the replay plays', async () => {
+    const router = renderReplay('/replay?t=10');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '10000'));
+    const href = router.state.location.href;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    await waitFor(() =>
+      expect(Number(raceTime().getAttribute('aria-valuenow'))).toBeGreaterThan(10000),
+    );
+    fireEvent.keyDown(raceTime(), { key: 'End' });
+    await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
+
+    expect(router.state.location.href).toBe(href);
   });
 });
 
@@ -588,7 +858,7 @@ describe('replay page, sectors and speed trap', () => {
     expect(sectorCard()).toBeNull();
     expect(trapCard()).toBeNull();
     expect(document.querySelector('[data-figure="last"]')).not.toBeNull();
-    expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
+    expect(document.querySelector('[data-figure="gained"]')).toHaveTextContent('+2');
   });
 });
 
@@ -1036,5 +1306,510 @@ describe('replay page, lap grid', () => {
       'true',
     );
     expect(gridRow('alpha')).not.toHaveClass('opacity-50');
+  });
+});
+
+describe('replay page, pit stop card', () => {
+  const stopCard = () => document.querySelector('[data-card="live"] [data-slot="pit-stop-card"]');
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+
+  /**
+   * Charlie stops at the end of lap one, 20 s in the lane, from mediums to softs: on the invented
+   * circuit's pit lane that is in at 152 s and out at 172 s, so the card is up until 180 s.
+   */
+  function servePittedRace(compounds = true) {
+    const pitted = {
+      ...race,
+      laps: race.laps.map((lap) =>
+        lap.lap === 1
+          ? {
+              ...lap,
+              rows: lap.rows.map((row) =>
+                row.driverId === 'charlie'
+                  ? { ...row, inPit: true, pitDurationMs: 20_000, pitStop: 1 }
+                  : row,
+              ),
+            }
+          : lap,
+      ),
+      stints: race.stints.map((car) =>
+        car.driverId === 'charlie'
+          ? {
+              driverId: 'charlie',
+              stints: [
+                { fromLap: 1, toLap: 1, compound: compounds ? 'M' : null },
+                { fromLap: 2, toLap: 3, compound: compounds ? 'S' : null },
+              ],
+            }
+          : car,
+      ),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(pitted);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  }
+
+  it('shows the followed driver’s stop under the map during the pit window', async () => {
+    servePittedRace();
+    renderReplay('/replay?driver=CHA&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '155000'));
+
+    await waitFor(() => expect(stopCard()).not.toBeNull());
+    expect(stopCard()?.closest('figure')?.querySelector('[data-slot="track-map"]')).not.toBeNull();
+    expect(
+      screen.getByText('CHA pit stop 1, medium tyres off, soft on, pit lane 3.0 seconds, in P3.'),
+    ).toBeInTheDocument();
+    expect(stopCard()).toHaveAttribute('data-out', 'false');
+  });
+
+  it('settles on the lane time at the exit and goes eight seconds later', async () => {
+    servePittedRace();
+    renderReplay('/replay?driver=CHA&t=175');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '175000'));
+
+    await waitFor(() => expect(stopCard()).toHaveAttribute('data-out', 'true'));
+    expect(
+      screen.getByText(
+        'CHA pit stop 1, medium tyres off, soft on, pit lane 20.0 seconds, in P3, out P3.',
+      ),
+    ).toBeInTheDocument();
+
+    // Ten seconds on is past the exit and the eight seconds after it.
+    fireEvent.keyDown(raceTime(), { key: 'PageUp' });
+    expect(raceTime()).toHaveAttribute('aria-valuenow', '185000');
+    await waitFor(() => expect(stopCard()).toBeNull());
+  });
+
+  it('shows nothing without a followed driver, or for another car', async () => {
+    servePittedRace();
+    renderReplay('/replay?t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '155000'));
+    expect(stopCard()).toBeNull();
+
+    cleanup();
+    servePittedRace();
+    renderReplay('/replay?driver=ALP&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'alpha'));
+    expect(raceTime()).toHaveAttribute('aria-valuenow', '155000');
+    expect(stopCard()).toBeNull();
+  });
+
+  it('goes when the followed driver is released', async () => {
+    servePittedRace();
+    renderReplay('/replay?driver=CHA&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(stopCard()).not.toBeNull());
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(stopCard()).toBeNull());
+  });
+
+  it('shows the stop without the tyre pair in a race with no compounds', async () => {
+    servePittedRace(false);
+    renderReplay('/replay?driver=CHA&t=155');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(stopCard()).not.toBeNull());
+
+    expect(stopCard()?.querySelector('[data-slot="pit-stop-card-tyres"]')).toBeNull();
+    expect(screen.getByText('CHA pit stop 1, pit lane 3.0 seconds, in P3.')).toBeInTheDocument();
+  });
+});
+
+describe('replay page, battle card', () => {
+  const battleCard = () => document.querySelector('[data-card="live"] [data-slot="battle-card"]');
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+
+  /**
+   * The test race without its virtual safety car: bravo and alpha are a second apart at the lines
+   * of laps one and two, so a battle for the lead starts at alpha's line at 200 s and ends at the
+   * next one, 2 s apart, at 299 s.
+   */
+  function serveRaceWithoutSafetyCar() {
+    const green = { ...race, raceControl: [] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(green);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  }
+
+  it('shows the battle highest up the order under the map', async () => {
+    serveRaceWithoutSafetyCar();
+    renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+
+    await waitFor(() => expect(battleCard()).not.toBeNull());
+    expect(
+      battleCard()?.closest('figure')?.querySelector('[data-slot="track-map"]'),
+    ).not.toBeNull();
+    // Under the map, not over it: nothing in the map's box but the map itself.
+    expect(document.querySelector('[data-slot="track-map"]')?.contains(battleCard() ?? null)).toBe(
+      false,
+    );
+    expect(screen.getByText(/^Battle for P1, BRA ahead of ALP, interval /)).toBeInTheDocument();
+  });
+
+  it('shows the same battle while the followed driver is in none', async () => {
+    serveRaceWithoutSafetyCar();
+    renderReplay('/replay?driver=CHA&t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'charlie'));
+    await waitFor(() => expect(battleCard()).not.toBeNull());
+    expect(screen.getByText(/^Battle for P1, BRA ahead of ALP/)).toBeInTheDocument();
+  });
+
+  it('shows nothing before the battle starts', async () => {
+    serveRaceWithoutSafetyCar();
+    renderReplay('/replay?t=150');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '150000'));
+    expect(battleCard()).toBeNull();
+  });
+
+  it('shows nothing when the laps it needs ran under a neutralisation', async () => {
+    // The race as it is, with the virtual safety car over laps one and two.
+    renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+    expect(battleCard()).toBeNull();
+  });
+});
+
+describe('replay page, compare', () => {
+  const picker = () => screen.getByRole('group', { name: 'Compared drivers' });
+  const pickerButton = (name: string) => within(picker()).getByRole('button', { name });
+  const pressed = () =>
+    within(picker())
+      .getAllByRole('button')
+      .filter((button) => button.getAttribute('aria-pressed') === 'true')
+      .map((button) => button.textContent);
+  const compareRows = () =>
+    [...document.querySelectorAll('[data-slot="compare-row"]')].map((row) =>
+      row.getAttribute('data-driver'),
+    );
+  const figure = (driverId: string, slot: string) =>
+    document.querySelector(
+      `[data-slot="compare-row"][data-driver="${driverId}"] [data-slot="${slot}"]`,
+    )?.textContent;
+  const vsOf = (router: ReturnType<typeof getRouter>) =>
+    (router.state.location.search as { vs?: string }).vs;
+
+  /** Opens the panel on the Compare tab. */
+  async function openCompare() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    // Radix switches a tab on mousedown, not on the click that follows it.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Compare' }));
+  }
+
+  /** The test race with a fifth car, retired after two laps, so a fourth pick can be refused. */
+  function serveFiveCars() {
+    const five = {
+      ...race,
+      drivers: [
+        ...race.drivers,
+        { id: 'echo', code: 'ECH', number: 5, firstName: 'Ed', lastName: 'Echo', teamId: 'blue' },
+      ],
+      laps: race.laps.map((lap) =>
+        lap.lap === 3
+          ? lap
+          : {
+              ...lap,
+              rows: [
+                ...lap.rows,
+                {
+                  ...lap.rows.at(-1)!,
+                  driverId: 'echo',
+                  position: 5,
+                  lapTimeMs: 170_000,
+                  cumulativeMs: lap.lap * 170_000,
+                },
+              ],
+            },
+      ),
+      results: [
+        ...race.results,
+        { ...race.results.at(-1)!, driverId: 'echo', position: 5, positionText: 'R', grid: 5 },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(five);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  }
+
+  it('asks for a followed driver first, and ignores the compared ones without one', async () => {
+    renderReplay('/replay?vs=BRA,CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+
+    expect(await screen.findByText(/^Follow a driver first/)).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Compared drivers' })).toBeNull();
+    expect(document.querySelector('[data-emphasis="secondary"]')).toBeNull();
+  });
+
+  it('offers every other driver in tower order and writes each toggle into the URL', async () => {
+    const router = renderReplay('/replay?driver=ALP');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+    await openCompare();
+
+    const towerCodes = [...document.querySelectorAll('[data-slot="timing-tower-row"]')]
+      .map((row) => race.drivers.find((d) => d.id === row.getAttribute('data-driver'))?.code)
+      .filter((code) => code !== 'ALP');
+    expect(
+      within(await screen.findByRole('group', { name: 'Compared drivers' }))
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(towerCodes);
+    expect(pressed()).toEqual([]);
+    expect(screen.getByText('Pick up to 3 drivers to compare with ALP.')).toBeInTheDocument();
+    const entries = router.history.length;
+
+    fireEvent.click(pickerButton('BRA'));
+    await waitFor(() => expect(vsOf(router)).toBe('BRA'));
+    fireEvent.click(pickerButton('CHA'));
+    await waitFor(() => expect(vsOf(router)).toBe('BRA,CHA'));
+    expect(pressed()).toEqual(towerCodes.filter((code) => code === 'BRA' || code === 'CHA'));
+    fireEvent.click(pickerButton('BRA'));
+    await waitFor(() => expect(vsOf(router)).toBe('CHA'));
+    fireEvent.click(pickerButton('CHA'));
+    await waitFor(() => expect(vsOf(router)).toBeUndefined());
+    expect(router.state.location.searchStr).not.toMatch(/vs/);
+    // A view of the race, like the followed driver: no history entries.
+    expect(router.history.length).toBe(entries);
+  });
+
+  it('stops at three, from a click or from the URL', async () => {
+    serveFiveCars();
+    const router = renderReplay('/replay?driver=ALP&vs=BRA,CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+    await screen.findByRole('group', { name: 'Compared drivers' });
+    expect(pickerButton('ECH')).toBeEnabled();
+
+    fireEvent.click(pickerButton('DEL'));
+    await waitFor(() => expect(vsOf(router)).toBe('BRA,CHA,DEL'));
+    expect(pickerButton('ECH')).toBeDisabled();
+    expect(pickerButton('BRA')).toBeEnabled();
+    cleanup();
+
+    serveFiveCars();
+    renderReplay('/replay?driver=ALP&vs=BRA,CHA,DEL,ECH');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+    await screen.findByRole('group', { name: 'Compared drivers' });
+    expect(pickerButton('ECH')).toHaveAttribute('aria-pressed', 'false');
+    expect(pickerButton('ECH')).toBeDisabled();
+  });
+
+  it('reads the URL forgivingly, without erroring', async () => {
+    renderReplay('/replay?driver=ALP&vs=xyz,cha,CHA,ALP');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+    await screen.findByRole('group', { name: 'Compared drivers' });
+
+    expect(pressed()).toEqual(['CHA']);
+    expect(screen.queryByText(/Invalid|Error/)).toBeNull();
+  });
+
+  it('keeps the compared drivers when the followed driver changes, less the new one', async () => {
+    const router = renderReplay('/replay?driver=ALP&vs=BRA,CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'alpha'));
+
+    fireEvent.click(rowButton('bravo')!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('BRA'));
+    expect(vsOf(router)).toBe('CHA');
+  });
+
+  it('draws the time to the followed driver as the clock runs, then one row per driver', async () => {
+    const restoreSize = stubElementSize();
+    try {
+      renderReplay('/replay?driver=ALP&vs=BRA,CHA');
+      await screen.findByRole('heading', { name: race.name });
+      await openCompare();
+
+      const chart = await screen.findByRole('img', { name: /^Time difference to ALP/ });
+      expect(chart).toHaveAccessibleName('Time difference to ALP. No laps completed of 3.');
+
+      // At the leader's second line every car has crossed the line once, and only bravo twice.
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+      await waitFor(() => expect(chart).toHaveAttribute('data-laps', '1'));
+      expect(chart).toHaveAccessibleName(
+        'Time difference to ALP over 1 of 3 laps. BRA 1.0 seconds behind at lap 1. CHA 60.0 seconds behind at lap 1.',
+      );
+      expect(document.querySelectorAll('.recharts-line')).toHaveLength(3);
+      // Every line ends in its code.
+      expect(
+        [...document.querySelectorAll('[data-slot="compare-chart-code"]')].map(
+          (code) => code.textContent,
+        ),
+      ).toEqual(['ALP', 'BRA', 'CHA']);
+
+      expect(compareRows()).toEqual(['alpha', 'bravo', 'charlie']);
+      expect(figure('alpha', 'compare-best')).toBe('1:40.000 L1');
+      // The opening lap never counts, and nobody has run another yet.
+      expect(figure('alpha', 'compare-pace')).toBe('—');
+
+      fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+      await waitFor(() => expect(chart).toHaveAttribute('data-laps', '3'));
+      expect(chart).toHaveAccessibleName(
+        'Time difference to ALP over all 3 laps. BRA 2.0 seconds ahead at lap 3. CHA 179.0 seconds behind at lap 3.',
+      );
+      // Charlie is alpha's teammate, so its line is the dashed one.
+      const dashes = [...document.querySelectorAll('.recharts-line-curve')].map((curve) =>
+        curve.getAttribute('stroke-dasharray'),
+      );
+      expect(dashes.filter((dash) => dash === '5 3')).toHaveLength(1);
+      expect(figure('charlie', 'compare-best')).toBe('2:38.000 L3');
+      expect(figure('charlie', 'compare-pace')).toBe('2:39.000 2 laps');
+      expect(figure('bravo', 'compare-stops')).toBe('0');
+      expect(
+        document.querySelectorAll('[data-slot="compare-row"] [data-slot="stint-bar"]'),
+      ).toHaveLength(3);
+    } finally {
+      restoreSize();
+    }
+  });
+
+  it('gives the compared cars the map’s lesser emphasis', async () => {
+    renderReplay('/replay?driver=ALP&vs=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    const markers = () =>
+      [...document.querySelectorAll('[data-slot="track-map-marker"]')].map((element) => [
+        element.getAttribute('data-id'),
+        element.getAttribute('data-emphasis'),
+        element.getAttribute('data-dimmed'),
+      ]);
+    await waitFor(() =>
+      expect(markers()).toEqual([
+        ['alpha', 'true', null],
+        ['bravo', null, 'true'],
+        ['charlie', 'secondary', null],
+        ['delta', null, 'true'],
+      ]),
+    );
+  });
+});
+
+describe('replay page, standings', () => {
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+  const tableButton = (name: string) =>
+    within(screen.getByRole('group', { name: 'Standings table' })).getByRole('button', { name });
+  const standingsRows = () =>
+    [...document.querySelectorAll('[data-slot="standings-row"] [data-slot="standings-name"]')].map(
+      (name) => name.textContent,
+    );
+
+  /** Opens the panel on the Standings tab. */
+  async function openStandings() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    // Radix switches a tab on mousedown, not on the click that follows it.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Standings' }));
+  }
+
+  it('projects the drivers at race time, the car that retires later still scoring', async () => {
+    // At 250 s the order is BRA, ALP, CHA, DEL: 25, 18, 15 and 12 on top of the standings before.
+    renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+    await openStandings();
+
+    expect(await screen.findByRole('heading', { name: 'Projected' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: "Drivers' standings" })).toBeInTheDocument();
+    expect(standingsRows()).toEqual(['ALP', 'BRA', 'CHA', 'DEL', 'ECH']);
+    expect(screen.getByText('P3 CHA, 40 points, 15 in this race, up 1 place.')).toBeInTheDocument();
+    // Echo is not in this race: it keeps its points and drops two places.
+    expect(screen.getByText('P5 ECH, 30 points, down 2 places.')).toBeInTheDocument();
+    expect(tableButton('Drivers')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('switches to the teams, each scoring what its cars do, and keeps the choice', async () => {
+    const router = renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+    await openStandings();
+    const search = router.state.location.searchStr;
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Teams' }));
+    expect(await screen.findByRole('list', { name: "Teams' standings" })).toBeInTheDocument();
+    expect(tableButton('Teams')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('P1 Blue Team, 152 points, 37 in this race.')).toBeInTheDocument();
+    expect(screen.getByText('P2 Red Team, 140 points, 33 in this race.')).toBeInTheDocument();
+    // How the page is being read, like the tab: not in the URL.
+    expect(router.state.location.searchStr).toBe(search);
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Gaps' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Standings' }));
+    expect(await screen.findByRole('list', { name: "Teams' standings" })).toBeInTheDocument();
+  });
+
+  it('shows the standings before the race until the start', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openStandings();
+
+    expect(await screen.findByRole('heading', { name: 'Projected' })).toBeInTheDocument();
+    expect(standingsRows()).toEqual(['ALP', 'BRA', 'ECH', 'CHA', 'DEL']);
+    expect(screen.getByText('P3 ECH, 30 points.')).toBeInTheDocument();
+  });
+
+  it('replaces the projection with the official standings at the chequered flag', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openStandings();
+    fireEvent.keyDown(raceTime(), { key: 'End' });
+
+    expect(await screen.findByRole('heading', { name: 'After round 1' })).toBeInTheDocument();
+    expect(standingsRows()).toEqual(['ALP', 'BRA', 'CHA', 'ECH', 'DEL']);
+    expect(screen.getByText('P4 ECH, 30 points, down 1 place.')).toBeInTheDocument();
+    fireEvent.click(tableButton('Teams'));
+    // Level on 140 with blue: the published order has red ahead on wins.
+    expect(
+      await screen.findByText('P1 Red Team, 140 points, 33 in this race, up 1 place.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says so for a race without standings', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse({ ...race, standings: null });
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await openStandings();
+
+    expect(
+      await screen.findByText('There are no standings for this race in the dataset.'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="standings"]')).toBeNull();
   });
 });

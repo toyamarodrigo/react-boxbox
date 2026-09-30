@@ -562,6 +562,57 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "pit-stop-card",
+      "type": "registry:ui",
+      "title": "Pit Stop Card",
+      "description": "One pit stop on a broadcast card: which stop, the tyres off and on, the pit lane time and the position in and out.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-types",
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/tyre-badge"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/pit-stop-card.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "battle-card",
+      "type": "registry:ui",
+      "title": "Battle Card",
+      "description": "Two cars one place apart on a broadcast card: the interval between them, which way it is going, and a tag when one gets past.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/battle-card.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "standings",
+      "type": "registry:ui",
+      "title": "Standings",
+      "description": "A championship table of drivers or teams: points, what the race gained, and the change of place, with rows that move when the order does.",
+      "dependencies": ["motion"],
+      "registryDependencies": [
+        "@boxbox/boxbox-theme",
+        "@boxbox/boxbox-motion",
+        "@boxbox/rolling-number"
+      ],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/standings.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

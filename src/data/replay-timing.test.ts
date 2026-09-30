@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { FinishStatus } from '@/registry/boxbox/lib/types';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
 import { type ReplayRace, type ReplayRaceControl, replayRaceSchema } from './replay-schema';
 import {
@@ -13,7 +14,7 @@ import {
   neutralisationPeriods,
   neutralisationSummary,
   overtakeModeFor,
-  positionsSinceStart,
+  positionsGained,
   raceControlUpTo,
   replayGaps,
   replayLiveRows,
@@ -263,6 +264,12 @@ describe('replayResultsRows', () => {
     expect(rows.map((row) => row.points)).toEqual([25, 18, 15, 0]);
   });
 
+  it('gives every classified car its positions gained against the grid, and a retirement none', () => {
+    const rows = replayResultsRows(race);
+    expect(rows.map((row) => row.positionsGained)).toEqual([1, -1, 2, undefined]);
+    expect(rows.some((row) => row.pitLaneStart)).toBe(false);
+  });
+
   it('gives an unclassified car a position so the tower can sort it', () => {
     const unordered = {
       ...race,
@@ -430,18 +437,48 @@ describe('overtakeModeFor', () => {
   });
 });
 
-describe('positionsSinceStart', () => {
-  it('counts the grid slot against the position now', () => {
+describe('positionsGained', () => {
+  const at = (driverId: string, position: number, finishStatus?: FinishStatus) =>
+    positionsGained(race, { driverId, position, finishStatus });
+
+  it('counts the grid slot against the position: a gain, a loss, or none', () => {
     // Charlie started fifth.
-    expect(positionsSinceStart(race, 'charlie', 3)).toBe(2);
-    expect(positionsSinceStart(race, 'charlie', 8)).toBe(-3);
-    expect(positionsSinceStart(race, 'charlie', 5)).toBe(0);
+    expect(at('charlie', 3)).toEqual({ positionsGained: 2 });
+    expect(at('charlie', 8)).toEqual({ positionsGained: -3 });
+    expect(at('charlie', 5)).toEqual({ positionsGained: 0 });
+    expect(at('charlie', 5, 'finished')).toEqual({ positionsGained: 0 });
   });
 
-  it('has nothing to count from for a pit-lane start or an unknown car', () => {
-    // Delta's grid is zero: it started from the pit lane, which is not a grid slot.
-    expect(positionsSinceStart(race, 'delta', 4)).toBeNull();
-    expect(positionsSinceStart(race, 'nobody', 1)).toBeNull();
+  it('counts a pit-lane start from the last slot, one per starter, and marks it', () => {
+    // Delta's grid is zero; four cars started, so it counts from fourth.
+    expect(at('delta', 2)).toEqual({ positionsGained: 2, pitLaneStart: true });
+    expect(at('delta', 4)).toEqual({ positionsGained: 0, pitLaneStart: true });
+  });
+
+  it('leaves a car that did not start out of the starters', () => {
+    const dns = {
+      ...race,
+      results: race.results.map((result) =>
+        result.driverId === 'alpha' ? { ...result, finishStatus: 'dns' as const } : result,
+      ),
+    };
+    expect(positionsGained(dns, { driverId: 'delta', position: 2 })).toEqual({
+      positionsGained: 1,
+      pitLaneStart: true,
+    });
+  });
+
+  it('has nothing for an unknown grid slot, an unknown car, or a car out of the race', () => {
+    const unknown = {
+      ...race,
+      results: race.results.map((result) =>
+        result.driverId === 'charlie' ? { ...result, grid: null } : result,
+      ),
+    };
+    expect(positionsGained(unknown, { driverId: 'charlie', position: 3 })).toEqual({});
+    expect(at('nobody', 1)).toEqual({});
+    expect(at('charlie', 3, 'dnf')).toEqual({});
+    expect(at('delta', 4, 'dnf')).toEqual({});
   });
 });
 
@@ -456,6 +493,16 @@ describe('emphasiseMarker', () => {
     // The leader was the emphasised one before.
     expect(markers.find((marker) => marker.id === 'alpha')?.emphasis).toBe(true);
     expect(emphasised.find((marker) => marker.id === 'alpha')?.emphasis).toBe(false);
+  });
+
+  it('gives the compared cars the lesser emphasis, and never the followed one', () => {
+    const emphasised = emphasiseMarker(markers, 'bravo', ['charlie', 'bravo']);
+    expect(
+      emphasised.filter((marker) => marker.secondaryEmphasis).map((marker) => marker.id),
+    ).toEqual(['charlie']);
+    expect(emphasiseMarker(markers, 'bravo').some((marker) => marker.secondaryEmphasis)).toBe(
+      false,
+    );
   });
 
   it('leaves the rest of each marker alone and emphasises nothing for an unknown id', () => {

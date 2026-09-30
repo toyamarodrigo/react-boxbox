@@ -345,6 +345,32 @@ export function testReplayRace(): ReplayRace {
         message: 'GREEN LIGHT - TRACK CLEAR',
       },
     ],
+    /**
+     * The standings after this round. Echo drove for the blue team earlier in the season and not
+     * here, so it keeps its points. Before the race (after minus this race's points) the order is
+     * ALP 82, BRA 65, ECH 30, CHA 25, DEL 20 and the teams blue 115, red 107; after it the teams
+     * are level on 140 and red is ahead on wins.
+     */
+    standings: {
+      drivers: [
+        { driverId: 'alpha', code: 'ALP', constructorId: 'red', position: 1, points: 100, wins: 3 },
+        { driverId: 'bravo', code: 'BRA', constructorId: 'blue', position: 2, points: 90, wins: 2 },
+        {
+          driverId: 'charlie',
+          code: 'CHA',
+          constructorId: 'red',
+          position: 3,
+          points: 40,
+          wins: 0,
+        },
+        { driverId: 'echo', code: 'ECH', constructorId: 'blue', position: 4, points: 30, wins: 0 },
+        { driverId: 'delta', code: 'DEL', constructorId: 'blue', position: 5, points: 20, wins: 0 },
+      ],
+      teams: [
+        { constructorId: 'red', name: 'Red Team', position: 1, points: 140, wins: 3 },
+        { constructorId: 'blue', name: 'Blue Team', position: 2, points: 140, wins: 2 },
+      ],
+    },
   };
 }
 

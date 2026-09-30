@@ -5,11 +5,13 @@ import { TEAM_RADIO_ENVELOPE, TEAM_RADIO_WORDS } from '@/content/team-radio/radi
 import { drivers, grid, teams } from '@/data/grid';
 import { createInitialRace, createSeededRng } from '@/data/simulation';
 import type { TrackMarker, TrackSector } from '@/registry/boxbox/lib/types';
+import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { Gauge } from '@/registry/boxbox/ui/gauge';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
 import { OvertakeIndicator } from '@/registry/boxbox/ui/overtake-indicator';
+import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import {
   Podium,
   PodiumStep,
@@ -20,6 +22,7 @@ import { RaceClock } from '@/registry/boxbox/ui/race-clock';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
 import { SpeedTrap } from '@/registry/boxbox/ui/speed-trap';
+import { Standings, type StandingsEntry } from '@/registry/boxbox/ui/standings';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
 import { StintBar, type StintBarStint } from '@/registry/boxbox/ui/stint-bar';
 import { TeamRadio } from '@/registry/boxbox/ui/team-radio';
@@ -275,6 +278,69 @@ function TeamRadioPreview() {
   );
 }
 
+function PitStopCardPreview() {
+  // A stop that is over: the lane time has settled and the position out is known.
+  const driver = drivers[2];
+  if (!driver) return null;
+  return (
+    <PitStopCard
+      code={driver.code}
+      color={teamColor(driver.teamId)}
+      stop={2}
+      laneTime={22.4}
+      compoundOff="M"
+      compoundOn="H"
+      positionIn={3}
+      positionOut={5}
+      size="sm"
+    />
+  );
+}
+
+function BattleCardPreview() {
+  // A battle for third with the car behind closing: no pass, so no tag.
+  const [ahead, behind] = [drivers[3], drivers[4]];
+  if (!ahead || !behind) return null;
+  return (
+    <BattleCard
+      position={3}
+      ahead={{ code: ahead.code, color: teamColor(ahead.teamId) }}
+      behind={{ code: behind.code, color: teamColor(behind.teamId) }}
+      interval={0.482}
+      trend={-0.3}
+      size="sm"
+    />
+  );
+}
+
+// The top of an invented table mid-race, as `[points, gained, positionChange]`: the car leading
+// the race has just taken the lead of the championship too.
+const standingsEntries: StandingsEntry[] = [
+  [186, 25, 1],
+  [176, 8, -1],
+  [170, 10, 0],
+  [165, 15, 0],
+  [131, 0, 0],
+].flatMap(([points = 0, gained = 0, positionChange = 0], index) => {
+  const driver = drivers[index];
+  if (!driver) return [];
+  return [
+    {
+      id: driver.id,
+      name: driver.code,
+      color: teamColor(driver.teamId),
+      position: index + 1,
+      points,
+      gained,
+      positionChange,
+    },
+  ];
+});
+
+function StandingsPreview() {
+  return <Standings entries={standingsEntries} size="sm" className="w-56" />;
+}
+
 type VisibleSlug = Exclude<(typeof contentSlugs)[number], 'example'>;
 
 // A new slug without an entry here is a type error, not a blank card.
@@ -296,6 +362,9 @@ const previews = {
   'speed-trap': SpeedTrapPreview,
   gauge: GaugePreview,
   'team-radio': TeamRadioPreview,
+  'pit-stop-card': PitStopCardPreview,
+  'battle-card': BattleCardPreview,
+  standings: StandingsPreview,
 } satisfies Record<VisibleSlug, () => ReactNode>;
 
 const hasPreview = (slug: string): slug is VisibleSlug => Object.hasOwn(previews, slug);

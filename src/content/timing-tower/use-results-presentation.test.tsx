@@ -8,6 +8,7 @@ import {
   pointsForPosition,
   podiumSteps,
   useResultsPresentation,
+  withPositionsGained,
   withResultPoints,
 } from './use-results-presentation';
 
@@ -62,6 +63,19 @@ describe('withResultPoints', () => {
     const scored = withResultPoints(rows);
     expect(scored.map((row) => row.points)).toEqual([25, 18, 15]);
     expect(scored.every((row) => row.finishStatus === 'finished')).toBe(true);
+  });
+});
+
+describe('withPositionsGained', () => {
+  it('counts each row against the start order and marks the back of the grid PL', () => {
+    const gained = withPositionsGained(rows, ['two', 'three', 'one']);
+    expect(gained.map((row) => row.positionsGained)).toEqual([2, -1, -1]);
+    expect(gained.map((row) => row.pitLaneStart)).toEqual([true, undefined, undefined]);
+  });
+
+  it('leaves a car missing from the start order without a figure', () => {
+    const gained = withPositionsGained(rows, ['two', 'one']);
+    expect(gained[2]?.positionsGained).toBeUndefined();
   });
 });
 

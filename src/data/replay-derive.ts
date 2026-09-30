@@ -5,6 +5,7 @@ import type {
   ReplayLapRow,
   ReplayRaceControl,
   ReplayResult,
+  ReplayStandings,
   ReplayStint,
   ReplayTyreCompound,
 } from './replay-schema';
@@ -561,4 +562,54 @@ export function deriveResults(rawResults: RawResult[]): ReplayResult[] {
       lapsBehind: lapsBehindFromStatus(result.status, laps, winnerLaps),
     };
   });
+}
+
+/** A line of jolpica's `driverStandings`: `position` is absent for a driver it does not rank. */
+export type RawDriverStanding = {
+  position?: string;
+  points: string;
+  wins: string;
+  Driver: { driverId: string; code?: string; familyName: string };
+  Constructors?: { constructorId: string }[];
+};
+
+/** A line of jolpica's `constructorStandings`. */
+export type RawConstructorStanding = {
+  position?: string;
+  points: string;
+  wins: string;
+  Constructor: { constructorId: string; name: string };
+};
+
+/**
+ * The standings as the dataset stores them. A line without a position keeps its place in the
+ * published order, which is the championship order; a driver's colour comes from the last
+ * constructor jolpica lists for the season. `null` when either table is empty, so a race gets
+ * both tables or none.
+ */
+export function deriveStandings(
+  drivers: readonly RawDriverStanding[],
+  teams: readonly RawConstructorStanding[],
+): ReplayStandings | null {
+  if (drivers.length === 0 || teams.length === 0) return null;
+  const position = (raw: string | undefined, index: number) =>
+    raw !== undefined && /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : index + 1;
+
+  return {
+    drivers: drivers.map((line, index) => ({
+      driverId: line.Driver.driverId,
+      code: line.Driver.code ?? line.Driver.familyName.slice(0, 3).toUpperCase(),
+      constructorId: line.Constructors?.at(-1)?.constructorId ?? 'unknown',
+      position: position(line.position, index),
+      points: Number.parseFloat(line.points),
+      wins: Number.parseInt(line.wins, 10),
+    })),
+    teams: teams.map((line, index) => ({
+      constructorId: line.Constructor.constructorId,
+      name: line.Constructor.name,
+      position: position(line.position, index),
+      points: Number.parseFloat(line.points),
+      wins: Number.parseInt(line.wins, 10),
+    })),
+  };
 }

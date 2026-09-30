@@ -18,6 +18,12 @@ export type TrackMarker = {
   color: string;
   code?: string;
   emphasis?: boolean;
+  /**
+   * A lesser emphasis than `emphasis`: the car keeps the normal dot, but keeps its code on a small
+   * map and is not faded by `dimOthers`. For cars watched next to the emphasised one. Ignored
+   * when `emphasis` is set.
+   */
+  secondaryEmphasis?: boolean;
   /** The car is in the pit lane; needs the map's `pitLane` path to show. */
   inPit?: boolean;
 };
@@ -54,4 +60,16 @@ export type TimingRow = {
    * value other than `finished` lists the car as `OUT`: faded, muted, without tags.
    */
   finishStatus?: FinishStatus;
+  /**
+   * Places the car is ahead of where it started the race: its grid slot minus its position.
+   * Positive is a gain, negative a loss. Absent when there is nothing to count from. The tower
+   * shows it on every row in `results` mode and in the default expanded row; a car that is not
+   * classified shows none.
+   */
+  positionsGained?: number;
+  /**
+   * The car started from the pit lane. It counts as the last grid slot for `positionsGained`,
+   * and the tower marks the figure `PL`. Read only alongside `positionsGained`.
+   */
+  pitLaneStart?: boolean;
 };

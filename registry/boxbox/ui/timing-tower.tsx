@@ -218,6 +218,71 @@ export function TimingTowerPoints({
   );
 }
 
+/** Formats positions gained: `+5`, `−3` with a true minus, the width of the plus, and `0`. */
+export function formatPositionsGained(gained: number): string {
+  if (gained > 0) return `+${gained}`;
+  if (gained < 0) return `−${Math.abs(gained)}`;
+  return '0';
+}
+
+/** The spoken sentence for positions gained, since `+5` and `PL` carry no meaning on their own. */
+function positionsGainedLabel(gained: number, pitLaneStart: boolean): string {
+  const moved = Math.abs(gained);
+  const places = `${moved} ${moved === 1 ? 'place' : 'places'}`;
+  const sentence =
+    gained === 0 ? 'no places gained' : `${gained > 0 ? 'gained' : 'lost'} ${places}`;
+  return pitLaneStart ? `started from the pit lane, ${sentence}` : sentence;
+}
+
+/** Gain / loss tones, the ones the ▲ / ▼ glyph uses. Holding station reads as muted. */
+const GAINED_TONES: Record<TimingTowerPositionChange, string> = {
+  gain: 'text-flag-green',
+  loss: 'text-primary',
+  none: 'text-muted-foreground',
+};
+
+/**
+ * Positions gained, with a `PL` mark for a pit lane start. Keeps its element when there is no
+ * figure, so a column of them stays straight.
+ */
+export function TimingTowerPositionsGained({
+  positionsGained,
+  pitLaneStart = false,
+  className,
+  ...props
+}: {
+  positionsGained?: number | undefined;
+  pitLaneStart?: boolean | undefined;
+} & React.ComponentProps<'span'>) {
+  const change = positionsGained === undefined ? 'none' : positionChangeState(positionsGained);
+  return (
+    <span
+      data-slot="timing-tower-positions-gained"
+      data-change={positionsGained === undefined ? undefined : change}
+      data-pit-lane-start={positionsGained !== undefined && pitLaneStart ? 'true' : undefined}
+      className={cn('inline-flex items-center gap-1 font-mono tabular-nums', className)}
+      {...props}
+    >
+      {positionsGained !== undefined && (
+        <>
+          {pitLaneStart && (
+            <span
+              aria-hidden
+              className="text-[0.5rem] font-bold leading-none tracking-widest text-status-pit"
+            >
+              PL
+            </span>
+          )}
+          <span aria-hidden className={cn('leading-none', GAINED_TONES[change])}>
+            {formatPositionsGained(positionsGained)}
+          </span>
+          <span className="sr-only">{positionsGainedLabel(positionsGained, pitLaneStart)}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
 const TAG_CLASS = 'shrink-0 px-1 font-mono text-[0.5rem] font-bold leading-[1.4] tracking-widest';
 
 /**
@@ -317,8 +382,8 @@ export function TimingTowerFigure({
 
 /**
  * What the expanded row shows when the consumer has not said otherwise: the figures the tower
- * already holds. Anything the component cannot know — places made up since the start, a stint
- * bar — belongs in a `renderExpanded` of your own.
+ * already holds, positions gained among them when the row carries them. Anything the component
+ * cannot know — a stint bar, say — belongs in a `renderExpanded` of your own.
  */
 export function TimingTowerExpanded({
   row,
@@ -350,6 +415,14 @@ export function TimingTowerExpanded({
       <TimingTowerFigure label="Behind" figure="behind">
         {formatGap(behind?.interval ?? null)}
       </TimingTowerFigure>
+      {row.positionsGained !== undefined && isClassified(row) && (
+        <TimingTowerFigure label="Gained" figure="gained">
+          <TimingTowerPositionsGained
+            positionsGained={row.positionsGained}
+            pitLaneStart={row.pitLaneStart}
+          />
+        </TimingTowerFigure>
+      )}
       {/* The badge reads the compound and the age itself, so nothing is spelled out beside it. */}
       {showTyre && (
         <TimingTowerFigure label="Tyre" figure="tyre">
@@ -475,6 +548,12 @@ export function TimingTowerRow({
       />
       {results && (
         <>
+          {/* Two lines in one narrow slot, `PL` over the figure, so a pit lane start adds no width. */}
+          <TimingTowerPositionsGained
+            positionsGained={isClassified(row) ? row.positionsGained : undefined}
+            pitLaneStart={row.pitLaneStart}
+            className="w-6 shrink-0 flex-col items-end justify-center gap-0.5 text-xs font-bold"
+          />
           <span className="sr-only">Points</span>
           <TimingTowerPoints points={row.points} />
         </>

@@ -130,6 +130,7 @@ function isClassifiedResult(finishStatus: string, position: number | null): bool
  *
  * `lapsBehind` comes from the results, not from the per-lap estimate: the `+N Lap(s)` status is
  * the authoritative one, and the per-lap value flickers while the leader is in the pits.
+ * Every row carries its positions gained against the grid.
  */
 export function replayResultsRows(race: ReplayRace): TimingRow[] {
   const classified = race.results.filter((result) =>
@@ -143,25 +144,28 @@ export function replayResultsRows(race: ReplayRace): TimingRow[] {
     ...unclassified,
   ];
 
-  return ordered.map((result, index) => ({
-    driverId: result.driverId,
-    position: isClassifiedResult(result.finishStatus, result.position)
-      ? (result.position ?? index + 1)
-      : index + 1,
-    gapToLeader: toSeconds(result.gapToWinnerMs),
-    interval: null,
-    lastLapTime: null,
-    bestLapTime: null,
-    sectors: sectors(),
-    tyre: { ...PLACEHOLDER_TYRE },
-    inPit: false,
-    lapped: result.lapsBehind > 0,
-    lapsBehind: result.lapsBehind,
-    drs: false,
-    positionChange: 0,
-    points: result.points,
-    finishStatus: result.finishStatus,
-  }));
+  return ordered.map((result, index) => {
+    const row: TimingRow = {
+      driverId: result.driverId,
+      position: isClassifiedResult(result.finishStatus, result.position)
+        ? (result.position ?? index + 1)
+        : index + 1,
+      gapToLeader: toSeconds(result.gapToWinnerMs),
+      interval: null,
+      lastLapTime: null,
+      bestLapTime: null,
+      sectors: sectors(),
+      tyre: { ...PLACEHOLDER_TYRE },
+      inPit: false,
+      lapped: result.lapsBehind > 0,
+      lapsBehind: result.lapsBehind,
+      drs: false,
+      positionChange: 0,
+      points: result.points,
+      finishStatus: result.finishStatus,
+    };
+    return { ...row, ...positionsGained(race, row) };
+  });
 }
 
 /** A race time as `H:MM:SS.mmm`. Only the winner carries one; everyone else has a gap. */
@@ -521,19 +525,23 @@ export function overtakeModeFor(season: number): OvertakeMode {
 }
 
 /**
- * How many places a car has made up since the start: its grid slot minus its position now.
- * Positive is a gain.
+ * Positions gained: the car's grid slot minus its position, positive for a gain, ready to spread
+ * into a tower row.
  *
- * `null` when there is no grid slot to count from. A pit-lane start is reported as grid 0, which
- * is not a slot on the grid, and a missing value means the source never carried one.
+ * A pit-lane start is reported as grid 0, which is not a slot on the grid: it counts as the last
+ * one, a slot per starter, and is marked `pitLaneStart`. Empty when the source never carried a
+ * grid slot, and for a car out of the race.
  */
-export function positionsSinceStart(
+export function positionsGained(
   race: ReplayRace,
-  driverId: string,
-  position: number,
-): number | null {
-  const grid = race.results.find((result) => result.driverId === driverId)?.grid ?? null;
-  return grid === null || grid === 0 ? null : grid - position;
+  row: Pick<TimingRow, 'driverId' | 'position' | 'finishStatus'>,
+): Pick<TimingRow, 'positionsGained' | 'pitLaneStart'> {
+  if ((row.finishStatus ?? 'finished') !== 'finished') return {};
+  const grid = race.results.find((result) => result.driverId === row.driverId)?.grid ?? null;
+  if (grid === null) return {};
+  if (grid > 0) return { positionsGained: grid - row.position };
+  const starters = race.results.filter((result) => result.finishStatus !== 'dns').length;
+  return { positionsGained: starters - row.position, pitLaneStart: true };
 }
 
 /**
@@ -549,10 +557,20 @@ export function stintAt(
 
 /**
  * Emphasises one car and no other, so the followed driver is the car the map picks out rather
- * than whoever is furthest along. An unknown id leaves every marker unemphasised.
+ * than whoever is furthest along. An unknown id leaves every marker unemphasised. The compared
+ * drivers, if any, take the map's lesser emphasis: picked out from the field, not from the
+ * followed car.
  */
-export function emphasiseMarker(markers: readonly TrackMarker[], id: string): TrackMarker[] {
-  return markers.map((marker) => ({ ...marker, emphasis: marker.id === id }));
+export function emphasiseMarker(
+  markers: readonly TrackMarker[],
+  id: string,
+  compared: readonly string[] = [],
+): TrackMarker[] {
+  return markers.map((marker) => ({
+    ...marker,
+    emphasis: marker.id === id,
+    secondaryEmphasis: marker.id !== id && compared.includes(marker.id),
+  }));
 }
 
 /**

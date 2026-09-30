@@ -9,9 +9,19 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
-import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
+import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+  Link2,
+  Pause,
+  Play,
+  RotateCcw,
+} from 'lucide-react';
 import { cn } from 'cn';
 import { z } from 'zod';
 import type {
@@ -36,7 +46,7 @@ import {
   leaderLapsCompleted,
   neutralisationSummary,
   overtakeModeFor,
-  positionsSinceStart,
+  positionsGained,
   raceControlUpTo,
   replayGaps,
   replayPodium,
@@ -46,8 +56,18 @@ import {
   stintAt,
   trackStatusAt,
 } from '../data/replay-timing';
-import { byDateDescending, formatRaceDate } from '../data/replay-index';
+import {
+  byDateDescending,
+  formatRaceDate,
+  raceGroups,
+  raceLabel,
+  raceName,
+} from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
+import { battleCardAt } from '../data/replay-battle';
+import { comparedDriverIds, comparedSearch } from '../data/replay-compare';
+import { pitStopCardAt } from '../data/replay-pit-stop';
+import { type StandingsTable, pointScorers } from '../data/replay-standings';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
@@ -55,6 +75,8 @@ import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registr
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
+import { BattleCard } from '@/registry/boxbox/ui/battle-card';
+import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
@@ -65,13 +87,25 @@ import {
   type TimingTowerExpandedContext,
   TimingTower,
   TimingTowerFigure,
+  TimingTowerPositionsGained,
   formatGap,
   formatLapTime,
-  positionChangeState,
 } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
+import { Compare } from '../components/site/replay/compare';
 import { LapGrid } from '../components/site/replay/lap-grid';
+import { StandingsPanel } from '../components/site/replay/standings';
 import { Button } from '../components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '../components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Slider } from '../components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
@@ -97,6 +131,18 @@ const searchSchema = z.object({
    * is how `leader` stays out of the URL.
    */
   value: z.enum(VALUE_MODES).optional().catch(undefined),
+  /**
+   * The race time a moment link opens on, in seconds. Read once when the race loads and never
+   * written back while the clock runs, so playing does not rewrite the URL ten times a second.
+   * `.catch()` for the same reason as `value`: a bad time opens the race at the start.
+   */
+  t: z.coerce.number().min(0).optional().catch(undefined),
+  /**
+   * The compared drivers, by code, comma-separated: `VER,HAM`. Read against the race, which is
+   * where unknown codes, repeats, the followed driver and anything past three are dropped; without
+   * a followed driver it is ignored. `.catch()` for the same reason as `value`.
+   */
+  vs: z.string().optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -129,11 +175,40 @@ function Message({ children, onRetry }: { children: React.ReactNode; onRetry?: (
 }
 
 /**
- * A row of buttons rather than a `Select`: the curated list is short, every race stays one
- * click away, and the page re-renders ten times a second while a replay runs, which is no place
- * for a popover that has to re-measure itself on every tick.
+ * One race in the picker. Under its season's heading the season goes without saying, so it reads
+ * `Spanish`; among the classics, which mix seasons, it reads `2025 Abu Dhabi`. The full label stays
+ * the filter value either way, so typing the year still finds it.
  */
-function RacePicker({
+function RaceOption({
+  race,
+  chosen,
+  withSeason,
+  onSelect,
+}: {
+  race: ReplayIndexEntry;
+  chosen: boolean;
+  withSeason: boolean;
+  onSelect: (entry: ReplayIndexEntry) => void;
+}) {
+  return (
+    <CommandItem
+      value={raceLabel(race)}
+      keywords={[race.circuit]}
+      aria-current={chosen || undefined}
+      onSelect={() => onSelect(race)}
+    >
+      <Check className={cn('size-4', chosen ? 'opacity-100' : 'opacity-0')} aria-hidden />
+      {withSeason ? raceLabel(race) : raceName(race)}
+    </CommandItem>
+  );
+}
+
+/**
+ * A combobox: the current season in full plus the classic races is too many for a row of
+ * buttons. Memoised, because the page re-renders ten times a second while a replay runs and
+ * the list only changes when the index does.
+ */
+const RacePicker = memo(function RacePicker({
   races,
   value,
   onSelect,
@@ -142,30 +217,71 @@ function RacePicker({
   value: string | undefined;
   onSelect: (entry: ReplayIndexEntry) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const groups = useMemo(() => raceGroups(races), [races]);
+  const chosen = races.find((race) => race.id === value);
+  const select = (entry: ReplayIndexEntry) => {
+    setOpen(false);
+    onSelect(entry);
+  };
+
   return (
-    <fieldset aria-label="Race" className="flex flex-wrap gap-2">
-      {races.map((race) => (
-        <Button
-          key={race.id}
-          variant={race.id === value ? 'default' : 'outline'}
-          size="sm"
-          aria-pressed={race.id === value}
-          onClick={() => onSelect(race)}
-        >
-          {`${race.season} ${race.name.replace(/\s*Grand Prix$/, '')}`}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        {/* A plain button: the trigger sets `aria-haspopup`, `aria-expanded` and `aria-controls`. */}
+        <Button variant="outline" size="sm" aria-label="Race" className="w-64 justify-between">
+          {chosen ? raceLabel(chosen) : 'Pick a race'}
+          <ChevronsUpDown className="size-4 opacity-50" aria-hidden />
         </Button>
-      ))}
-    </fieldset>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0">
+        <Command>
+          <CommandInput placeholder="Search races…" />
+          <CommandList>
+            <CommandEmpty>No race matches.</CommandEmpty>
+            {groups.current.length > 0 && (
+              <CommandGroup heading={String(groups.season)}>
+                {groups.current.map((race) => (
+                  <RaceOption
+                    key={race.id}
+                    race={race}
+                    chosen={race.id === value}
+                    withSeason={false}
+                    onSelect={select}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {groups.classics.length > 0 && (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Classics">
+                  {groups.classics.map((race) => (
+                    <RaceOption
+                      key={race.id}
+                      race={race}
+                      chosen={race.id === value}
+                      withSeason
+                      onSelect={select}
+                    />
+                  ))}
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
-}
+});
 
 /** The glossary words, the ones the tower already speaks over the column. */
 const VALUE_MODE_LABELS: Record<TowerValueMode, string> = { leader: 'Gap', interval: 'Interval' };
 
 /**
  * What the tower's value column measures: the gap to the leader, or the interval to the car one
- * place ahead. Two buttons for the same reason `RacePicker` is a row of them — the page renders
- * ten times a second, which is no place for a popover.
+ * place ahead. Two buttons rather than a popover: there are only two choices, and both stay one
+ * click away.
  */
 function ValueModePicker({
   value,
@@ -365,7 +481,56 @@ function Timeline({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
   );
 }
 
-function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean }) {
+/** How long the copy button says what happened before it reads as itself again. */
+const COPY_FEEDBACK_MS = 2000;
+
+const COPY_LABELS = {
+  idle: 'Copy link to this moment',
+  copied: 'Copied',
+  failed: 'Could not copy',
+} as const;
+
+/**
+ * Copies a moment link: the link is built on the click, at the race time the viewer is on, not
+ * on every tick. A browser without the clipboard API, or one that refuses it, says so on the
+ * button rather than failing in silence.
+ */
+function CopyMomentLink({ link, disabled }: { link: () => string; disabled: boolean }) {
+  const [status, setStatus] = useState<keyof typeof COPY_LABELS>('idle');
+
+  useEffect(() => {
+    if (status === 'idle') return;
+    const timer = setTimeout(() => setStatus('idle'), COPY_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link());
+      setStatus('copied');
+    } catch {
+      // No `navigator.clipboard` throws here too, so one path covers both.
+      setStatus('failed');
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" disabled={disabled} onClick={() => void copy()}>
+      {status === 'copied' ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+      <span aria-live="polite">{COPY_LABELS[status]}</span>
+    </Button>
+  );
+}
+
+function Controls({
+  replay,
+  disabled,
+  momentLink,
+}: {
+  replay: RaceReplay;
+  disabled: boolean;
+  momentLink: () => string;
+}) {
   return (
     <div className="flex flex-col gap-3 border border-border bg-card p-3">
       <fieldset aria-label="Replay controls" className="flex flex-wrap items-center gap-2">
@@ -381,6 +546,7 @@ function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
           <RotateCcw aria-hidden="true" />
           Restart
         </Button>
+        <CopyMomentLink link={momentLink} disabled={disabled} />
 
         <div className="ml-auto flex items-center gap-2">
           <fieldset className="flex items-center gap-1" aria-label="Replay speed">
@@ -424,13 +590,6 @@ function Controls({ replay, disabled }: { replay: RaceReplay; disabled: boolean 
 
 const EMPTY = '—';
 
-/** Gain / loss tones, the ones the tower's own ▲ / ▼ glyph uses. */
-const CHANGE_TONES = {
-  gain: 'text-flag-green',
-  loss: 'text-primary',
-  none: 'text-foreground',
-} as const;
-
 /**
  * Recharts is the one heavy dependency on the page and only the Gaps tab needs it, so the chart
  * arrives when that tab is first opened rather than in the bundle every viewer downloads.
@@ -462,31 +621,29 @@ function FollowedTyre({ stint, lap }: { stint: ReplayStint | undefined; lap: num
 }
 
 /**
- * Places made up since the grid. Its own component so the panel around it stays one list of
- * figures: the arrow and the sentence under it are two spellings of one number, and neither the
- * tower nor this page has anywhere else to put them.
+ * Positions gained, live: the grid slot against the position the car holds now. During the race
+ * only the followed car shows it, here; the tower's rows carry it in the results alone. An unknown
+ * grid slot or a car out of the race has nothing to count, and reads as the other empty figures.
  */
-function PlacesMade({ made }: { made: number | null }) {
+function PositionsGainedFigure({ race, row }: { race: ReplayRace; row: TimingRow }) {
+  const gained = positionsGained(race, row);
   return (
-    <TimingTowerFigure label="Since start" figure="places">
-      {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
-      <span aria-hidden className={CHANGE_TONES[positionChangeState(made ?? 0)]}>
-        {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
-      </span>
-      <span className="sr-only">
-        {made === null
-          ? 'no grid slot'
-          : made === 0
-            ? 'no places made up'
-            : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
-      </span>
+    <TimingTowerFigure label="Gained" figure="gained">
+      {gained.positionsGained === undefined ? (
+        EMPTY
+      ) : (
+        <TimingTowerPositionsGained
+          positionsGained={gained.positionsGained}
+          pitLaneStart={gained.pitLaneStart}
+        />
+      )}
     </TimingTowerFigure>
   );
 }
 
 /**
- * What the followed row shows on this page: the tower's own figures, the places the car has made
- * up since the grid, and its tyres — both of which the registry cannot know.
+ * What the followed row shows on this page: the tower's own figures, the car's positions gained
+ * against the grid, and its tyres — the last two from race data the live rows do not carry.
  *
  * With real timing the `LAST` figure gives way to `SectorTimes`, which says the same lap time and
  * three sectors more; the remaining three figures then fit on one line, so the panel grows by the
@@ -525,7 +682,6 @@ function FollowedFigures({
       }
     | undefined;
 }) {
-  const made = positionsSinceStart(race, row.driverId, row.position);
   const own = stints.get(row.driverId);
 
   return (
@@ -542,7 +698,7 @@ function FollowedFigures({
         <TimingTowerFigure label="Behind" figure="behind">
           {formatGap(behind?.interval ?? null)}
         </TimingTowerFigure>
-        <PlacesMade made={made} />
+        <PositionsGainedFigure race={race} row={row} />
       </div>
       {card && (
         <SectorTimes
@@ -747,23 +903,80 @@ function Stage({
   );
 }
 
+/**
+ * The tallest each card gets: an overtake tag, both tyres, a position out. Drawn invisible under
+ * the real card, so a slot holds its height from the start and never measures anything.
+ */
+const BATTLE_CARD_SIZER = (
+  <BattleCard
+    position={20}
+    ahead={{ code: 'WWW' }}
+    behind={{ code: 'WWW' }}
+    interval={88.888}
+    trend={-8.8}
+    overtake
+    size="sm"
+  />
+);
+const PIT_STOP_CARD_SIZER = (
+  <PitStopCard
+    code="WWW"
+    stop={8}
+    laneTime={88.8}
+    compoundOff="M"
+    compoundOn="H"
+    positionIn={20}
+    positionOut={20}
+    size="sm"
+  />
+);
+
+/** One place in the strip under the map: the sizer and the card share one grid cell. */
+function CardSlot({
+  sizer,
+  className,
+  children,
+}: {
+  sizer: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn('grid', className)}>
+      {/* Still: a sizer that animated would join the page's layout animations for nothing. */}
+      <div aria-hidden inert className="invisible [grid-area:1/1]">
+        <MotionConfig reducedMotion="always">{sizer}</MotionConfig>
+      </div>
+      <div data-card="live" className="[grid-area:1/1]">
+        <AnimatePresence>{children}</AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
 function Circuit({
   race,
   replay,
   circuit,
   followedId,
+  comparedIds,
   onFollow,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
   circuit: ReplayCircuit;
   followedId: string | undefined;
+  comparedIds: readonly string[];
   onFollow: (driverId: string) => void;
 }) {
-  // Following a driver overrides the emphasis the timing gives the car furthest along.
+  // Following a driver overrides the emphasis the timing gives the car furthest along; the
+  // compared drivers take the lesser one, so they stay in view while the rest of the field fades.
   const markers = useMemo(
-    () => (followedId === undefined ? replay.markers : emphasiseMarker(replay.markers, followedId)),
-    [replay.markers, followedId],
+    () =>
+      followedId === undefined
+        ? replay.markers
+        : emphasiseMarker(replay.markers, followedId, comparedIds),
+    [replay.markers, followedId, comparedIds],
   );
   const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
 
@@ -773,6 +986,28 @@ function Circuit({
    */
   const status = replay.finished ? 'chequered' : trackStatusAt(race, replay.elapsedMs);
   const flagged = useMemo(() => flaggedSectorsAt(race, replay.elapsedMs), [race, replay.elapsedMs]);
+
+  // The followed car's stop, from the lane entry to a moment after the exit; nobody else's.
+  const stopCard =
+    followedId === undefined
+      ? null
+      : pitStopCardAt(race, followedId, replay.elapsedMs, replay.pitStops, circuit.pit);
+  const stopDriver = stopCard
+    ? race.drivers.find((driver) => driver.id === stopCard.driverId)
+    : undefined;
+
+  // The followed driver's battle, or the one highest up the order; none once the flag is out.
+  const battle = replay.finished
+    ? null
+    : battleCardAt(race, replay.elapsedMs, followedId, { rows: replay.rows, pit: circuit.pit });
+  const battleCar = (driverId: string) => {
+    const driver = race.drivers.find((entry) => entry.id === driverId);
+    return driver
+      ? { code: driver.code, color: race.teams.find((team) => team.id === driver.teamId)?.color }
+      : undefined;
+  };
+  const battleAhead = battle ? battleCar(battle.aheadId) : undefined;
+  const battleBehind = battle ? battleCar(battle.behindId) : undefined;
 
   return (
     <figure className="flex flex-col gap-3 border border-border bg-card p-5">
@@ -796,6 +1031,42 @@ function Circuit({
         onMarkerClick={handleMarkerClick}
         dimOthers={followedId !== undefined}
       />
+      {/*
+       * Under the map rather than over it, so no graphic covers a stretch of track. Both places
+       * keep the height of their tallest card, so the page never moves as a card comes and goes.
+       */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <CardSlot sizer={BATTLE_CARD_SIZER}>
+          {battle && battleAhead && battleBehind && (
+            <BattleCard
+              key={battle.key}
+              position={battle.position}
+              ahead={battleAhead}
+              behind={battleBehind}
+              interval={battle.interval}
+              trend={battle.trend}
+              overtake={battle.overtake}
+              size="sm"
+            />
+          )}
+        </CardSlot>
+        <CardSlot sizer={PIT_STOP_CARD_SIZER} className="sm:justify-items-end">
+          {stopCard && stopDriver && (
+            <PitStopCard
+              key={stopCard.key}
+              code={stopDriver.code}
+              color={race.teams.find((team) => team.id === stopDriver.teamId)?.color}
+              stop={stopCard.stop}
+              laneTime={stopCard.laneTime}
+              compoundOff={stopCard.compoundOff}
+              compoundOn={stopCard.compoundOn}
+              positionIn={stopCard.positionIn}
+              positionOut={stopCard.positionOut}
+              size="sm"
+            />
+          )}
+        </CardSlot>
+      </div>
       <figcaption className="text-xs text-muted-foreground">
         {circuit.real
           ? `${circuit.name}, unofficial layout from public GeoJSON, approximate pit lane. `
@@ -916,14 +1187,23 @@ const RaceControlLine = memo(function RaceControlLine({
   );
 });
 
+/** Nobody compared: one array, so the map's memo is not woken by a fresh empty one. */
+const NO_COMPARED: string[] = [];
+
 /** Nothing to show yet: one array, so the feed's memo is not woken by a fresh empty one. */
 const NO_MESSAGES: ReplayRaceControl[] = [];
 
-type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control';
+type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control' | 'compare' | 'standings';
 
 /** Radix hands back a string; anything the panel does not know falls back to the first tab. */
 function asStrategyTab(value: string): StrategyTab {
-  return value === 'gaps' || value === 'laps' || value === 'control' ? value : 'strategy';
+  return value === 'gaps' ||
+    value === 'laps' ||
+    value === 'control' ||
+    value === 'compare' ||
+    value === 'standings'
+    ? value
+    : 'strategy';
 }
 
 /**
@@ -940,6 +1220,8 @@ function StrategyPanel({
   pit,
   followedId,
   onFollow,
+  comparedIds,
+  onCompare,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -947,11 +1229,14 @@ function StrategyPanel({
   pit: PitLaneShape | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
+  comparedIds: readonly string[];
+  onCompare: (ids: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<StrategyTab>('strategy');
   // Here rather than in the grid, which Radix unmounts with its tab: coming back keeps the measure.
   const [measure, setMeasure] = useState<LapGridMeasure>('lap');
+  const [standingsTable, setStandingsTable] = useState<StandingsTable>('drivers');
 
   const drivers = useMemo(() => new Map(race.drivers.map((d) => [d.id, d])), [race]);
   const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
@@ -992,6 +1277,16 @@ function StrategyPanel({
   );
   const hasControl = race.raceControl.length > 0;
 
+  /**
+   * The cars in the points, in race order, as one string: the projection moves only when that
+   * does, so the memoised table skips every other tick. Read only while the tab is on screen, and
+   * empty before the start, when nobody holds a race position yet.
+   */
+  const scorers =
+    open && tab === 'standings' && !replay.finished && replay.elapsedMs > 0
+      ? pointScorers(replay.rows).join(',')
+      : '';
+
   return (
     <section data-slot="strategy-panel" className="border border-border bg-card">
       <h2>
@@ -1023,6 +1318,8 @@ function StrategyPanel({
                   <TabsTrigger value="laps">Laps</TabsTrigger>
                   {/* Nothing to list for a race the source has no messages for. */}
                   {hasControl && <TabsTrigger value="control">Race control</TabsTrigger>}
+                  <TabsTrigger value="compare">Compare</TabsTrigger>
+                  <TabsTrigger value="standings">Standings</TabsTrigger>
                 </TabsList>
                 <TabsContent value="strategy">
                   <ul aria-label="Strategy" className="flex list-none flex-col">
@@ -1108,6 +1405,28 @@ function StrategyPanel({
                     </p>
                   </TabsContent>
                 )}
+                <TabsContent value="compare">
+                  <Compare
+                    race={race}
+                    rows={replay.rows}
+                    elapsedMs={replay.elapsedMs}
+                    finished={replay.finished}
+                    pit={pit}
+                    stints={stints}
+                    followedId={followedId}
+                    comparedIds={comparedIds}
+                    onCompare={onCompare}
+                  />
+                </TabsContent>
+                <TabsContent value="standings">
+                  <StandingsPanel
+                    race={race}
+                    scorers={scorers}
+                    finished={replay.finished}
+                    table={standingsTable}
+                    onTable={setStandingsTable}
+                  />
+                </TabsContent>
               </Tabs>
             </div>
           </motion.div>
@@ -1132,6 +1451,17 @@ function ReplayPage() {
       : `${search.season}-${search.round}`;
   const entry = races.find((race) => race.id === requested) ?? races[0];
 
+  // A whole new search, so another race starts with no followed driver: that driver belongs to
+  // the race it was picked in. The column mode is a preference about the tower and means the
+  // same thing in every race, so it rides along. Stable, so the memoised picker skips the ticks.
+  const selectRace = useCallback(
+    (next: ReplayIndexEntry) =>
+      void navigate({
+        search: { season: next.season, round: next.round, value: search.value },
+      }),
+    [navigate, search.value],
+  );
+
   const race = useReplayRace(entry?.id);
   const circuit = useMemo(
     () => (race.data ? circuitForRace(race.data.circuit) : undefined),
@@ -1145,6 +1475,42 @@ function ReplayPage() {
   );
   const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
   const valueMode: TowerValueMode = search.value ?? 'leader';
+  // One array per race, search and followed driver, so the memoised markers skip the ticks.
+  const comparedIds = useMemo(
+    () => (race.data ? comparedDriverIds(race.data, search.vs, followedId) : NO_COMPARED),
+    [race.data, search.vs, followedId],
+  );
+
+  // A moment link opens its race paused at its time: once per race loaded, never again on a
+  // tick or a follow. The replay does not play on its own, so seeking is all it takes.
+  const openAtMoment = useEffectEvent(() => {
+    if (search.t !== undefined) replay.seek(search.t * 1000);
+  });
+  useEffect(() => {
+    if (race.data) openAtMoment();
+  }, [race.data]);
+
+  /**
+   * The link to the race time on the clock, whole seconds, with the view the viewer has: the
+   * followed driver, the compared drivers and a column other than the default. Built through the
+   * router so the search is written the way the page reads it back.
+   */
+  const router = useRouter();
+  const momentLink = () => {
+    const code = race.data?.drivers.find((driver) => driver.id === followedId)?.code;
+    const { href } = router.buildLocation({
+      to: '/replay',
+      search: {
+        season: entry?.season,
+        round: entry?.round,
+        driver: code,
+        vs: race.data ? comparedSearch(race.data, comparedIds) : undefined,
+        value: valueMode === 'leader' ? undefined : valueMode,
+        t: Math.floor(replay.elapsedMs / 1000),
+      },
+    });
+    return new URL(href, window.location.origin).href;
+  };
 
   /**
    * Which column the tower shows is a view of the race like the followed driver, so it replaces
@@ -1161,6 +1527,22 @@ function ReplayPage() {
       });
     },
     [navigate],
+  );
+
+  /**
+   * The compared drivers are a view of the race like the followed one, so they replace the URL
+   * too. None at all takes `vs` out of the search rather than leaving it empty.
+   */
+  const setCompared = useCallback(
+    (ids: string[]) => {
+      const vs = race.data ? comparedSearch(race.data, ids) : undefined;
+      void navigate({
+        search: ({ vs: _vs, ...rest }) => (vs === undefined ? rest : { ...rest, vs }),
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate, race.data],
   );
 
   const release = useCallback(() => {
@@ -1184,10 +1566,15 @@ function ReplayPage() {
         release();
         return;
       }
-      const code = race.data?.drivers.find((driver) => driver.id === driverId)?.code;
-      if (code === undefined) return;
+      const data = race.data;
+      const code = data?.drivers.find((driver) => driver.id === driverId)?.code;
+      if (data === undefined || code === undefined) return;
       void navigate({
-        search: (prev) => ({ ...prev, driver: code }),
+        // The compared drivers stay, less the one now followed: nobody is compared with themselves.
+        search: ({ vs: previous, ...rest }) => {
+          const vs = comparedSearch(data, comparedDriverIds(data, previous, driverId));
+          return vs === undefined ? { ...rest, driver: code } : { ...rest, driver: code, vs };
+        },
         replace: true,
         resetScroll: false,
       });
@@ -1235,18 +1622,7 @@ function ReplayPage() {
               : 'Pick a race to play back.'}
           </p>
         </div>
-        <RacePicker
-          races={races}
-          value={entry?.id}
-          // A whole new search, so another race starts with no followed driver: that driver
-          // belongs to the race it was picked in. The column mode is a preference about the
-          // tower and means the same thing in every race, so it rides along.
-          onSelect={(next) =>
-            void navigate({
-              search: { season: next.season, round: next.round, value: search.value },
-            })
-          }
-        />
+        <RacePicker races={races} value={entry?.id} onSelect={selectRace} />
         <p className="max-w-3xl border-l-2 border-border pl-4 text-xs leading-relaxed text-muted-foreground">
           Race data from{' '}
           <a
@@ -1276,7 +1652,7 @@ function ReplayPage() {
         <Message>Loading the race…</Message>
       )}
 
-      <Controls replay={replay} disabled={race.data === undefined} />
+      <Controls replay={replay} disabled={race.data === undefined} momentLink={momentLink} />
 
       {race.data && circuit && (
         // The page has the whole width now, so the tower column grows with it while the map,
@@ -1298,6 +1674,7 @@ function ReplayPage() {
               replay={replay}
               circuit={circuit}
               followedId={followedId}
+              comparedIds={comparedIds}
               onFollow={follow}
             />
             <StrategyPanel
@@ -1307,6 +1684,8 @@ function ReplayPage() {
               pit={circuit.pit}
               followedId={followedId}
               onFollow={follow}
+              comparedIds={comparedIds}
+              onCompare={setCompared}
             />
           </div>
         </div>

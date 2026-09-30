@@ -38,6 +38,7 @@ export default function TrackMapDemo({
   sector3,
   cars,
   showCodes,
+  secondCar,
   size,
   animate,
 }: ControlValues<typeof controls.fields>) {
@@ -57,19 +58,21 @@ export default function TrackMapDemo({
     [sector1, sector2, sector3],
   );
 
-  const markers = useMemo<TrackMarker[]>(
-    () =>
-      grid.drivers.slice(0, cars).map((driver, index) => ({
-        id: driver.id,
-        // The leader is emphasised, the way a broadcast graphic picks one car out, until a
-        // click picks another.
-        emphasis: followedId === null ? index === 0 : driver.id === followedId,
-        progress: progress[index] ?? 0,
-        color: teamColor(driver.teamId),
-        code: showCodes ? driver.code : undefined,
-      })),
-    [cars, followedId, progress, showCodes],
-  );
+  const markers = useMemo<TrackMarker[]>(() => {
+    const shown = grid.drivers.slice(0, cars);
+    // The leader is emphasised, the way a broadcast graphic picks one car out, until a click
+    // picks another.
+    const emphasised = followedId === null ? 0 : shown.findIndex((d) => d.id === followedId);
+    return shown.map((driver, index) => ({
+      id: driver.id,
+      emphasis: index === emphasised,
+      // The car behind it, watched alongside: undimmed, but a size under the emphasised one.
+      secondaryEmphasis: secondCar && emphasised >= 0 && index === emphasised + 1,
+      progress: progress[index] ?? 0,
+      color: teamColor(driver.teamId),
+      code: showCodes ? driver.code : undefined,
+    }));
+  }, [cars, followedId, progress, secondCar, showCodes]);
 
   return (
     <figure className="w-full max-w-2xl">

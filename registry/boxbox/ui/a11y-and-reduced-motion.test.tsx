@@ -3,9 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { MotionConfig } from 'motion/react';
 import type { ReactElement } from 'react';
 import type { Driver, Team, TimingRow } from '@/registry/boxbox/lib/types';
+import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
+import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
+import { Standings } from '@/registry/boxbox/ui/standings';
 import { StartLights } from '@/registry/boxbox/ui/start-lights';
 import { TeamRadio } from '@/registry/boxbox/ui/team-radio';
 import { TimingTower } from '@/registry/boxbox/ui/timing-tower';
@@ -100,6 +103,41 @@ const components: [string, ReactElement][] = [
       envelope={[0.3, 0.8, 0.5]}
     />,
   ],
+  [
+    'Pit Stop Card',
+    <PitStopCard
+      key="p"
+      code="MSO"
+      stop={2}
+      laneTime={22.4}
+      compoundOff="M"
+      compoundOn="H"
+      positionIn={3}
+      positionOut={5}
+    />,
+  ],
+  [
+    'Battle Card',
+    <BattleCard
+      key="b"
+      position={4}
+      ahead={{ code: 'TRE' }}
+      behind={{ code: 'NVA' }}
+      interval={0.482}
+      trend={-0.3}
+      overtake
+    />,
+  ],
+  [
+    'Standings',
+    <Standings
+      key="st"
+      entries={[
+        { id: 'tre', name: 'TRE', position: 1, points: 204, gained: 25, positionChange: 1 },
+        { id: 'nva', name: 'NVA', position: 2, points: 198 },
+      ]}
+    />,
+  ],
 ];
 
 describe('reduced motion', () => {
@@ -136,6 +174,23 @@ describe('reduced motion', () => {
     expect(screen.getByText('CAM 04')).toBeInTheDocument();
     // Team Radio: the transcript is text, not only the painted pop-in.
     expect(screen.getByText('Team radio, RACE ENGINEER to EVO: Box, box.')).toBeInTheDocument();
+    // Pit Stop Card: the wipe is a clip path, so the stop reads in full from the first frame.
+    expect(
+      screen.getByText(
+        'MSO pit stop 2, medium tyres off, hard on, pit lane 22.4 seconds, in P3, out P5.',
+      ),
+    ).toBeInTheDocument();
+    // Battle Card: the wipe and the swap are motion only, so the battle reads in full.
+    expect(
+      screen.getByText(
+        'Battle for P4, TRE overtook NVA, interval 0.482 seconds, closing 0.3 seconds a lap.',
+      ),
+    ).toBeInTheDocument();
+    // Standings: the reorder and the roll are motion only, so every row reads in full.
+    expect(
+      screen.getByText('P1 TRE, 204 points, 25 in this race, up 1 place.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('P2 NVA, 198 points.')).toBeInTheDocument();
   });
 });
 
@@ -210,6 +265,45 @@ describe('accessible names and state', () => {
     expect(screen.getByRole('button', { name: 'Play team radio' })).toHaveAttribute(
       'aria-pressed',
       'false',
+    );
+  });
+
+  it('hides the painted Pit Stop Card and reads the stop once', () => {
+    render(<PitStopCard code="EVO" stop={1} laneTime={9.8} compoundOff="S" positionIn={4} />);
+    const card = document.querySelector('[data-slot="pit-stop-card"]');
+    for (const painted of card?.querySelectorAll(':scope > :not(.sr-only)') ?? []) {
+      expect(painted).toHaveAttribute('aria-hidden');
+    }
+    expect(screen.getByText('EVO pit stop 1, pit lane 9.8 seconds, in P4.')).toBeInTheDocument();
+  });
+
+  it('hides the painted Battle Card and reads the battle once', () => {
+    render(
+      <BattleCard position={2} ahead={{ code: 'EVO' }} behind={{ code: 'MSO' }} interval={1.2} />,
+    );
+    const card = document.querySelector('[data-slot="battle-card"]');
+    for (const painted of card?.querySelectorAll(':scope > :not(.sr-only)') ?? []) {
+      expect(painted).toHaveAttribute('aria-hidden');
+    }
+    expect(
+      screen.getByText('Battle for P2, EVO ahead of MSO, interval 1.200 seconds.'),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the painted Standings columns and reads each row once', () => {
+    render(
+      <Standings
+        entries={[
+          { id: 'evo', name: 'EVO', position: 3, points: 142, gained: 8, positionChange: -1 },
+        ]}
+      />,
+    );
+    const row = document.querySelector('[data-slot="standings-row-line"]');
+    for (const painted of row?.querySelectorAll(':scope > :not(.sr-only)') ?? []) {
+      expect(painted).toHaveAttribute('aria-hidden');
+    }
+    expect(screen.getByRole('listitem')).toHaveTextContent(
+      'P3 EVO, 142 points, 8 in this race, down 1 place.',
     );
   });
 

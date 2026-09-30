@@ -63,6 +63,12 @@ const controls = defineControls({
     description: 'Label each marker with its driver code.',
     default: true,
   },
+  secondCar: {
+    kind: 'boolean',
+    label: 'Second car',
+    description: 'Give the car behind the emphasised one a lesser emphasis.',
+    default: false,
+  },
   size: {
     kind: 'select',
     label: 'Size',
