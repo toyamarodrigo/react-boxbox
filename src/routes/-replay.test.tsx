@@ -340,8 +340,8 @@ describe('replay page, race picker', () => {
     expect(await screen.findByText('No race matches.')).toBeInTheDocument();
   });
 
-  it('opens the picked race, closes, and drops the moment and the followed driver', async () => {
-    const router = renderReplay('/replay?driver=CHA&t=30&value=interval');
+  it('opens the picked race, closes, and drops the moment and the followed and compared drivers', async () => {
+    const router = renderReplay('/replay?driver=CHA&vs=ALP&t=30&value=interval');
     await screen.findByRole('heading', { name: second.name });
 
     await pickRace('2029 Classic');
@@ -713,7 +713,7 @@ describe('replay page, moment link', () => {
 
   it('copies the race, the view and the race time in whole seconds', async () => {
     const writeText = stubClipboard();
-    renderReplay('/replay?driver=CHA&value=interval&t=100.7');
+    renderReplay('/replay?driver=CHA&vs=bra,xyz,ALP&value=interval&t=100.7');
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '100700'));
 
@@ -726,6 +726,8 @@ describe('replay page, moment link', () => {
       season: String(race.season),
       round: String(race.round),
       driver: 'CHA',
+      // The compared drivers as the page read them: known codes only, in the tower's spelling.
+      vs: 'BRA,ALP',
       value: 'interval',
       t: '100',
     });
@@ -743,9 +745,9 @@ describe('replay page, moment link', () => {
     ).toBeInTheDocument();
   });
 
-  it('leaves the defaults out of the link', async () => {
+  it('leaves the defaults out of the link, and compared drivers nobody is followed for', async () => {
     const writeText = stubClipboard();
-    renderReplay();
+    renderReplay('/replay?vs=BRA');
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
 
@@ -1488,5 +1490,230 @@ describe('replay page, battle card', () => {
     await screen.findByRole('heading', { name: race.name });
     await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
     expect(battleCard()).toBeNull();
+  });
+});
+
+describe('replay page, compare', () => {
+  const picker = () => screen.getByRole('group', { name: 'Compared drivers' });
+  const pickerButton = (name: string) => within(picker()).getByRole('button', { name });
+  const pressed = () =>
+    within(picker())
+      .getAllByRole('button')
+      .filter((button) => button.getAttribute('aria-pressed') === 'true')
+      .map((button) => button.textContent);
+  const compareRows = () =>
+    [...document.querySelectorAll('[data-slot="compare-row"]')].map((row) =>
+      row.getAttribute('data-driver'),
+    );
+  const figure = (driverId: string, slot: string) =>
+    document.querySelector(
+      `[data-slot="compare-row"][data-driver="${driverId}"] [data-slot="${slot}"]`,
+    )?.textContent;
+  const vsOf = (router: ReturnType<typeof getRouter>) =>
+    (router.state.location.search as { vs?: string }).vs;
+
+  /** Opens the panel on the Compare tab. */
+  async function openCompare() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Strategy' }));
+    // Radix switches a tab on mousedown, not on the click that follows it.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Compare' }));
+  }
+
+  /** The test race with a fifth car, retired after two laps, so a fourth pick can be refused. */
+  function serveFiveCars() {
+    const five = {
+      ...race,
+      drivers: [
+        ...race.drivers,
+        { id: 'echo', code: 'ECH', number: 5, firstName: 'Ed', lastName: 'Echo', teamId: 'blue' },
+      ],
+      laps: race.laps.map((lap) =>
+        lap.lap === 3
+          ? lap
+          : {
+              ...lap,
+              rows: [
+                ...lap.rows,
+                {
+                  ...lap.rows.at(-1)!,
+                  driverId: 'echo',
+                  position: 5,
+                  lapTimeMs: 170_000,
+                  cumulativeMs: lap.lap * 170_000,
+                },
+              ],
+            },
+      ),
+      results: [
+        ...race.results,
+        { ...race.results.at(-1)!, driverId: 'echo', position: 5, positionText: 'R', grid: 5 },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(five);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  }
+
+  it('asks for a followed driver first, and ignores the compared ones without one', async () => {
+    renderReplay('/replay?vs=BRA,CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+
+    expect(await screen.findByText(/^Follow a driver first/)).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Compared drivers' })).toBeNull();
+    expect(document.querySelector('[data-emphasis="secondary"]')).toBeNull();
+  });
+
+  it('offers every other driver in tower order and writes each toggle into the URL', async () => {
+    const router = renderReplay('/replay?driver=ALP');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+    await openCompare();
+
+    const towerCodes = [...document.querySelectorAll('[data-slot="timing-tower-row"]')]
+      .map((row) => race.drivers.find((d) => d.id === row.getAttribute('data-driver'))?.code)
+      .filter((code) => code !== 'ALP');
+    expect(
+      within(await screen.findByRole('group', { name: 'Compared drivers' }))
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(towerCodes);
+    expect(pressed()).toEqual([]);
+    expect(screen.getByText('Pick up to 3 drivers to compare with ALP.')).toBeInTheDocument();
+    const entries = router.history.length;
+
+    fireEvent.click(pickerButton('BRA'));
+    await waitFor(() => expect(vsOf(router)).toBe('BRA'));
+    fireEvent.click(pickerButton('CHA'));
+    await waitFor(() => expect(vsOf(router)).toBe('BRA,CHA'));
+    expect(pressed()).toEqual(towerCodes.filter((code) => code === 'BRA' || code === 'CHA'));
+    fireEvent.click(pickerButton('BRA'));
+    await waitFor(() => expect(vsOf(router)).toBe('CHA'));
+    fireEvent.click(pickerButton('CHA'));
+    await waitFor(() => expect(vsOf(router)).toBeUndefined());
+    expect(router.state.location.searchStr).not.toMatch(/vs/);
+    // A view of the race, like the followed driver: no history entries.
+    expect(router.history.length).toBe(entries);
+  });
+
+  it('stops at three, from a click or from the URL', async () => {
+    serveFiveCars();
+    const router = renderReplay('/replay?driver=ALP&vs=BRA,CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+    await screen.findByRole('group', { name: 'Compared drivers' });
+    expect(pickerButton('ECH')).toBeEnabled();
+
+    fireEvent.click(pickerButton('DEL'));
+    await waitFor(() => expect(vsOf(router)).toBe('BRA,CHA,DEL'));
+    expect(pickerButton('ECH')).toBeDisabled();
+    expect(pickerButton('BRA')).toBeEnabled();
+    cleanup();
+
+    serveFiveCars();
+    renderReplay('/replay?driver=ALP&vs=BRA,CHA,DEL,ECH');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+    await screen.findByRole('group', { name: 'Compared drivers' });
+    expect(pickerButton('ECH')).toHaveAttribute('aria-pressed', 'false');
+    expect(pickerButton('ECH')).toBeDisabled();
+  });
+
+  it('reads the URL forgivingly, without erroring', async () => {
+    renderReplay('/replay?driver=ALP&vs=xyz,cha,CHA,ALP');
+    await screen.findByRole('heading', { name: race.name });
+    await openCompare();
+    await screen.findByRole('group', { name: 'Compared drivers' });
+
+    expect(pressed()).toEqual(['CHA']);
+    expect(screen.queryByText(/Invalid|Error/)).toBeNull();
+  });
+
+  it('keeps the compared drivers when the followed driver changes, less the new one', async () => {
+    const router = renderReplay('/replay?driver=ALP&vs=BRA,CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'alpha'));
+
+    fireEvent.click(rowButton('bravo')!);
+    await waitFor(() => expect(searchOf(router).driver).toBe('BRA'));
+    expect(vsOf(router)).toBe('CHA');
+  });
+
+  it('draws the time to the followed driver as the clock runs, then one row per driver', async () => {
+    const restoreSize = stubElementSize();
+    try {
+      renderReplay('/replay?driver=ALP&vs=BRA,CHA');
+      await screen.findByRole('heading', { name: race.name });
+      await openCompare();
+
+      const chart = await screen.findByRole('img', { name: /^Time difference to ALP/ });
+      expect(chart).toHaveAccessibleName('Time difference to ALP. No laps completed of 3.');
+
+      // At the leader's second line every car has crossed the line once, and only bravo twice.
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next lap' }));
+      await waitFor(() => expect(chart).toHaveAttribute('data-laps', '1'));
+      expect(chart).toHaveAccessibleName(
+        'Time difference to ALP over 1 of 3 laps. BRA 1.0 seconds behind at lap 1. CHA 60.0 seconds behind at lap 1.',
+      );
+      expect(document.querySelectorAll('.recharts-line')).toHaveLength(3);
+      // Every line ends in its code.
+      expect(
+        [...document.querySelectorAll('[data-slot="compare-chart-code"]')].map(
+          (code) => code.textContent,
+        ),
+      ).toEqual(['ALP', 'BRA', 'CHA']);
+
+      expect(compareRows()).toEqual(['alpha', 'bravo', 'charlie']);
+      expect(figure('alpha', 'compare-best')).toBe('1:40.000 L1');
+      // The opening lap never counts, and nobody has run another yet.
+      expect(figure('alpha', 'compare-pace')).toBe('—');
+
+      fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+      await waitFor(() => expect(chart).toHaveAttribute('data-laps', '3'));
+      expect(chart).toHaveAccessibleName(
+        'Time difference to ALP over all 3 laps. BRA 2.0 seconds ahead at lap 3. CHA 179.0 seconds behind at lap 3.',
+      );
+      // Charlie is alpha's teammate, so its line is the dashed one.
+      const dashes = [...document.querySelectorAll('.recharts-line-curve')].map((curve) =>
+        curve.getAttribute('stroke-dasharray'),
+      );
+      expect(dashes.filter((dash) => dash === '5 3')).toHaveLength(1);
+      expect(figure('charlie', 'compare-best')).toBe('2:38.000 L3');
+      expect(figure('charlie', 'compare-pace')).toBe('2:39.000 2 laps');
+      expect(figure('bravo', 'compare-stops')).toBe('0');
+      expect(
+        document.querySelectorAll('[data-slot="compare-row"] [data-slot="stint-bar"]'),
+      ).toHaveLength(3);
+    } finally {
+      restoreSize();
+    }
+  });
+
+  it('gives the compared cars the map’s lesser emphasis', async () => {
+    renderReplay('/replay?driver=ALP&vs=CHA');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).not.toBeNull());
+
+    const markers = () =>
+      [...document.querySelectorAll('[data-slot="track-map-marker"]')].map((element) => [
+        element.getAttribute('data-id'),
+        element.getAttribute('data-emphasis'),
+        element.getAttribute('data-dimmed'),
+      ]);
+    await waitFor(() =>
+      expect(markers()).toEqual([
+        ['alpha', 'true', null],
+        ['bravo', null, 'true'],
+        ['charlie', 'secondary', null],
+        ['delta', null, 'true'],
+      ]),
+    );
   });
 });

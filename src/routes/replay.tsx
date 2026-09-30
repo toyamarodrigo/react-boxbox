@@ -65,6 +65,7 @@ import {
 } from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
 import { battleCardAt } from '../data/replay-battle';
+import { comparedDriverIds, comparedSearch } from '../data/replay-compare';
 import { pitStopCardAt } from '../data/replay-pit-stop';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
@@ -90,6 +91,7 @@ import {
   formatLapTime,
 } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
+import { Compare } from '../components/site/replay/compare';
 import { LapGrid } from '../components/site/replay/lap-grid';
 import { Button } from '../components/ui/button';
 import {
@@ -133,6 +135,12 @@ const searchSchema = z.object({
    * `.catch()` for the same reason as `value`: a bad time opens the race at the start.
    */
   t: z.coerce.number().min(0).optional().catch(undefined),
+  /**
+   * The compared drivers, by code, comma-separated: `VER,HAM`. Read against the race, which is
+   * where unknown codes, repeats, the followed driver and anything past three are dropped; without
+   * a followed driver it is ignored. `.catch()` for the same reason as `value`.
+   */
+  vs: z.string().optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -898,18 +906,24 @@ function Circuit({
   replay,
   circuit,
   followedId,
+  comparedIds,
   onFollow,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
   circuit: ReplayCircuit;
   followedId: string | undefined;
+  comparedIds: readonly string[];
   onFollow: (driverId: string) => void;
 }) {
-  // Following a driver overrides the emphasis the timing gives the car furthest along.
+  // Following a driver overrides the emphasis the timing gives the car furthest along; the
+  // compared drivers take the lesser one, so they stay in view while the rest of the field fades.
   const markers = useMemo(
-    () => (followedId === undefined ? replay.markers : emphasiseMarker(replay.markers, followedId)),
-    [replay.markers, followedId],
+    () =>
+      followedId === undefined
+        ? replay.markers
+        : emphasiseMarker(replay.markers, followedId, comparedIds),
+    [replay.markers, followedId, comparedIds],
   );
   const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
 
@@ -1130,14 +1144,19 @@ const RaceControlLine = memo(function RaceControlLine({
   );
 });
 
+/** Nobody compared: one array, so the map's memo is not woken by a fresh empty one. */
+const NO_COMPARED: string[] = [];
+
 /** Nothing to show yet: one array, so the feed's memo is not woken by a fresh empty one. */
 const NO_MESSAGES: ReplayRaceControl[] = [];
 
-type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control';
+type StrategyTab = 'strategy' | 'gaps' | 'laps' | 'control' | 'compare';
 
 /** Radix hands back a string; anything the panel does not know falls back to the first tab. */
 function asStrategyTab(value: string): StrategyTab {
-  return value === 'gaps' || value === 'laps' || value === 'control' ? value : 'strategy';
+  return value === 'gaps' || value === 'laps' || value === 'control' || value === 'compare'
+    ? value
+    : 'strategy';
 }
 
 /**
@@ -1154,6 +1173,8 @@ function StrategyPanel({
   pit,
   followedId,
   onFollow,
+  comparedIds,
+  onCompare,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -1161,6 +1182,8 @@ function StrategyPanel({
   pit: PitLaneShape | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
+  comparedIds: readonly string[];
+  onCompare: (ids: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<StrategyTab>('strategy');
@@ -1237,6 +1260,7 @@ function StrategyPanel({
                   <TabsTrigger value="laps">Laps</TabsTrigger>
                   {/* Nothing to list for a race the source has no messages for. */}
                   {hasControl && <TabsTrigger value="control">Race control</TabsTrigger>}
+                  <TabsTrigger value="compare">Compare</TabsTrigger>
                 </TabsList>
                 <TabsContent value="strategy">
                   <ul aria-label="Strategy" className="flex list-none flex-col">
@@ -1322,6 +1346,19 @@ function StrategyPanel({
                     </p>
                   </TabsContent>
                 )}
+                <TabsContent value="compare">
+                  <Compare
+                    race={race}
+                    rows={replay.rows}
+                    elapsedMs={replay.elapsedMs}
+                    finished={replay.finished}
+                    pit={pit}
+                    stints={stints}
+                    followedId={followedId}
+                    comparedIds={comparedIds}
+                    onCompare={onCompare}
+                  />
+                </TabsContent>
               </Tabs>
             </div>
           </motion.div>
@@ -1370,6 +1407,11 @@ function ReplayPage() {
   );
   const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
   const valueMode: TowerValueMode = search.value ?? 'leader';
+  // One array per race, search and followed driver, so the memoised markers skip the ticks.
+  const comparedIds = useMemo(
+    () => (race.data ? comparedDriverIds(race.data, search.vs, followedId) : NO_COMPARED),
+    [race.data, search.vs, followedId],
+  );
 
   // A moment link opens its race paused at its time: once per race loaded, never again on a
   // tick or a follow. The replay does not play on its own, so seeking is all it takes.
@@ -1382,8 +1424,8 @@ function ReplayPage() {
 
   /**
    * The link to the race time on the clock, whole seconds, with the view the viewer has: the
-   * followed driver and a column other than the default. Built through the router so the search
-   * is written the way the page reads it back.
+   * followed driver, the compared drivers and a column other than the default. Built through the
+   * router so the search is written the way the page reads it back.
    */
   const router = useRouter();
   const momentLink = () => {
@@ -1394,6 +1436,7 @@ function ReplayPage() {
         season: entry?.season,
         round: entry?.round,
         driver: code,
+        vs: race.data ? comparedSearch(race.data, comparedIds) : undefined,
         value: valueMode === 'leader' ? undefined : valueMode,
         t: Math.floor(replay.elapsedMs / 1000),
       },
@@ -1418,6 +1461,22 @@ function ReplayPage() {
     [navigate],
   );
 
+  /**
+   * The compared drivers are a view of the race like the followed one, so they replace the URL
+   * too. None at all takes `vs` out of the search rather than leaving it empty.
+   */
+  const setCompared = useCallback(
+    (ids: string[]) => {
+      const vs = race.data ? comparedSearch(race.data, ids) : undefined;
+      void navigate({
+        search: ({ vs: _vs, ...rest }) => (vs === undefined ? rest : { ...rest, vs }),
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate, race.data],
+  );
+
   const release = useCallback(() => {
     void navigate({
       search: ({ driver: _driver, ...rest }) => rest,
@@ -1439,10 +1498,15 @@ function ReplayPage() {
         release();
         return;
       }
-      const code = race.data?.drivers.find((driver) => driver.id === driverId)?.code;
-      if (code === undefined) return;
+      const data = race.data;
+      const code = data?.drivers.find((driver) => driver.id === driverId)?.code;
+      if (data === undefined || code === undefined) return;
       void navigate({
-        search: (prev) => ({ ...prev, driver: code }),
+        // The compared drivers stay, less the one now followed: nobody is compared with themselves.
+        search: ({ vs: previous, ...rest }) => {
+          const vs = comparedSearch(data, comparedDriverIds(data, previous, driverId));
+          return vs === undefined ? { ...rest, driver: code } : { ...rest, driver: code, vs };
+        },
         replace: true,
         resetScroll: false,
       });
@@ -1542,6 +1606,7 @@ function ReplayPage() {
               replay={replay}
               circuit={circuit}
               followedId={followedId}
+              comparedIds={comparedIds}
               onFollow={follow}
             />
             <StrategyPanel
@@ -1551,6 +1616,8 @@ function ReplayPage() {
               pit={circuit.pit}
               followedId={followedId}
               onFollow={follow}
+              comparedIds={comparedIds}
+              onCompare={setCompared}
             />
           </div>
         </div>

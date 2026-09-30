@@ -387,6 +387,51 @@ describe('TrackMap', () => {
     expect(markers[0]).not.toHaveClass('z-10');
   });
 
+  it('gives a secondary car less than the emphasised one and more than the rest', () => {
+    const { container } = render(
+      <TrackMap
+        path={PATH}
+        size="sm"
+        markers={[
+          marker({ id: 'evo', code: 'EVO', emphasis: true }),
+          marker({ id: 'mso', code: 'MSO', secondaryEmphasis: true }),
+          marker({ id: 'kat', code: 'KAT' }),
+        ]}
+        dimOthers
+      />,
+    );
+    const markers = [...container.querySelectorAll('[data-slot="track-map-marker"]')];
+    expect(markers.map((element) => element.getAttribute('data-emphasis'))).toEqual([
+      'true',
+      'secondary',
+      null,
+    ]);
+    expect(markers.map((element) => element.getAttribute('data-dimmed'))).toEqual([
+      null,
+      null,
+      'true',
+    ]);
+    expect(markers[1]).toHaveClass('z-5');
+    expect(markers[1]).not.toHaveClass('z-10');
+    // The normal dot, but the code stays on a small map.
+    const dots = container.querySelectorAll('[data-slot="track-map-marker-dot"]');
+    expect(dots[1]).toHaveStyle({ width: '16px' });
+    const codes = [...container.querySelectorAll('[data-slot="track-map-marker-code"]')];
+    expect(codes.map((code) => code.textContent)).toEqual(['EVO', 'MSO']);
+  });
+
+  it('lets emphasis win over a secondary emphasis on the same car', () => {
+    const { container } = render(
+      <TrackMap
+        path={PATH}
+        markers={[marker({ id: 'evo', emphasis: true, secondaryEmphasis: true })]}
+      />,
+    );
+    const element = container.querySelector('[data-slot="track-map-marker"]');
+    expect(element).toHaveAttribute('data-emphasis', 'true');
+    expect(element).not.toHaveClass('z-5');
+  });
+
   it('takes the marker layer size from the viewBox', () => {
     const { container } = render(
       <TrackMap path={PATH} viewBox="0 0 400 200" markers={[marker()]} />,

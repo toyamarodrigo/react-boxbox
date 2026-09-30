@@ -18,6 +18,12 @@ export type TrackMarker = {
   color: string;
   code?: string;
   emphasis?: boolean;
+  /**
+   * A lesser emphasis than `emphasis`: the car keeps the normal dot, but keeps its code on a small
+   * map and is not faded by `dimOthers`. For cars watched next to the emphasised one. Ignored
+   * when `emphasis` is set.
+   */
+  secondaryEmphasis?: boolean;
   /** The car is in the pit lane; needs the map's `pitLane` path to show. */
   inPit?: boolean;
 };

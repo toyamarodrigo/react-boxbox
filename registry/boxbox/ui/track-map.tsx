@@ -324,9 +324,11 @@ export function TrackMapMarker({
 
   const sizes = MARKER_SIZES[size];
   const dot = marker.emphasis ? sizes.emphasis : sizes.dot;
+  const secondary = marker.emphasis !== true && marker.secondaryEmphasis === true;
   // A label next to every dot is unreadable on a small map, so only the cars that
   // matter keep theirs there.
-  const showLabel = marker.code !== undefined && (marker.emphasis === true || size !== 'sm');
+  const showLabel =
+    marker.code !== undefined && (marker.emphasis === true || secondary || size !== 'sm');
 
   const body = (
     <>
@@ -365,7 +367,7 @@ export function TrackMapMarker({
       data-pit={marker.inPit ? 'true' : undefined}
       data-wrap={wrapped ? 'true' : undefined}
       data-dimmed={dimmed ? 'true' : undefined}
-      data-emphasis={marker.emphasis === true ? 'true' : undefined}
+      data-emphasis={marker.emphasis === true ? 'true' : secondary ? 'secondary' : undefined}
       // A clickable marker has to stay in the accessibility tree; a decorative one does not.
       aria-hidden={onSelect === undefined ? true : undefined}
       className={cn(
@@ -375,6 +377,8 @@ export function TrackMapMarker({
         // all it takes to keep the car being watched — dot and code both — over every other
         // one, rather than under whichever marker happens to come later in the list.
         marker.emphasis === true && 'z-10',
+        // Over the field but under the emphasised car, which is the order of importance.
+        secondary && 'z-5',
         dimmed && 'opacity-40',
         className,
       )}
@@ -434,7 +438,10 @@ export type TrackMapProps = {
    * graphic, so its `role` becomes `group`.
    */
   onMarkerClick?: (marker: TrackMarker) => void;
-  /** Fades every marker without `emphasis`, so the emphasised car is the one the eye follows. */
+  /**
+   * Fades every marker without `emphasis` or `secondaryEmphasis`, so the emphasised car is the
+   * one the eye follows and the cars watched next to it stay in view.
+   */
   dimOthers?: boolean;
 } & React.ComponentProps<'div'>;
 
@@ -512,7 +519,7 @@ export function TrackMap({
                 path={inPit ? pitLane : path}
                 size={size}
                 transitionMs={transitionMs}
-                dimmed={dimOthers && marker.emphasis !== true}
+                dimmed={dimOthers && marker.emphasis !== true && marker.secondaryEmphasis !== true}
                 onSelect={onMarkerClick === undefined ? undefined : () => onMarkerClick(marker)}
               />
             );

@@ -495,6 +495,16 @@ describe('emphasiseMarker', () => {
     expect(emphasised.find((marker) => marker.id === 'alpha')?.emphasis).toBe(false);
   });
 
+  it('gives the compared cars the lesser emphasis, and never the followed one', () => {
+    const emphasised = emphasiseMarker(markers, 'bravo', ['charlie', 'bravo']);
+    expect(
+      emphasised.filter((marker) => marker.secondaryEmphasis).map((marker) => marker.id),
+    ).toEqual(['charlie']);
+    expect(emphasiseMarker(markers, 'bravo').some((marker) => marker.secondaryEmphasis)).toBe(
+      false,
+    );
+  });
+
   it('leaves the rest of each marker alone and emphasises nothing for an unknown id', () => {
     const emphasised = emphasiseMarker(markers, 'nobody');
     expect(emphasised.every((marker) => marker.emphasis === false)).toBe(true);
