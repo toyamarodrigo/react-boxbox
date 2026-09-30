@@ -30,7 +30,8 @@ so you install the source into your project and own it.
 
 The [Replay](https://react-boxbox.vercel.app/replay) page plays a real race with the whole
 library at once: lap counter, race clock, timing tower, track map, flag banners, speed trap,
-stints, gap chart, and podium.
+stints, gap chart, battle and pit stop cards, standings, and podium. Follow a driver, compare
+them with up to three others, and copy a link to any moment of the race.
 
 <a href="docs/media/demo-replay.mp4">
   <img src="docs/media/demo-replay-poster.png" alt="The Replay page at 20× speed: the timing tower and the track map follow the 2026 Spanish Grand Prix. Click to open the video." width="800" />
@@ -40,7 +41,7 @@ stints, gap chart, and podium.
 
 ## Components
 
-17 components in four groups. Each one has a playground and its source on the
+20 components in four groups. Each one has a playground and its source on the
 [site](https://react-boxbox.vercel.app/components).
 
 ### Timing
@@ -51,17 +52,19 @@ stints, gap chart, and podium.
 | Sector Times       | `@boxbox/sector-times`       | Three sector bars with broadcast colour coding, optional mini sectors, and a counting lap time.       |
 | Overtake Indicator | `@boxbox/overtake-indicator` | The overtaking aid badge: DRS (2011–2025) or Overtake Mode (2026 rules).                              |
 | Gap Chart          | `@boxbox/gap-chart`          | Gap to the leader across the race. The followed car is in colour over the field. Uses Recharts.       |
+| Standings          | `@boxbox/standings`          | The championship table. Rows re-sort as points change, with the points gained and places moved.       |
 
 ### Broadcast
 
-| Component         | Registry item               | What it is                                                                                  |
-| ----------------- | --------------------------- | ------------------------------------------------------------------------------------------- |
-| Driver Name Plate | `@boxbox/driver-name-plate` | A lower third that wipes in with position, team colour, name, car number, and race status.  |
-| Replay Bumper     | `@boxbox/replay-bumper`     | A transition that sweeps over a panel so its content can change behind it.                  |
-| Podium            | `@boxbox/podium`            | Three steps laid out second, first, third. The steps rise last place first.                 |
-| Speed Trap        | `@boxbox/speed-trap`        | One car's speed trap reading, the session best under it, and a flash for a new record.      |
-| Gauge             | `@boxbox/gauge`             | Revolutions as an arc round the current gear. It turns red past the redline.                |
-| Team Radio        | `@boxbox/team-radio`        | A pit wall message: who talks to whom, a live audio trace, and the transcript word by word. |
+| Component         | Registry item               | What it is                                                                                   |
+| ----------------- | --------------------------- | -------------------------------------------------------------------------------------------- |
+| Driver Name Plate | `@boxbox/driver-name-plate` | A lower third that wipes in with position, team colour, name, car number, and race status.   |
+| Replay Bumper     | `@boxbox/replay-bumper`     | A transition that sweeps over a panel so its content can change behind it.                   |
+| Podium            | `@boxbox/podium`            | Three steps laid out second, first, third. The steps rise last place first.                  |
+| Speed Trap        | `@boxbox/speed-trap`        | One car's speed trap reading, the session best under it, and a flash for a new record.       |
+| Gauge             | `@boxbox/gauge`             | Revolutions as an arc round the current gear. It turns red past the redline.                 |
+| Team Radio        | `@boxbox/team-radio`        | A pit wall message: who talks to whom, a live audio trace, and the transcript word by word.  |
+| Battle Card       | `@boxbox/battle-card`       | Two cars fighting for a place: the interval, its trend per lap, and the swap on an overtake. |
 
 ### Race Control
 
@@ -75,10 +78,11 @@ stints, gap chart, and podium.
 
 ### Pit Lane
 
-| Component  | Registry item        | What it is                                                                          |
-| ---------- | -------------------- | ----------------------------------------------------------------------------------- |
-| Tyre Badge | `@boxbox/tyre-badge` | The compound and the laps on the current set. It rotates when the compound changes. |
-| Stint Bar  | `@boxbox/stint-bar`  | A car's tyre strategy as one bar: one segment per stint, filled to the current lap. |
+| Component     | Registry item           | What it is                                                                          |
+| ------------- | ----------------------- | ----------------------------------------------------------------------------------- |
+| Tyre Badge    | `@boxbox/tyre-badge`    | The compound and the laps on the current set. It rotates when the compound changes. |
+| Stint Bar     | `@boxbox/stint-bar`     | A car's tyre strategy as one bar: one segment per stint, filled to the current lap. |
+| Pit Stop Card | `@boxbox/pit-stop-card` | One stop: stop number, tyres off and on, pit lane time, and position in and out.    |
 
 Shared items that the components pull in for you: `boxbox-types`, `boxbox-theme`,
 `boxbox-motion`, `rolling-number`, `waveform`, and the optional `boxbox-fonts`.
@@ -131,8 +135,8 @@ The visual language is that of sports television in general.
 The components ship no data. You pass in your own.
 
 - **Component demos and tests** use invented drivers, teams, colours, and lap times.
-- **The Replay page** plays a small, curated set of real races. Race results, lap times, and
-  pit stops come from [jolpica-f1](https://github.com/jolpica/jolpica-f1). Tyre stints, sector
+- **The Replay page** plays the current season so far and a few classic races. Race results,
+  lap times, pit stops, and championship standings come from [jolpica-f1](https://github.com/jolpica/jolpica-f1). Tyre stints, sector
   times, speed trap readings, and race control come from [OpenF1](https://openf1.org), for
   races from 2023 on. Circuit outlines come from
   [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT). Team colours are
@@ -155,7 +159,7 @@ Useful scripts:
 | `bun run test`                    | Vitest and Testing Library (not `bun test`, Bun's own runner) |
 | `bun run registry:build`          | Generates `public/r/` from `registry.json`                    |
 | `bun run og:build`                | Generates the Open Graph images in `public/og/`               |
-| `bun run replays:build`           | Fetches the curated races for the Replay page                 |
+| `bun run replays:build`           | Fetches the Replay races not on disk yet (`--season 2026`)    |
 | `bun run circuits:build`          | Generates `src/data/circuits.ts` from the circuit GeoJSON     |
 | `bun run build`                   | Production build into `.output/`                              |
 
