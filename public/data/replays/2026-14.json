@@ -24,6 +24,11 @@
       "provider": "openf1",
       "fetchedAt": "2026-09-22T22:39:28.078Z",
       "url": "https://api.openf1.org/v1/race_control?session_key=11369"
+    },
+    "standings": {
+      "provider": "jolpica-f1",
+      "fetchedAt": "2026-09-30T05:09:55.799Z",
+      "url": "https://api.jolpi.ca/ergast/f1/2026/14/driverStandings.json"
     }
   },
   "drivers": [
@@ -19519,5 +19524,272 @@
       "driverId": null,
       "message": "CLEAR IN TRACK SECTOR 5"
     }
-  ]
+  ],
+  "standings": {
+    "drivers": [
+      {
+        "driverId": "antonelli",
+        "code": "ANT",
+        "constructorId": "mercedes",
+        "position": 1,
+        "points": 292,
+        "wins": 8
+      },
+      {
+        "driverId": "russell",
+        "code": "RUS",
+        "constructorId": "mercedes",
+        "position": 2,
+        "points": 211,
+        "wins": 2
+      },
+      {
+        "driverId": "hamilton",
+        "code": "HAM",
+        "constructorId": "ferrari",
+        "position": 3,
+        "points": 191,
+        "wins": 1
+      },
+      {
+        "driverId": "norris",
+        "code": "NOR",
+        "constructorId": "mclaren",
+        "position": 4,
+        "points": 186,
+        "wins": 2
+      },
+      {
+        "driverId": "leclerc",
+        "code": "LEC",
+        "constructorId": "ferrari",
+        "position": 5,
+        "points": 167,
+        "wins": 1
+      },
+      {
+        "driverId": "max_verstappen",
+        "code": "VER",
+        "constructorId": "red_bull",
+        "position": 6,
+        "points": 145,
+        "wins": 0
+      },
+      {
+        "driverId": "piastri",
+        "code": "PIA",
+        "constructorId": "mclaren",
+        "position": 7,
+        "points": 120,
+        "wins": 0
+      },
+      {
+        "driverId": "hadjar",
+        "code": "HAD",
+        "constructorId": "red_bull",
+        "position": 8,
+        "points": 71,
+        "wins": 0
+      },
+      {
+        "driverId": "lawson",
+        "code": "LAW",
+        "constructorId": "red_bull",
+        "position": 9,
+        "points": 59,
+        "wins": 0
+      },
+      {
+        "driverId": "gasly",
+        "code": "GAS",
+        "constructorId": "alpine",
+        "position": 10,
+        "points": 41,
+        "wins": 0
+      },
+      {
+        "driverId": "arvid_lindblad",
+        "code": "LIN",
+        "constructorId": "rb",
+        "position": 11,
+        "points": 31,
+        "wins": 0
+      },
+      {
+        "driverId": "colapinto",
+        "code": "COL",
+        "constructorId": "alpine",
+        "position": 12,
+        "points": 27,
+        "wins": 0
+      },
+      {
+        "driverId": "bearman",
+        "code": "BEA",
+        "constructorId": "haas",
+        "position": 13,
+        "points": 18,
+        "wins": 0
+      },
+      {
+        "driverId": "bortoleto",
+        "code": "BOR",
+        "constructorId": "audi",
+        "position": 14,
+        "points": 10,
+        "wins": 0
+      },
+      {
+        "driverId": "hulkenberg",
+        "code": "HUL",
+        "constructorId": "audi",
+        "position": 15,
+        "points": 7,
+        "wins": 0
+      },
+      {
+        "driverId": "sainz",
+        "code": "SAI",
+        "constructorId": "williams",
+        "position": 16,
+        "points": 6,
+        "wins": 0
+      },
+      {
+        "driverId": "albon",
+        "code": "ALB",
+        "constructorId": "williams",
+        "position": 17,
+        "points": 5,
+        "wins": 0
+      },
+      {
+        "driverId": "ocon",
+        "code": "OCO",
+        "constructorId": "haas",
+        "position": 18,
+        "points": 3,
+        "wins": 0
+      },
+      {
+        "driverId": "alonso",
+        "code": "ALO",
+        "constructorId": "aston_martin",
+        "position": 19,
+        "points": 3,
+        "wins": 0
+      },
+      {
+        "driverId": "tsunoda",
+        "code": "TSU",
+        "constructorId": "rb",
+        "position": 20,
+        "points": 1,
+        "wins": 0
+      },
+      {
+        "driverId": "stroll",
+        "code": "STR",
+        "constructorId": "aston_martin",
+        "position": 21,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "bottas",
+        "code": "BOT",
+        "constructorId": "cadillac",
+        "position": 22,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "perez",
+        "code": "PER",
+        "constructorId": "cadillac",
+        "position": 23,
+        "points": 0,
+        "wins": 0
+      }
+    ],
+    "teams": [
+      {
+        "constructorId": "mercedes",
+        "name": "Mercedes",
+        "position": 1,
+        "points": 503,
+        "wins": 10
+      },
+      {
+        "constructorId": "ferrari",
+        "name": "Ferrari",
+        "position": 2,
+        "points": 358,
+        "wins": 2
+      },
+      {
+        "constructorId": "mclaren",
+        "name": "McLaren",
+        "position": 3,
+        "points": 306,
+        "wins": 2
+      },
+      {
+        "constructorId": "red_bull",
+        "name": "Red Bull",
+        "position": 4,
+        "points": 230,
+        "wins": 0
+      },
+      {
+        "constructorId": "rb",
+        "name": "RB F1 Team",
+        "position": 5,
+        "points": 77,
+        "wins": 0
+      },
+      {
+        "constructorId": "alpine",
+        "name": "Alpine F1 Team",
+        "position": 6,
+        "points": 68,
+        "wins": 0
+      },
+      {
+        "constructorId": "haas",
+        "name": "Haas F1 Team",
+        "position": 7,
+        "points": 21,
+        "wins": 0
+      },
+      {
+        "constructorId": "audi",
+        "name": "Audi",
+        "position": 8,
+        "points": 17,
+        "wins": 0
+      },
+      {
+        "constructorId": "williams",
+        "name": "Williams",
+        "position": 9,
+        "points": 11,
+        "wins": 0
+      },
+      {
+        "constructorId": "aston_martin",
+        "name": "Aston Martin",
+        "position": 10,
+        "points": 3,
+        "wins": 0
+      },
+      {
+        "constructorId": "cadillac",
+        "name": "Cadillac F1 Team",
+        "position": 11,
+        "points": 0,
+        "wins": 0
+      }
+    ]
+  }
 }

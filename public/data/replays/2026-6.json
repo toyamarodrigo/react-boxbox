@@ -24,6 +24,11 @@
       "provider": "openf1",
       "fetchedAt": "2026-09-29T21:05:29.419Z",
       "url": "https://api.openf1.org/v1/race_control?session_key=11299"
+    },
+    "standings": {
+      "provider": "jolpica-f1",
+      "fetchedAt": "2026-09-30T05:09:55.799Z",
+      "url": "https://api.jolpi.ca/ergast/f1/2026/6/driverStandings.json"
     }
   },
   "drivers": [
@@ -25869,5 +25874,264 @@
       "driverId": null,
       "message": "CLEAR IN TRACK SECTOR 10"
     }
-  ]
+  ],
+  "standings": {
+    "drivers": [
+      {
+        "driverId": "antonelli",
+        "code": "ANT",
+        "constructorId": "mercedes",
+        "position": 1,
+        "points": 156,
+        "wins": 5
+      },
+      {
+        "driverId": "hamilton",
+        "code": "HAM",
+        "constructorId": "ferrari",
+        "position": 2,
+        "points": 90,
+        "wins": 0
+      },
+      {
+        "driverId": "russell",
+        "code": "RUS",
+        "constructorId": "mercedes",
+        "position": 3,
+        "points": 88,
+        "wins": 1
+      },
+      {
+        "driverId": "leclerc",
+        "code": "LEC",
+        "constructorId": "ferrari",
+        "position": 4,
+        "points": 75,
+        "wins": 0
+      },
+      {
+        "driverId": "piastri",
+        "code": "PIA",
+        "constructorId": "mclaren",
+        "position": 5,
+        "points": 60,
+        "wins": 0
+      },
+      {
+        "driverId": "norris",
+        "code": "NOR",
+        "constructorId": "mclaren",
+        "position": 6,
+        "points": 58,
+        "wins": 0
+      },
+      {
+        "driverId": "max_verstappen",
+        "code": "VER",
+        "constructorId": "red_bull",
+        "position": 7,
+        "points": 43,
+        "wins": 0
+      },
+      {
+        "driverId": "hadjar",
+        "code": "HAD",
+        "constructorId": "red_bull",
+        "position": 8,
+        "points": 29,
+        "wins": 0
+      },
+      {
+        "driverId": "lawson",
+        "code": "LAW",
+        "constructorId": "rb",
+        "position": 9,
+        "points": 26,
+        "wins": 0
+      },
+      {
+        "driverId": "gasly",
+        "code": "GAS",
+        "constructorId": "alpine",
+        "position": 10,
+        "points": 26,
+        "wins": 0
+      },
+      {
+        "driverId": "bearman",
+        "code": "BEA",
+        "constructorId": "haas",
+        "position": 11,
+        "points": 18,
+        "wins": 0
+      },
+      {
+        "driverId": "colapinto",
+        "code": "COL",
+        "constructorId": "alpine",
+        "position": 12,
+        "points": 15,
+        "wins": 0
+      },
+      {
+        "driverId": "arvid_lindblad",
+        "code": "LIN",
+        "constructorId": "rb",
+        "position": 13,
+        "points": 13,
+        "wins": 0
+      },
+      {
+        "driverId": "sainz",
+        "code": "SAI",
+        "constructorId": "williams",
+        "position": 14,
+        "points": 6,
+        "wins": 0
+      },
+      {
+        "driverId": "albon",
+        "code": "ALB",
+        "constructorId": "williams",
+        "position": 15,
+        "points": 5,
+        "wins": 0
+      },
+      {
+        "driverId": "ocon",
+        "code": "OCO",
+        "constructorId": "haas",
+        "position": 16,
+        "points": 3,
+        "wins": 0
+      },
+      {
+        "driverId": "bortoleto",
+        "code": "BOR",
+        "constructorId": "audi",
+        "position": 17,
+        "points": 2,
+        "wins": 0
+      },
+      {
+        "driverId": "alonso",
+        "code": "ALO",
+        "constructorId": "aston_martin",
+        "position": 18,
+        "points": 1,
+        "wins": 0
+      },
+      {
+        "driverId": "hulkenberg",
+        "code": "HUL",
+        "constructorId": "audi",
+        "position": 19,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "bottas",
+        "code": "BOT",
+        "constructorId": "cadillac",
+        "position": 20,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "perez",
+        "code": "PER",
+        "constructorId": "cadillac",
+        "position": 21,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "stroll",
+        "code": "STR",
+        "constructorId": "aston_martin",
+        "position": 22,
+        "points": 0,
+        "wins": 0
+      }
+    ],
+    "teams": [
+      {
+        "constructorId": "mercedes",
+        "name": "Mercedes",
+        "position": 1,
+        "points": 244,
+        "wins": 6
+      },
+      {
+        "constructorId": "ferrari",
+        "name": "Ferrari",
+        "position": 2,
+        "points": 165,
+        "wins": 0
+      },
+      {
+        "constructorId": "mclaren",
+        "name": "McLaren",
+        "position": 3,
+        "points": 118,
+        "wins": 0
+      },
+      {
+        "constructorId": "red_bull",
+        "name": "Red Bull",
+        "position": 4,
+        "points": 72,
+        "wins": 0
+      },
+      {
+        "constructorId": "alpine",
+        "name": "Alpine F1 Team",
+        "position": 5,
+        "points": 41,
+        "wins": 0
+      },
+      {
+        "constructorId": "rb",
+        "name": "RB F1 Team",
+        "position": 6,
+        "points": 39,
+        "wins": 0
+      },
+      {
+        "constructorId": "haas",
+        "name": "Haas F1 Team",
+        "position": 7,
+        "points": 21,
+        "wins": 0
+      },
+      {
+        "constructorId": "williams",
+        "name": "Williams",
+        "position": 8,
+        "points": 11,
+        "wins": 0
+      },
+      {
+        "constructorId": "audi",
+        "name": "Audi",
+        "position": 9,
+        "points": 2,
+        "wins": 0
+      },
+      {
+        "constructorId": "aston_martin",
+        "name": "Aston Martin",
+        "position": 10,
+        "points": 1,
+        "wins": 0
+      },
+      {
+        "constructorId": "cadillac",
+        "name": "Cadillac F1 Team",
+        "position": 11,
+        "points": 0,
+        "wins": 0
+      }
+    ]
+  }
 }

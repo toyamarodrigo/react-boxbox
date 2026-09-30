@@ -24,6 +24,11 @@
       "provider": "openf1",
       "fetchedAt": "2026-09-29T21:26:14.313Z",
       "url": "https://api.openf1.org/v1/race_control?session_key=9149"
+    },
+    "standings": {
+      "provider": "jolpica-f1",
+      "fetchedAt": "2026-09-30T05:09:55.799Z",
+      "url": "https://api.jolpi.ca/ergast/f1/2023/13/driverStandings.json"
     }
   },
   "drivers": [
@@ -22367,5 +22372,257 @@
       "driverId": null,
       "message": "FIA STEWARDS: INCIDENT INVOLVING CAR 20 (MAG) UNDER INVESTIGATION - RESTART INFRINGEMENT"
     }
-  ]
+  ],
+  "standings": {
+    "drivers": [
+      {
+        "driverId": "max_verstappen",
+        "code": "VER",
+        "constructorId": "red_bull",
+        "position": 1,
+        "points": 339,
+        "wins": 11
+      },
+      {
+        "driverId": "perez",
+        "code": "PER",
+        "constructorId": "red_bull",
+        "position": 2,
+        "points": 201,
+        "wins": 2
+      },
+      {
+        "driverId": "alonso",
+        "code": "ALO",
+        "constructorId": "aston_martin",
+        "position": 3,
+        "points": 168,
+        "wins": 0
+      },
+      {
+        "driverId": "hamilton",
+        "code": "HAM",
+        "constructorId": "mercedes",
+        "position": 4,
+        "points": 156,
+        "wins": 0
+      },
+      {
+        "driverId": "sainz",
+        "code": "SAI",
+        "constructorId": "ferrari",
+        "position": 5,
+        "points": 102,
+        "wins": 0
+      },
+      {
+        "driverId": "leclerc",
+        "code": "LEC",
+        "constructorId": "ferrari",
+        "position": 6,
+        "points": 99,
+        "wins": 0
+      },
+      {
+        "driverId": "russell",
+        "code": "RUS",
+        "constructorId": "mercedes",
+        "position": 7,
+        "points": 99,
+        "wins": 0
+      },
+      {
+        "driverId": "norris",
+        "code": "NOR",
+        "constructorId": "mclaren",
+        "position": 8,
+        "points": 75,
+        "wins": 0
+      },
+      {
+        "driverId": "stroll",
+        "code": "STR",
+        "constructorId": "aston_martin",
+        "position": 9,
+        "points": 47,
+        "wins": 0
+      },
+      {
+        "driverId": "gasly",
+        "code": "GAS",
+        "constructorId": "alpine",
+        "position": 10,
+        "points": 37,
+        "wins": 0
+      },
+      {
+        "driverId": "ocon",
+        "code": "OCO",
+        "constructorId": "alpine",
+        "position": 11,
+        "points": 36,
+        "wins": 0
+      },
+      {
+        "driverId": "piastri",
+        "code": "PIA",
+        "constructorId": "mclaren",
+        "position": 12,
+        "points": 36,
+        "wins": 0
+      },
+      {
+        "driverId": "albon",
+        "code": "ALB",
+        "constructorId": "williams",
+        "position": 13,
+        "points": 15,
+        "wins": 0
+      },
+      {
+        "driverId": "hulkenberg",
+        "code": "HUL",
+        "constructorId": "haas",
+        "position": 14,
+        "points": 9,
+        "wins": 0
+      },
+      {
+        "driverId": "bottas",
+        "code": "BOT",
+        "constructorId": "alfa",
+        "position": 15,
+        "points": 5,
+        "wins": 0
+      },
+      {
+        "driverId": "zhou",
+        "code": "ZHO",
+        "constructorId": "alfa",
+        "position": 16,
+        "points": 4,
+        "wins": 0
+      },
+      {
+        "driverId": "tsunoda",
+        "code": "TSU",
+        "constructorId": "alphatauri",
+        "position": 17,
+        "points": 3,
+        "wins": 0
+      },
+      {
+        "driverId": "kevin_magnussen",
+        "code": "MAG",
+        "constructorId": "haas",
+        "position": 18,
+        "points": 2,
+        "wins": 0
+      },
+      {
+        "driverId": "sargeant",
+        "code": "SAR",
+        "constructorId": "williams",
+        "position": 19,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "de_vries",
+        "code": "DEV",
+        "constructorId": "alphatauri",
+        "position": 20,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "ricciardo",
+        "code": "RIC",
+        "constructorId": "alphatauri",
+        "position": 21,
+        "points": 0,
+        "wins": 0
+      },
+      {
+        "driverId": "lawson",
+        "code": "LAW",
+        "constructorId": "alphatauri",
+        "position": 22,
+        "points": 0,
+        "wins": 0
+      }
+    ],
+    "teams": [
+      {
+        "constructorId": "red_bull",
+        "name": "Red Bull",
+        "position": 1,
+        "points": 540,
+        "wins": 13
+      },
+      {
+        "constructorId": "mercedes",
+        "name": "Mercedes",
+        "position": 2,
+        "points": 255,
+        "wins": 0
+      },
+      {
+        "constructorId": "aston_martin",
+        "name": "Aston Martin",
+        "position": 3,
+        "points": 215,
+        "wins": 0
+      },
+      {
+        "constructorId": "ferrari",
+        "name": "Ferrari",
+        "position": 4,
+        "points": 201,
+        "wins": 0
+      },
+      {
+        "constructorId": "mclaren",
+        "name": "McLaren",
+        "position": 5,
+        "points": 111,
+        "wins": 0
+      },
+      {
+        "constructorId": "alpine",
+        "name": "Alpine F1 Team",
+        "position": 6,
+        "points": 73,
+        "wins": 0
+      },
+      {
+        "constructorId": "williams",
+        "name": "Williams",
+        "position": 7,
+        "points": 15,
+        "wins": 0
+      },
+      {
+        "constructorId": "haas",
+        "name": "Haas F1 Team",
+        "position": 8,
+        "points": 11,
+        "wins": 0
+      },
+      {
+        "constructorId": "alfa",
+        "name": "Alfa Romeo",
+        "position": 9,
+        "points": 9,
+        "wins": 0
+      },
+      {
+        "constructorId": "alphatauri",
+        "name": "AlphaTauri",
+        "position": 10,
+        "points": 3,
+        "wins": 0
+      }
+    ]
+  }
 }
