@@ -581,6 +581,20 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "battle-card",
+      "type": "registry:ui",
+      "title": "Battle Card",
+      "description": "Two cars one place apart on a broadcast card: the interval between them, which way it is going, and a tag when one gets past.",
+      "dependencies": ["motion"],
+      "registryDependencies": ["@boxbox/boxbox-theme", "@boxbox/boxbox-motion"],
+      "files": [
+        {
+          "path": "registry/boxbox/ui/battle-card.tsx",
+          "type": "registry:ui"
+        }
+      ]
     }
   ]
 }

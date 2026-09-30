@@ -1422,3 +1422,71 @@ describe('replay page, pit stop card', () => {
     expect(screen.getByText('CHA pit stop 1, pit lane 3.0 seconds, in P3.')).toBeInTheDocument();
   });
 });
+
+describe('replay page, battle card', () => {
+  const battleCard = () => document.querySelector('[data-slot="battle-card"]');
+  const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
+
+  /**
+   * The test race without its virtual safety car: bravo and alpha are a second apart at the lines
+   * of laps one and two, so a battle for the lead starts at alpha's line at 200 s and ends at the
+   * next one, 2 s apart, at 299 s.
+   */
+  function serveRaceWithoutSafetyCar() {
+    const green = { ...race, raceControl: [] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/index.json')) return jsonResponse(index);
+        if (url.endsWith(`/${race.id}.json`)) return jsonResponse(green);
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }),
+    );
+  }
+
+  it('shows the battle highest up the order over the map, away from the pit card', async () => {
+    serveRaceWithoutSafetyCar();
+    renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+
+    await waitFor(() => expect(battleCard()).not.toBeNull());
+    expect(
+      battleCard()?.closest('figure')?.querySelector('[data-slot="track-map"]'),
+    ).not.toBeNull();
+    // An overlay: out of the flow, in the top-right corner, and no obstacle to a click on a car.
+    expect(battleCard()?.parentElement).toHaveClass(
+      'pointer-events-none',
+      'absolute',
+      'top-0',
+      'right-0',
+    );
+    expect(screen.getByText(/^Battle for P1, BRA ahead of ALP, interval /)).toBeInTheDocument();
+  });
+
+  it('shows the same battle while the followed driver is in none', async () => {
+    serveRaceWithoutSafetyCar();
+    renderReplay('/replay?driver=CHA&t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'charlie'));
+    await waitFor(() => expect(battleCard()).not.toBeNull());
+    expect(screen.getByText(/^Battle for P1, BRA ahead of ALP/)).toBeInTheDocument();
+  });
+
+  it('shows nothing before the battle starts', async () => {
+    serveRaceWithoutSafetyCar();
+    renderReplay('/replay?t=150');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '150000'));
+    expect(battleCard()).toBeNull();
+  });
+
+  it('shows nothing when the laps it needs ran under a neutralisation', async () => {
+    // The race as it is, with the virtual safety car over laps one and two.
+    renderReplay('/replay?t=250');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(raceTime()).toHaveAttribute('aria-valuenow', '250000'));
+    expect(battleCard()).toBeNull();
+  });
+});

@@ -5,6 +5,7 @@ import { TEAM_RADIO_ENVELOPE, TEAM_RADIO_WORDS } from '@/content/team-radio/radi
 import { drivers, grid, teams } from '@/data/grid';
 import { createInitialRace, createSeededRng } from '@/data/simulation';
 import type { TrackMarker, TrackSector } from '@/registry/boxbox/lib/types';
+import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { Gauge } from '@/registry/boxbox/ui/gauge';
@@ -295,6 +296,22 @@ function PitStopCardPreview() {
   );
 }
 
+function BattleCardPreview() {
+  // A battle for third with the car behind closing: no pass, so no tag.
+  const [ahead, behind] = [drivers[3], drivers[4]];
+  if (!ahead || !behind) return null;
+  return (
+    <BattleCard
+      position={3}
+      ahead={{ code: ahead.code, color: teamColor(ahead.teamId) }}
+      behind={{ code: behind.code, color: teamColor(behind.teamId) }}
+      interval={0.482}
+      trend={-0.3}
+      size="sm"
+    />
+  );
+}
+
 type VisibleSlug = Exclude<(typeof contentSlugs)[number], 'example'>;
 
 // A new slug without an entry here is a type error, not a blank card.
@@ -317,6 +334,7 @@ const previews = {
   gauge: GaugePreview,
   'team-radio': TeamRadioPreview,
   'pit-stop-card': PitStopCardPreview,
+  'battle-card': BattleCardPreview,
 } satisfies Record<VisibleSlug, () => ReactNode>;
 
 const hasPreview = (slug: string): slug is VisibleSlug => Object.hasOwn(previews, slug);

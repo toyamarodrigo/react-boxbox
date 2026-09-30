@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MotionConfig } from 'motion/react';
 import type { ReactElement } from 'react';
 import type { Driver, Team, TimingRow } from '@/registry/boxbox/lib/types';
+import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { DriverNamePlate } from '@/registry/boxbox/ui/driver-name-plate';
 import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { ReplayBumper } from '@/registry/boxbox/ui/replay-bumper';
@@ -114,6 +115,18 @@ const components: [string, ReactElement][] = [
       positionOut={5}
     />,
   ],
+  [
+    'Battle Card',
+    <BattleCard
+      key="b"
+      position={4}
+      ahead={{ code: 'TRE' }}
+      behind={{ code: 'NVA' }}
+      interval={0.482}
+      trend={-0.3}
+      overtake
+    />,
+  ],
 ];
 
 describe('reduced motion', () => {
@@ -154,6 +167,12 @@ describe('reduced motion', () => {
     expect(
       screen.getByText(
         'MSO pit stop 2, medium tyres off, hard on, pit lane 22.4 seconds, in P3, out P5.',
+      ),
+    ).toBeInTheDocument();
+    // Battle Card: the wipe and the swap are motion only, so the battle reads in full.
+    expect(
+      screen.getByText(
+        'Battle for P4, TRE overtook NVA, interval 0.482 seconds, closing 0.3 seconds a lap.',
       ),
     ).toBeInTheDocument();
   });
@@ -240,6 +259,19 @@ describe('accessible names and state', () => {
       expect(painted).toHaveAttribute('aria-hidden');
     }
     expect(screen.getByText('EVO pit stop 1, pit lane 9.8 seconds, in P4.')).toBeInTheDocument();
+  });
+
+  it('hides the painted Battle Card and reads the battle once', () => {
+    render(
+      <BattleCard position={2} ahead={{ code: 'EVO' }} behind={{ code: 'MSO' }} interval={1.2} />,
+    );
+    const card = document.querySelector('[data-slot="battle-card"]');
+    for (const painted of card?.querySelectorAll(':scope > :not(.sr-only)') ?? []) {
+      expect(painted).toHaveAttribute('aria-hidden');
+    }
+    expect(
+      screen.getByText('Battle for P2, EVO ahead of MSO, interval 1.200 seconds.'),
+    ).toBeInTheDocument();
   });
 
   it('hides the Replay Bumper overlay from assistive tech and names the run', () => {

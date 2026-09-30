@@ -64,6 +64,7 @@ import {
   raceName,
 } from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
+import { battleCardAt } from '../data/replay-battle';
 import { pitStopCardAt } from '../data/replay-pit-stop';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
 import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
@@ -72,6 +73,7 @@ import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registr
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
+import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
@@ -927,6 +929,19 @@ function Circuit({
     ? race.drivers.find((driver) => driver.id === stopCard.driverId)
     : undefined;
 
+  // The followed driver's battle, or the one highest up the order; none once the flag is out.
+  const battle = replay.finished
+    ? null
+    : battleCardAt(race, replay.elapsedMs, followedId, { rows: replay.rows, pit: circuit.pit });
+  const battleCar = (driverId: string) => {
+    const driver = race.drivers.find((entry) => entry.id === driverId);
+    return driver
+      ? { code: driver.code, color: race.teams.find((team) => team.id === driver.teamId)?.color }
+      : undefined;
+  };
+  const battleAhead = battle ? battleCar(battle.aheadId) : undefined;
+  const battleBehind = battle ? battleCar(battle.behindId) : undefined;
+
   return (
     <figure className="flex flex-col gap-3 border border-border bg-card p-5">
       {/*
@@ -969,6 +984,26 @@ function Circuit({
                 compoundOn={stopCard.compoundOn}
                 positionIn={stopCard.positionIn}
                 positionOut={stopCard.positionOut}
+                size="sm"
+              />
+            )}
+          </AnimatePresence>
+        </div>
+        {/*
+         * The opposite corner from the pit stop card, so the two never cover each other when the
+         * followed driver pits out of a battle. Keyed per battle, so a new one wipes in again.
+         */}
+        <div className="pointer-events-none absolute top-0 right-0">
+          <AnimatePresence>
+            {battle && battleAhead && battleBehind && (
+              <BattleCard
+                key={battle.key}
+                position={battle.position}
+                ahead={battleAhead}
+                behind={battleBehind}
+                interval={battle.interval}
+                trend={battle.trend}
+                overtake={battle.overtake}
                 size="sm"
               />
             )}

@@ -19,4 +19,5 @@ export const contentSlugs = [
   'gauge',
   'team-radio',
   'pit-stop-card',
+  'battle-card',
 ] as const;
