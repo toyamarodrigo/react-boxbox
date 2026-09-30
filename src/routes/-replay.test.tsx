@@ -1310,7 +1310,7 @@ describe('replay page, lap grid', () => {
 });
 
 describe('replay page, pit stop card', () => {
-  const stopCard = () => document.querySelector('[data-slot="pit-stop-card"]');
+  const stopCard = () => document.querySelector('[data-card="live"] [data-slot="pit-stop-card"]');
   const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
 
   /**
@@ -1355,7 +1355,7 @@ describe('replay page, pit stop card', () => {
     );
   }
 
-  it('shows the followed driver’s stop over the map during the pit window', async () => {
+  it('shows the followed driver’s stop under the map during the pit window', async () => {
     servePittedRace();
     renderReplay('/replay?driver=CHA&t=155');
     await screen.findByRole('heading', { name: race.name });
@@ -1426,7 +1426,7 @@ describe('replay page, pit stop card', () => {
 });
 
 describe('replay page, battle card', () => {
-  const battleCard = () => document.querySelector('[data-slot="battle-card"]');
+  const battleCard = () => document.querySelector('[data-card="live"] [data-slot="battle-card"]');
   const raceTime = () => screen.getByRole('slider', { name: 'Race time' });
 
   /**
@@ -1447,7 +1447,7 @@ describe('replay page, battle card', () => {
     );
   }
 
-  it('shows the battle highest up the order over the map, away from the pit card', async () => {
+  it('shows the battle highest up the order under the map', async () => {
     serveRaceWithoutSafetyCar();
     renderReplay('/replay?t=250');
     await screen.findByRole('heading', { name: race.name });
@@ -1457,12 +1457,9 @@ describe('replay page, battle card', () => {
     expect(
       battleCard()?.closest('figure')?.querySelector('[data-slot="track-map"]'),
     ).not.toBeNull();
-    // An overlay: out of the flow, in the top-right corner, and no obstacle to a click on a car.
-    expect(battleCard()?.parentElement).toHaveClass(
-      'pointer-events-none',
-      'absolute',
-      'top-0',
-      'right-0',
+    // Under the map, not over it: nothing in the map's box but the map itself.
+    expect(document.querySelector('[data-slot="track-map"]')?.contains(battleCard() ?? null)).toBe(
+      false,
     );
     expect(screen.getByText(/^Battle for P1, BRA ahead of ALP, interval /)).toBeInTheDocument();
   });

@@ -901,6 +901,56 @@ function Stage({
   );
 }
 
+/**
+ * The tallest each card gets: an overtake tag, both tyres, a position out. Drawn invisible under
+ * the real card, so a slot holds its height from the start and never measures anything.
+ */
+const BATTLE_CARD_SIZER = (
+  <BattleCard
+    position={20}
+    ahead={{ code: 'WWW' }}
+    behind={{ code: 'WWW' }}
+    interval={88.888}
+    trend={-8.8}
+    overtake
+    size="sm"
+  />
+);
+const PIT_STOP_CARD_SIZER = (
+  <PitStopCard
+    code="WWW"
+    stop={8}
+    laneTime={88.8}
+    compoundOff="M"
+    compoundOn="H"
+    positionIn={20}
+    positionOut={20}
+    size="sm"
+  />
+);
+
+/** One place in the strip under the map: the sizer and the card share one grid cell. */
+function CardSlot({
+  sizer,
+  className,
+  children,
+}: {
+  sizer: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn('grid', className)}>
+      <div aria-hidden inert className="invisible [grid-area:1/1]">
+        {sizer}
+      </div>
+      <div data-card="live" className="[grid-area:1/1]">
+        <AnimatePresence>{children}</AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
 function Circuit({
   race,
   replay,
@@ -965,64 +1015,54 @@ function Circuit({
        * a change of flag rather than ten times a second.
        */}
       <FlagBanner status={status} visible={status !== 'green'} />
-      <div className="relative">
-        <TrackMap
-          // A new outline restarts the markers, so their lap counters do not carry over.
-          key={circuit.name}
-          path={circuit.d}
-          pitLane={circuit.pit.d}
-          viewBox={circuit.viewBox}
-          markers={markers}
-          sectors={flagged}
-          // After a seek the cars snap to the new time; sliding there would cross the circuit.
-          transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
-          onMarkerClick={handleMarkerClick}
-          dimOthers={followedId !== undefined}
-        />
-        {/*
-         * Over the map's corner, the way a broadcast lays a graphic over the picture: the card
-         * comes and goes with every stop, and a slot in the flow would either move the page each
-         * time or hold an empty box for the rest of the race. It takes no clicks, so the cars
-         * under it can still be followed.
-         */}
-        <div className="pointer-events-none absolute bottom-0 left-0">
-          <AnimatePresence>
-            {stopCard && stopDriver && (
-              <PitStopCard
-                key={stopCard.key}
-                code={stopDriver.code}
-                color={race.teams.find((team) => team.id === stopDriver.teamId)?.color}
-                stop={stopCard.stop}
-                laneTime={stopCard.laneTime}
-                compoundOff={stopCard.compoundOff}
-                compoundOn={stopCard.compoundOn}
-                positionIn={stopCard.positionIn}
-                positionOut={stopCard.positionOut}
-                size="sm"
-              />
-            )}
-          </AnimatePresence>
-        </div>
-        {/*
-         * The opposite corner from the pit stop card, so the two never cover each other when the
-         * followed driver pits out of a battle. Keyed per battle, so a new one wipes in again.
-         */}
-        <div className="pointer-events-none absolute top-0 right-0">
-          <AnimatePresence>
-            {battle && battleAhead && battleBehind && (
-              <BattleCard
-                key={battle.key}
-                position={battle.position}
-                ahead={battleAhead}
-                behind={battleBehind}
-                interval={battle.interval}
-                trend={battle.trend}
-                overtake={battle.overtake}
-                size="sm"
-              />
-            )}
-          </AnimatePresence>
-        </div>
+      <TrackMap
+        // A new outline restarts the markers, so their lap counters do not carry over.
+        key={circuit.name}
+        path={circuit.d}
+        pitLane={circuit.pit.d}
+        viewBox={circuit.viewBox}
+        markers={markers}
+        sectors={flagged}
+        // After a seek the cars snap to the new time; sliding there would cross the circuit.
+        transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
+        onMarkerClick={handleMarkerClick}
+        dimOthers={followedId !== undefined}
+      />
+      {/*
+       * Under the map rather than over it, so no graphic covers a stretch of track. Both places
+       * keep the height of their tallest card, so the page never moves as a card comes and goes.
+       */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <CardSlot sizer={BATTLE_CARD_SIZER}>
+          {battle && battleAhead && battleBehind && (
+            <BattleCard
+              key={battle.key}
+              position={battle.position}
+              ahead={battleAhead}
+              behind={battleBehind}
+              interval={battle.interval}
+              trend={battle.trend}
+              overtake={battle.overtake}
+              size="sm"
+            />
+          )}
+        </CardSlot>
+        <CardSlot sizer={PIT_STOP_CARD_SIZER} className="sm:justify-items-end">
+          {stopCard && stopDriver && (
+            <PitStopCard
+              key={stopCard.key}
+              code={stopDriver.code}
+              color={race.teams.find((team) => team.id === stopDriver.teamId)?.color}
+              stop={stopCard.stop}
+              laneTime={stopCard.laneTime}
+              compoundOff={stopCard.compoundOff}
+              compoundOn={stopCard.compoundOn}
+              positionIn={stopCard.positionIn}
+              positionOut={stopCard.positionOut}
+              size="sm"
+            />
+          )}
+        </CardSlot>
       </div>
       <figcaption className="text-xs text-muted-foreground">
         {circuit.real
