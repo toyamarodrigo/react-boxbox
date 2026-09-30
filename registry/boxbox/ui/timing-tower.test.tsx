@@ -5,6 +5,7 @@ import {
   TimingTower,
   formatGap,
   formatLapTime,
+  formatPositionsGained,
   isClassified,
   rowValue,
   sortRows,
@@ -239,6 +240,95 @@ describe('TimingTower in results mode', () => {
       />,
     );
     expect(container.querySelectorAll('[data-slot="tyre-badge"]')).toHaveLength(0);
+  });
+});
+
+describe('formatPositionsGained', () => {
+  it('signs a gain and a loss, the loss with a true minus, and leaves none bare', () => {
+    expect(formatPositionsGained(5)).toBe('+5');
+    expect(formatPositionsGained(-3)).toBe('−3');
+    expect(formatPositionsGained(0)).toBe('0');
+  });
+});
+
+describe('TimingTower positions gained', () => {
+  const gained = [
+    makeRow('one', 1, { positionsGained: 5 }),
+    makeRow('two', 2, { positionsGained: -3 }),
+    makeRow('three', 3, { positionsGained: 0, pitLaneStart: true }),
+  ];
+  const cells = (container: HTMLElement) => [
+    ...container.querySelectorAll('[data-slot="timing-tower-positions-gained"]'),
+  ];
+
+  it('shows it on every row in results mode, toned and spoken', () => {
+    const { container } = render(
+      <TimingTower rows={gained} drivers={drivers} teams={teams} mode="results" />,
+    );
+    const shown = cells(container);
+    expect(shown.map((cell) => cell.getAttribute('data-change'))).toEqual(['gain', 'loss', 'none']);
+    expect(shown[0]).toHaveTextContent('+5');
+    expect(shown[0]?.querySelector('[aria-hidden]')).toHaveClass('text-flag-green');
+    expect(shown[1]).toHaveTextContent('−3');
+    expect(shown[1]?.querySelector('[aria-hidden]')).toHaveClass('text-primary');
+    expect(screen.getByText('gained 5 places')).toHaveClass('sr-only');
+    expect(screen.getByText('lost 3 places')).toHaveClass('sr-only');
+  });
+
+  it('marks a pit lane start PL and says so', () => {
+    const { container } = render(
+      <TimingTower rows={gained} drivers={drivers} teams={teams} mode="results" />,
+    );
+    const pitLane = cells(container)[2];
+    expect(pitLane).toHaveAttribute('data-pit-lane-start', 'true');
+    expect(pitLane).toHaveTextContent('PL');
+    expect(pitLane).toHaveTextContent('0');
+    expect(screen.getByText('started from the pit lane, no places gained')).toHaveClass('sr-only');
+    expect(cells(container)[0]).not.toHaveAttribute('data-pit-lane-start');
+  });
+
+  it('keeps an empty cell for a row without it and for a car that is not classified', () => {
+    const rows = [
+      makeRow('one', 1),
+      makeRow('two', 2, { positionsGained: 4, finishStatus: 'dnf' }),
+      makeRow('three', 3, { positionsGained: 1 }),
+    ];
+    const { container } = render(
+      <TimingTower rows={rows} drivers={drivers} teams={teams} mode="results" />,
+    );
+    const shown = cells(container);
+    expect(shown).toHaveLength(3);
+    expect(shown[0]).toBeEmptyDOMElement();
+    expect(shown[1]).toBeEmptyDOMElement();
+    expect(shown[2]).toHaveTextContent('+1');
+  });
+
+  it('leaves the race rows without it, even when they carry it', () => {
+    const { container } = render(
+      <TimingTower rows={gained} drivers={drivers} teams={teams} mode="leader" />,
+    );
+    expect(cells(container)).toHaveLength(0);
+    expect(screen.queryByText('gained 5 places')).toBeNull();
+  });
+
+  it('adds it to the default panel of a followed row that carries it, and only then', () => {
+    const { container, rerender } = render(
+      <TimingTower rows={gained} drivers={drivers} teams={teams} followedId="two" />,
+    );
+    const figure = container.querySelector('[data-figure="gained"]');
+    expect(figure).toHaveTextContent('−3');
+    expect(figure).toHaveTextContent('lost 3 places');
+    expect(cells(container)).toHaveLength(1);
+
+    rerender(
+      <TimingTower
+        rows={[makeRow('one', 1), makeRow('two', 2)]}
+        drivers={drivers}
+        teams={teams}
+        followedId="two"
+      />,
+    );
+    expect(container.querySelector('[data-figure="gained"]')).toBeNull();
   });
 });
 

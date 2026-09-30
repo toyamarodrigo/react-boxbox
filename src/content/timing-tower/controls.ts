@@ -46,6 +46,13 @@ const controls = defineControls({
     default: 'drs',
     options: ['drs', 'overtake'],
   },
+  positionsGained: {
+    kind: 'boolean',
+    label: 'Positions gained',
+    description:
+      'In results mode, give each row its places gained against the grid; the car at the back started from the pit lane.',
+    default: true,
+  },
   followable: {
     kind: 'boolean',
     label: 'Followable',

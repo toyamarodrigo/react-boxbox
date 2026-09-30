@@ -46,7 +46,7 @@ import {
   leaderLapsCompleted,
   neutralisationSummary,
   overtakeModeFor,
-  positionsSinceStart,
+  positionsGained,
   raceControlUpTo,
   replayGaps,
   replayPodium,
@@ -75,9 +75,9 @@ import {
   type TimingTowerExpandedContext,
   TimingTower,
   TimingTowerFigure,
+  TimingTowerPositionsGained,
   formatGap,
   formatLapTime,
-  positionChangeState,
 } from '@/registry/boxbox/ui/timing-tower';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
 import { LapGrid } from '../components/site/replay/lap-grid';
@@ -561,13 +561,6 @@ function Controls({
 
 const EMPTY = '—';
 
-/** Gain / loss tones, the ones the tower's own ▲ / ▼ glyph uses. */
-const CHANGE_TONES = {
-  gain: 'text-flag-green',
-  loss: 'text-primary',
-  none: 'text-foreground',
-} as const;
-
 /**
  * Recharts is the one heavy dependency on the page and only the Gaps tab needs it, so the chart
  * arrives when that tab is first opened rather than in the bundle every viewer downloads.
@@ -599,31 +592,29 @@ function FollowedTyre({ stint, lap }: { stint: ReplayStint | undefined; lap: num
 }
 
 /**
- * Places made up since the grid. Its own component so the panel around it stays one list of
- * figures: the arrow and the sentence under it are two spellings of one number, and neither the
- * tower nor this page has anywhere else to put them.
+ * Positions gained, live: the grid slot against the position the car holds now. During the race
+ * only the followed car shows it, here; the tower's rows carry it in the results alone. An unknown
+ * grid slot or a car out of the race has nothing to count, and reads as the other empty figures.
  */
-function PlacesMade({ made }: { made: number | null }) {
+function PositionsGainedFigure({ race, row }: { race: ReplayRace; row: TimingRow }) {
+  const gained = positionsGained(race, row);
   return (
-    <TimingTowerFigure label="Since start" figure="places">
-      {/* The arrow carries the direction, so the sentence below it carries the meaning. */}
-      <span aria-hidden className={CHANGE_TONES[positionChangeState(made ?? 0)]}>
-        {made === null || made === 0 ? EMPTY : `${made > 0 ? '▲' : '▼'}${Math.abs(made)}`}
-      </span>
-      <span className="sr-only">
-        {made === null
-          ? 'no grid slot'
-          : made === 0
-            ? 'no places made up'
-            : `${made > 0 ? 'gained' : 'lost'} ${Math.abs(made)} since the start`}
-      </span>
+    <TimingTowerFigure label="Gained" figure="gained">
+      {gained.positionsGained === undefined ? (
+        EMPTY
+      ) : (
+        <TimingTowerPositionsGained
+          positionsGained={gained.positionsGained}
+          pitLaneStart={gained.pitLaneStart}
+        />
+      )}
     </TimingTowerFigure>
   );
 }
 
 /**
- * What the followed row shows on this page: the tower's own figures, the places the car has made
- * up since the grid, and its tyres — both of which the registry cannot know.
+ * What the followed row shows on this page: the tower's own figures, the car's positions gained
+ * against the grid, and its tyres — the last two from race data the live rows do not carry.
  *
  * With real timing the `LAST` figure gives way to `SectorTimes`, which says the same lap time and
  * three sectors more; the remaining three figures then fit on one line, so the panel grows by the
@@ -662,7 +653,6 @@ function FollowedFigures({
       }
     | undefined;
 }) {
-  const made = positionsSinceStart(race, row.driverId, row.position);
   const own = stints.get(row.driverId);
 
   return (
@@ -679,7 +669,7 @@ function FollowedFigures({
         <TimingTowerFigure label="Behind" figure="behind">
           {formatGap(behind?.interval ?? null)}
         </TimingTowerFigure>
-        <PlacesMade made={made} />
+        <PositionsGainedFigure race={race} row={row} />
       </div>
       {card && (
         <SectorTimes

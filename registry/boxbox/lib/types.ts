@@ -54,4 +54,16 @@ export type TimingRow = {
    * value other than `finished` lists the car as `OUT`: faded, muted, without tags.
    */
   finishStatus?: FinishStatus;
+  /**
+   * Places the car is ahead of where it started the race: its grid slot minus its position.
+   * Positive is a gain, negative a loss. Absent when there is nothing to count from. The tower
+   * shows it on every row in `results` mode and in the default expanded row; a car that is not
+   * classified shows none.
+   */
+  positionsGained?: number;
+  /**
+   * The car started from the pit lane. It counts as the last grid slot for `positionsGained`,
+   * and the tower marks the figure `PL`. Read only alongside `positionsGained`.
+   */
+  pitLaneStart?: boolean;
 };

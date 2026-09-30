@@ -10,6 +10,8 @@ import { useResultsPresentation } from './use-results-presentation';
 
 const drivers = Object.fromEntries(grid.drivers.map((driver) => [driver.id, driver]));
 const teams = Object.fromEntries(grid.teams.map((team) => [team.id, team]));
+/** The simulator starts the field in the order the grid lists it. */
+const startOrder = grid.drivers.map((driver) => driver.id);
 
 export default function TimingTowerDemo({
   mode,
@@ -18,6 +20,7 @@ export default function TimingTowerDemo({
   showTyre,
   showOvertake,
   overtakeMode,
+  positionsGained,
   followable,
   speed,
 }: ControlValues<typeof controls.fields>) {
@@ -39,6 +42,7 @@ export default function TimingTowerDemo({
     finished,
     drivers,
     teams,
+    startOrder: positionsGained ? startOrder : undefined,
   });
 
   return (
@@ -63,6 +67,8 @@ export default function TimingTowerDemo({
           fastestLapDriverId={fastestLapDriverId}
           followedId={followable ? followedId : null}
           onRowClick={followable ? onRowClick : undefined}
+          // The results add a positions gained column, and the tyres stay on under `showTyre`.
+          className={results.mode === 'results' ? 'w-64' : undefined}
         />
         {followable && (
           <span className="text-xs text-muted-foreground">

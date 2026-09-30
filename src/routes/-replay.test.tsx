@@ -355,8 +355,50 @@ describe('replay page, followed driver', () => {
     expect(screen.getByRole('group', { name: 'CHA details' })).toBeInTheDocument();
     expect(rowButton('charlie')).toHaveAttribute('aria-pressed', 'true');
     expect(rowButton('alpha')).toHaveAttribute('aria-pressed', 'false');
-    // Charlie started fifth and is running third, so it has made up two places.
-    expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
+    // Charlie started fifth and is running third, so it has gained two places.
+    const gained = document.querySelector('[data-figure="gained"]');
+    expect(gained).toHaveTextContent('+2');
+    expect(gained).toHaveTextContent('gained 2 places');
+    // During the race only the followed car shows positions gained, in its panel.
+    expect(document.querySelectorAll('[data-slot="timing-tower-positions-gained"]')).toHaveLength(
+      1,
+    );
+  });
+
+  it('marks a pit lane start in the followed row, counted from the last slot', async () => {
+    renderReplay('/replay?driver=DEL');
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(followedRow()).toHaveAttribute('data-driver', 'delta'));
+
+    const gained = document.querySelector('[data-figure="gained"]');
+    const position = Number(followedRow()?.getAttribute('data-position'));
+    // Four cars started, so the pit lane counts as fourth.
+    expect(gained).toHaveTextContent('PL');
+    expect(gained?.querySelector('[data-slot="timing-tower-positions-gained"]')).toHaveAttribute(
+      'data-pit-lane-start',
+      'true',
+    );
+    expect(gained).toHaveTextContent(
+      `started from the pit lane, ${position === 4 ? 'no places gained' : `gained ${4 - position}`}`,
+    );
+  });
+
+  it('shows positions gained on every classified row of the results, and none for a retirement', async () => {
+    renderReplay();
+    await screen.findByRole('heading', { name: race.name });
+    await waitFor(() => expect(screen.getByText('Lap 1 of 3')).toBeInTheDocument());
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Race time' }), { key: 'End' });
+    await waitFor(() => expect(screen.getByText('WINNER')).toBeInTheDocument());
+
+    const gained = (driverId: string) =>
+      document.querySelector(
+        `[data-slot="timing-tower-row"][data-driver="${driverId}"] [data-slot="timing-tower-positions-gained"]`,
+      );
+    expect(gained('bravo')).toHaveTextContent('+1');
+    expect(gained('alpha')).toHaveTextContent('−1');
+    expect(gained('charlie')).toHaveTextContent('+2');
+    expect(gained('delta')).toBeEmptyDOMElement();
   });
 
   it('ignores a code no driver in the race carries', async () => {
@@ -807,7 +849,7 @@ describe('replay page, sectors and speed trap', () => {
     expect(sectorCard()).toBeNull();
     expect(trapCard()).toBeNull();
     expect(document.querySelector('[data-figure="last"]')).not.toBeNull();
-    expect(document.querySelector('[data-figure="places"]')).toHaveTextContent('▲2');
+    expect(document.querySelector('[data-figure="gained"]')).toHaveTextContent('+2');
   });
 });
 
