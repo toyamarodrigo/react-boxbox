@@ -1,9 +1,11 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FinishStatus } from '@/registry/boxbox/lib/types';
+import { circuitById } from './circuits';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
 import { type ReplayRace, type ReplayRaceControl, replayRaceSchema } from './replay-schema';
 import {
+  type CarLap,
   carLapsAt,
   emphasiseMarker,
   flaggedSectorsAt,
@@ -233,6 +235,30 @@ describe('pit stops on the lane', () => {
     expect(replayPitStops(endless, shape)).toEqual([]);
   });
 
+  it('runs a lap that is both an out-lap and an in-lap from the exit to the entry', () => {
+    // Charlie stops again on lap 3, which ends at 478000: in the lane from 468000.
+    const twice: ReplayRace = {
+      ...pitted,
+      laps: pitted.laps.map((lap) =>
+        lap.lap === 3
+          ? {
+              ...lap,
+              rows: lap.rows.map((row) =>
+                row.driverId === 'charlie'
+                  ? { ...row, inPit: true, pitDurationMs: 20_000, pitStop: 2 }
+                  : row,
+              ),
+            }
+          : lap,
+      ),
+    };
+    const at = (ms: number) => carLapsAt(twice, ms, shape).get('charlie');
+    expect(at(330_000)).toMatchObject({ lap: 3, inPit: false });
+    expect(at(330_000)?.progress).toBeCloseTo(0.1);
+    expect(at(399_000)?.progress).toBeCloseTo(0.5);
+    expect(at(467_999)?.progress).toBeCloseTo(0.9, 3);
+  });
+
   it('feeds the markers and the tower from the same window', () => {
     const marker = replayProgress(pitted, 315_000, shape).find((item) => item.id === 'charlie');
     expect(marker).toMatchObject({ inPit: true });
@@ -243,6 +269,50 @@ describe('pit stops on the lane', () => {
     expect(rows(315_000)?.inPit).toBe(true);
     expect(rows(315_000)?.drs).toBe(false);
     expect(rows(330_000)?.inPit).toBe(false);
+  });
+});
+
+describe('pit stops on the lane at the Monza red flag', () => {
+  const file = generatedReplayFiles().find((name) => path.basename(name) === '2026-13.json');
+  if (!file) {
+    it.skip('is not generated yet, so the Monza check is skipped', () => {});
+    return;
+  }
+  const monza = replayRaceSchema.parse(readJson(file));
+  const circuit = circuitById('it-1922')!;
+  const shape = { entry: circuit.pit.entry, exit: circuit.pit.exit };
+
+  /** Where the Track Map draws a car, in metres from the line; on the lane by its progress. */
+  const metres = (car: CarLap) => {
+    const along = car.inPit
+      ? shape.entry + car.progress * (1 - shape.entry + shape.exit)
+      : car.progress;
+    return (along % 1) * circuit.lengthM;
+  };
+
+  it('moves every car into the lane and out of it without a jump', () => {
+    // Every car stops on lap 3 for about 30 minutes and leaves the lane on lap 4.
+    const from = leaderCumulative(monza, 2) - 5_000;
+    const to = leaderCumulative(monza, 4) + 60_000;
+    const last = new Map<string, number>();
+    const pitted = new Set<string>();
+    let worst = { jump: 0, at: 0, id: '' };
+    for (let ms = from; ms <= to; ms += 100) {
+      for (const [id, car] of carLapsAt(monza, ms, shape)) {
+        if (car.inPit) pitted.add(id);
+        const here = metres(car);
+        const was = last.get(id);
+        last.set(id, here);
+        if (was === undefined) continue;
+        const step = Math.abs(here - was);
+        const jump = Math.min(step, circuit.lengthM - step);
+        if (jump > worst.jump) worst = { jump, at: ms, id };
+      }
+    }
+    const stopped = monza.laps.find((lap) => lap.lap === 3)!.rows.filter((row) => row.inPit);
+    expect([...pitted].sort()).toEqual(stopped.map((row) => row.driverId).sort());
+    // 100 ms at 360 km/h is 10 m.
+    expect(worst.jump, `${worst.id} at ${worst.at} ms`).toBeLessThan(15);
   });
 });
 

@@ -241,20 +241,64 @@ export type CarLap = {
 /** Where a circuit's pit lane leaves and rejoins the lap, as fractions of it. */
 export type PitLaneShape = { entry: number; exit: number };
 
+/** A stop drawn on the lane: when the car is in it, and how far along it is at a moment. */
+type PitWindow = {
+  inAt: number;
+  outAt: number;
+  duration: number;
+  /** The lane's length as a fraction of the lap. */
+  span: number;
+  /** How far along the lane the car is at `ms`, from 0 at the entry to 1 at the exit. */
+  progressAt: (ms: number) => number;
+};
+
 /**
- * When a lap's pit stop has the car in the lane, on the car's clock. The source gives the
- * time from entry to exit; the line sits inside the lane, at `before / span` of it, so the
- * car enters that share of the duration before it completes the lap. A stop that would start
- * before the lap does (a red flag, a stop longer than the lap) cannot be drawn: `null`.
+ * When the pit stop on the lap at `index` has the car in the lane, on the car's clock. The source
+ * gives the time from entry to exit; the line sits inside the lane, at `before / span` of it, so
+ * the car enters that share of the duration before it completes the lap.
+ *
+ * A stop that would start before the lap does is far longer than a lap: a red flag counts its
+ * wait as pit lane time. The car then reaches the entry at the lap's own pace, crosses the line as
+ * the lap ends, and spends the rest of the stop between the line and the exit, so it enters and
+ * leaves the lane where the track meets it. Such a stop that does not end within the next lap
+ * cannot be drawn: `null`.
  */
-function pitWindow(lap: DriverLap, shape: PitLaneShape) {
+function pitWindow(
+  laps: readonly DriverLap[],
+  index: number,
+  shape: PitLaneShape,
+): PitWindow | null {
+  const lap = laps[index]!;
   const duration = lap.row.inPit ? lap.row.pitDurationMs : null;
   if (duration === null || duration <= 0) return null;
   const before = 1 - shape.entry;
   const span = before + shape.exit;
   const inAt = lap.end - duration * (before / span);
-  if (inAt <= lap.start) return null;
-  return { inAt, outAt: inAt + duration, duration, span };
+  if (inAt > lap.start) {
+    return {
+      inAt,
+      outAt: inAt + duration,
+      duration,
+      span,
+      progressAt: (ms) => (ms - inAt) / duration,
+    };
+  }
+
+  const next = laps[index + 1];
+  const longInAt = lap.start + shape.entry * (lap.end - lap.start);
+  const outAt = longInAt + duration;
+  if (next?.lap !== lap.lap + 1 || outAt >= next.end) return null;
+  const atLine = before / span;
+  return {
+    inAt: longInAt,
+    outAt,
+    duration,
+    span,
+    progressAt: (ms) =>
+      ms < lap.end
+        ? (atLine * (ms - longInAt)) / (lap.end - longInAt)
+        : atLine + ((1 - atLine) * (ms - lap.end)) / (outAt - lap.end),
+  };
 }
 
 /**
@@ -277,7 +321,8 @@ function onTrack(
 /**
  * Where a car is on the lap `lap` at `elapsedMs` when its pit stops are drawn: on the lane
  * between entry and exit at constant speed, and on the track by the speed profile, stretched to
- * reach the entry from the start of an in-lap, and to reach the line from the exit on an out-lap.
+ * reach the entry from the start of an in-lap (from the exit when it is also an out-lap), and to
+ * reach the line from the exit on an out-lap.
  */
 function placeWithPit(
   laps: readonly DriverLap[],
@@ -288,20 +333,24 @@ function placeWithPit(
 ): { progress: number; fraction: number; inPit: boolean } {
   const lap = laps[index]!;
   const previous = laps[index - 1];
-  const stop = pitWindow(lap, shape);
-  const earlier = previous && previous.lap === lap.lap - 1 ? pitWindow(previous, shape) : null;
+  const stop = pitWindow(laps, index, shape);
+  const earlier =
+    previous && previous.lap === lap.lap - 1 ? pitWindow(laps, index - 1, shape) : null;
 
   if (stop && elapsedMs >= stop.inAt) {
-    const progress = (elapsedMs - stop.inAt) / stop.duration;
+    const progress = stop.progressAt(elapsedMs);
     return { progress, fraction: shape.entry + progress * stop.span, inPit: true };
   }
   if (earlier && elapsedMs < earlier.outAt && earlier.outAt < lap.end) {
-    const progress = (elapsedMs - earlier.inAt) / earlier.duration;
+    const progress = earlier.progressAt(elapsedMs);
     return { progress, fraction: shape.entry + progress * earlier.span - 1, inPit: true };
   }
   if (stop) {
-    const stretch = { from: 0, to: shape.entry };
-    const fraction = onTrack(profile, stretch, elapsedMs - lap.start, stop.inAt - lap.start);
+    // A lap that is both an out-lap and an in-lap runs from the exit, not from the line.
+    const out = earlier && earlier.outAt < stop.inAt ? earlier.outAt : null;
+    const from = out ?? lap.start;
+    const stretch = { from: out === null ? 0 : shape.exit, to: shape.entry };
+    const fraction = onTrack(profile, stretch, elapsedMs - from, stop.inAt - from);
     return { progress: fraction, fraction, inPit: false };
   }
   if (earlier && earlier.outAt < lap.end) {
@@ -394,8 +443,8 @@ export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitSt
   const codes = new Map(race.drivers.map((driver) => [driver.id, driver.code]));
   const stops: ReplayPitStop[] = [];
   for (const [driverId, laps] of indexRace(race)) {
-    for (const lap of laps) {
-      const window = pitWindow(lap, pit);
+    for (const [index, lap] of laps.entries()) {
+      const window = pitWindow(laps, index, pit);
       if (window) {
         stops.push({
           driverId,
