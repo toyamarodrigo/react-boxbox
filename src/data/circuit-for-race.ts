@@ -1,6 +1,8 @@
 import { FICTIONAL_CIRCUIT } from '../content/track-map/circuit';
 import { CIRCUITS } from './circuits';
+import { outlinePoints, polylineLength } from '../lib/svg-outline';
 import { CONSTANT_SPEED, type SpeedProfile } from './speed-profile';
+import { trackWidthFor } from './track-widths';
 
 export type ReplayCircuit = {
   d: string;
@@ -15,7 +17,19 @@ export type ReplayCircuit = {
   profile: SpeedProfile;
   /** True when the outline is a real venue from the generated dataset, false for Aster Park. */
   real: boolean;
+  /** The lap's length in metres: official for a real venue, invented for Aster Park. */
+  lengthM: number;
+  /** The pit lane's length in metres, measured on the outline at the lap's scale. */
+  pitLengthM: number;
+  /** How wide the Onboard view draws the track, in metres (`track-widths.ts`). */
+  widthM: number;
 };
+
+/** The pit lane's length in metres: the outline's scale is the lap length over its drawn length. */
+function pitLengthM(d: string, pitD: string, lengthM: number): number {
+  const lap = polylineLength(outlinePoints(d), true);
+  return lap === 0 ? 0 : (lengthM * polylineLength(outlinePoints(pitD), false)) / lap;
+}
 
 /**
  * The names the replay data uses for the curated races, keyed to the outline ids in
@@ -46,6 +60,9 @@ const BY_RACE_CIRCUIT_NAME: Record<string, string> = {
 /** Lower-case and strip accents, so "Autódromo" and "Autodromo" compare equal. */
 const normalise = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
+/** Aster Park is invented, and so is its length: about a modern permanent circuit's. */
+const ASTER_PARK_LENGTH_M = 4800;
+
 const FALLBACK: ReplayCircuit = {
   d: FICTIONAL_CIRCUIT.d,
   viewBox: FICTIONAL_CIRCUIT.viewBox,
@@ -53,6 +70,9 @@ const FALLBACK: ReplayCircuit = {
   pit: FICTIONAL_CIRCUIT.pit,
   profile: CONSTANT_SPEED,
   real: false,
+  lengthM: ASTER_PARK_LENGTH_M,
+  pitLengthM: pitLengthM(FICTIONAL_CIRCUIT.d, FICTIONAL_CIRCUIT.pit.d, ASTER_PARK_LENGTH_M),
+  widthM: trackWidthFor(undefined),
 };
 
 /** The outline to draw a race on: the real venue when the dataset has it, Aster Park otherwise. */
@@ -74,6 +94,9 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
         pit: match.pit,
         profile: match.profile,
         real: true,
+        lengthM: match.lengthM,
+        pitLengthM: pitLengthM(match.d, match.pit.d, match.lengthM),
+        widthM: trackWidthFor(match.id),
       }
     : FALLBACK;
 }
