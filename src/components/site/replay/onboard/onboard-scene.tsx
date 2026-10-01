@@ -12,12 +12,13 @@ import { Canvas, type RootState, useFrame } from '@react-three/fiber';
 import {
   BoxGeometry,
   type Mesh,
+  type MeshStandardMaterial,
   PCFShadowMap,
   type PerspectiveCamera,
   setConsoleFunction,
 } from 'three';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
-import { onboardFrame } from '@/data/onboard-frame';
+import { CAR_LENGTH_M, onboardFrame } from '@/data/onboard-frame';
 import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import type { OnboardCamera } from '../onboard-view';
@@ -26,8 +27,14 @@ import { type TrackModel, angleDelta, pointAt, trackModel } from './track';
 
 const SKY = '#bcd4e6';
 /** A generic formula car's footprint as a box: length, height, width, in metres. */
-const CAR_GEOMETRY = new BoxGeometry(5.6, 1, 1.9);
+const CAR_GEOMETRY = new BoxGeometry(CAR_LENGTH_M, 1, 1.9);
 const UNKNOWN_TEAM_COLOUR = '#888888';
+
+/**
+ * A ghost car's opacity, and how fast a car fades to it and back, per second. The fade keeps a
+ * car that sits at the overlap distance from flickering between solid and ghost.
+ */
+const GHOST = { opacity: 0.35, fadeRate: 12 } as const;
 
 /**
  * Where a T-cam sits on the car it rides with, in metres from the car's centre: up off the
@@ -170,9 +177,18 @@ function Scene({
         pointAt(car.inPit ? track.pit : track.lap, car.metres),
       ]),
     );
+    const ghosts = new Set(frame.cars.filter((car) => car.ghost).map((car) => car.driverId));
+    const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
     const ride = frame.riding?.driverId;
     for (const [driverId, mesh] of cars.current) {
       const point = placed.get(driverId);
+      // Every car's material is transparent, so a ghost needs no shader change: a solid car is
+      // at opacity 1 and writes depth, a ghost does not, so it never hides the track behind it.
+      const material = mesh.material as MeshStandardMaterial;
+      const target = ghosts.has(driverId) ? GHOST.opacity : 1;
+      material.opacity += (target - material.opacity) * fade;
+      if (Math.abs(target - material.opacity) < 0.005) material.opacity = target;
+      material.depthWrite = material.opacity === 1;
       // In T-cam the camera is on the riding car, so its own body would fill the view.
       mesh.visible = point !== undefined && !(mode === 'tcam' && driverId === ride);
       if (!point) continue;
@@ -240,7 +256,12 @@ function Scene({
             };
           }}
         >
-          <meshStandardMaterial color={colours.get(driver.id)} roughness={0.45} metalness={0.1} />
+          <meshStandardMaterial
+            color={colours.get(driver.id)}
+            roughness={0.45}
+            metalness={0.1}
+            transparent
+          />
         </mesh>
       ))}
     </>

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { circuitForRace } from './circuit-for-race';
-import { onboardFrame } from './onboard-frame';
+import { GHOST_OVERLAP_M, onboardFrame } from './onboard-frame';
 import { testReplayRace } from './replay-fixtures';
+import type { ReplayRace } from './replay-schema';
 import { carLapsAt } from './replay-timing';
 
 const race = testReplayRace();
@@ -14,6 +15,39 @@ const onScreen = (
   followedId: string | undefined,
   comparedIds: readonly string[] = [],
 ) => onboardFrame(race, circuit, ms, followedId, comparedIds).cars.map((car) => car.driverId);
+
+/** The ghost flags on screen at `ms`, the car the camera rides with first. */
+const ghosts = (race: ReplayRace, ms: number, followedId: string, comparedIds: string[]) =>
+  onboardFrame(race, circuit, ms, followedId, comparedIds).cars.map((car) => car.ghost);
+
+/** Metres between the two cars on screen, along the lap, the line not accounted for. */
+const rawGap = (ms: number) => {
+  const [a, b] = onboardFrame(race, circuit, ms, 'alpha', ['bravo']).cars;
+  return Math.abs(a!.metres - b!.metres);
+};
+
+/**
+ * The fixture with bravo 30 ms behind alpha at the end of lap 1, so the two are a few metres
+ * apart either side of the line, and with `pitting` in the pit lane across it.
+ */
+const nearTheLine = (pitting: readonly string[]): ReplayRace => ({
+  ...race,
+  laps: race.laps.map((lap) => ({
+    ...lap,
+    rows: lap.rows.map((row) => {
+      const bravo = row.driverId === 'bravo';
+      const timed =
+        bravo && lap.lap === 1
+          ? { ...row, lapTimeMs: 100_030, cumulativeMs: 100_030 }
+          : bravo && lap.lap === 2
+            ? { ...row, lapTimeMs: 98_970 }
+            : row;
+      return lap.lap === 1 && pitting.includes(row.driverId)
+        ? { ...timed, inPit: true, pitDurationMs: 20_000, pitStop: 1 }
+        : timed;
+    }),
+  })),
+});
 
 describe('onboardFrame', () => {
   it('rides with the followed driver', () => {
@@ -98,5 +132,53 @@ describe('onboardFrame', () => {
     // Bravo leads by the line at the end of lap 2: alpha second, charlie third.
     const frame = onboardFrame(race, circuit, 250_000, 'alpha', ['charlie']);
     expect(frame.cars.map((car) => car.position)).toEqual([2, 3]);
+  });
+
+  it('makes the compared car a ghost only within one car length of the riding car', () => {
+    // Bravo, on a quicker lap 2, closes on alpha and passes it near half distance.
+    expect(rawGap(140_000)).toBeGreaterThan(GHOST_OVERLAP_M);
+    expect(ghosts(race, 140_000, 'alpha', ['bravo'])).toEqual([false, false]);
+    expect(rawGap(150_000)).toBeLessThanOrEqual(GHOST_OVERLAP_M);
+    expect(ghosts(race, 150_000, 'alpha', ['bravo'])).toEqual([false, true]);
+    expect(rawGap(160_000)).toBeGreaterThan(GHOST_OVERLAP_M);
+    expect(ghosts(race, 160_000, 'alpha', ['bravo'])).toEqual([false, false]);
+  });
+
+  it('never makes the car the camera rides with a ghost', () => {
+    expect(ghosts(race, 150_000, 'bravo', ['alpha'])).toEqual([false, true]);
+    expect(onboardFrame(race, circuit, 150_000, undefined, []).riding?.ghost).toBe(false);
+  });
+
+  it('turns the ghost solid again once clear', () => {
+    const flags: boolean[] = [];
+    for (let ms = 130_000; ms <= 170_000; ms += 100) {
+      const [riding, compared] = ghosts(race, ms, 'alpha', ['bravo']);
+      expect(riding).toBe(false);
+      if (flags.at(-1) !== compared) flags.push(compared!);
+    }
+    // Solid, then a ghost while the two overlap, then solid for good.
+    expect(flags).toEqual([false, true, false]);
+  });
+
+  it('measures the gap the short way round across the line', () => {
+    const frame = onboardFrame(nearTheLine([]), circuit, 100_010, 'alpha', ['bravo']);
+    const [alpha, bravo] = frame.cars;
+    expect(alpha!.metres).toBeLessThan(1);
+    expect(bravo!.metres).toBeGreaterThan(circuit.lengthM - 1);
+    expect(bravo!.ghost).toBe(true);
+  });
+
+  it('does not compare a car in the pit lane with one on the track', () => {
+    // Alpha is in the lane and bravo on the track, the two metre counts a car length apart.
+    const split = onboardFrame(nearTheLine(['alpha']), circuit, 107_000, 'alpha', ['bravo']);
+    const [alpha, bravo] = split.cars;
+    expect([alpha!.inPit, bravo!.inPit]).toEqual([true, false]);
+    expect(Math.abs(alpha!.metres - bravo!.metres)).toBeLessThan(GHOST_OVERLAP_M);
+    expect(bravo!.ghost).toBe(false);
+    // Both in the lane, close together: the compared car is a ghost there too.
+    expect(ghosts(nearTheLine(['alpha', 'bravo']), 100_010, 'alpha', ['bravo'])).toEqual([
+      false,
+      true,
+    ]);
   });
 });

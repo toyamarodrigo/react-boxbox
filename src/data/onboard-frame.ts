@@ -23,6 +23,11 @@ export type OnboardCar = {
   inPit: boolean;
   /** Metres from the start line along the lap, or from the pit entry along the lane. */
   metres: number;
+  /**
+   * Drawn see-through: a car other than the one the camera rides with that is within
+   * `GHOST_OVERLAP_M` of it, so two cars in one place do not hide each other.
+   */
+  ghost: boolean;
 };
 
 export type OnboardFrame = {
@@ -37,6 +42,15 @@ export type OnboardFrame = {
    */
   cars: readonly OnboardCar[];
 };
+
+/** A generic formula car's length in metres, as the Onboard view draws it. */
+export const CAR_LENGTH_M = 5.6;
+
+/**
+ * How close along the track, in metres, a car must be to the one the camera rides with to be a
+ * ghost: about one car length, where interpolated data puts the two bodies in one place.
+ */
+export const GHOST_OVERLAP_M = CAR_LENGTH_M;
 
 const clampShare = (share: number) => Math.min(Math.max(share, 0), 1);
 
@@ -53,14 +67,27 @@ function onboardCar(
     position,
     inPit: car.inPit,
     metres: share * (car.inPit ? circuit.pitLengthM : circuit.lengthM),
+    ghost: false,
   };
+}
+
+/**
+ * Metres between two cars along the track, or `Infinity` when one is in the pit lane and the
+ * other is not. On the lap the shorter way round counts, so two cars either side of the line are
+ * close; the pit lane has two ends and no wrap.
+ */
+function gapM(a: OnboardCar, b: OnboardCar, circuit: OnboardCircuit): number {
+  if (a.inPit !== b.inPit) return Number.POSITIVE_INFINITY;
+  const gap = Math.abs(a.metres - b.metres);
+  return a.inPit ? gap : Math.min(gap, circuit.lengthM - gap);
 }
 
 /**
  * The Onboard view at `elapsedMs`: it rides with the followed driver while that car runs, else
  * with the leader. Only with the followed driver does a compared car join, and only the first in
  * `comparedIds`; a compared car that has retired is absent, and the next one does not take its
- * place. A retired car is never on screen.
+ * place. A retired car is never on screen. The compared car is a ghost while it is within
+ * `GHOST_OVERLAP_M` of the riding car along the track; the riding car never is.
  */
 export function onboardFrame(
   race: ReplayRace,
@@ -82,7 +109,11 @@ export function onboardFrame(
 
   const followed = carOf(followedId);
   if (followed) {
-    const compared = carOf(comparedIds[0]);
+    const near = carOf(comparedIds[0]);
+    const compared = near && {
+      ...near,
+      ghost: gapM(near, followed, circuit) <= GHOST_OVERLAP_M,
+    };
     return {
       riding: followed,
       ridingLeader: false,
