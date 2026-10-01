@@ -97,7 +97,7 @@ The card that shows one battle: both cars, the interval and its trend over the l
 _Avoid_: Head-to-head card, fight graphic
 
 **Pit stop card**:
-The card that shows one stop of the followed driver during its pit window and a moment after: stop number, compound off and on, pit lane time, position in and out.
+The card that shows one stop of the followed driver during its pit window and a moment after: stop number, compound off and on, pit lane time, position in and out. The stop number counts only the stops shown: a red-flag wait is not a stop, so the first real stop after one is stop 1.
 _Avoid_: Pit timer, stop graphic
 
 **Lap grid**:

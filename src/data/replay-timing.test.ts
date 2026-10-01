@@ -349,12 +349,25 @@ describe('pit stops on the lane at the Monza red flag', () => {
     const waiting = carLapsAt(monza, leaderCumulative(monza, 3) + 60_000, shape);
     const stopped = monza.laps.find((lap) => lap.lap === 3)!.rows.filter((row) => row.inPit);
     for (const row of stopped) expect(waiting.get(row.driverId)?.inPit).toBe(true);
-    // A real stop of the same race is still listed, with the source's own number.
+    // A real stop of the same race is still listed, numbered among the stops shown: the source
+    // counts the wait as stop 1, so its own number for the first real stop is 2.
     const real = stops.find((stop) => stop.durationMs < 60_000)!;
     const source = monza.laps
       .find((lap) => lap.lap === real.lap)!
       .rows.find((row) => row.driverId === real.driverId)!;
-    expect(real.stop).toBe(source.pitStop);
+    expect(source.pitStop).toBe(2);
+    expect(real.stop).toBe(1);
+  });
+
+  it('numbers each car’s stops 1, 2, 3… among the stops shown', () => {
+    const stops = replayPitStops(monza, shape);
+    const byCar = new Map<string, number[]>();
+    for (const stop of stops)
+      byCar.set(stop.driverId, [...(byCar.get(stop.driverId) ?? []), stop.stop]);
+    expect(byCar.size).toBeGreaterThan(0);
+    for (const numbers of byCar.values()) {
+      expect(numbers).toEqual(numbers.map((_, index) => index + 1));
+    }
   });
 });
 

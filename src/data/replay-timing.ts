@@ -469,8 +469,8 @@ export type ReplayPitStop = {
   /** The driver's three-letter code, for the mark's label; falls back to the id. */
   code: string;
   lap: number;
-  /** Which stop of the driver's race this is, when the dataset counts them. */
-  stop: number | null;
+  /** Which of the driver's shown stops this is, from 1: a hidden red-flag wait is not counted. */
+  stop: number;
   /** When the car enters the lane, on the race clock. */
   atMs: number;
   /** Time spent in the lane. */
@@ -511,8 +511,8 @@ function isRedFlagWait(
  * Every drawable pit stop of the race: who, which lap, and when the car enters the lane.
  *
  * A red-flag wait is left out: the car is in the pit lane (`carLapsAt` still has it `inPit`), but
- * it is not a stop for the timeline's marks or the Pit stop card. The stops left keep the
- * source's own numbers, which count the wait.
+ * it is not a stop for the timeline's marks or the Pit stop card. The stops left are numbered
+ * among themselves, 1 for the car's first, rather than by the source, which counts the wait.
  */
 export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitStop[] {
   const codes = new Map(race.drivers.map((driver) => [driver.id, driver.code]));
@@ -520,6 +520,7 @@ export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitSt
   const stops: ReplayPitStop[] = [];
   for (const [driverId, laps] of indexRace(race)) {
     const median = medianLapMs(laps);
+    let shown = 0;
     for (const [index, lap] of laps.entries()) {
       const window = pitWindow(laps, index, pit);
       if (window && !isRedFlagWait(window, redFlags, median)) {
@@ -527,7 +528,7 @@ export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitSt
           driverId,
           code: codes.get(driverId) ?? driverId,
           lap: lap.lap,
-          stop: lap.row.pitStop,
+          stop: ++shown,
           atMs: window.inAt,
           durationMs: window.duration,
         });

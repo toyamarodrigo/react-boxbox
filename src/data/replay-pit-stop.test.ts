@@ -120,7 +120,7 @@ describe('pitStopCardAt at the Monza red flag', () => {
   const shape = { entry: circuit.pit.entry, exit: circuit.pit.exit };
   const stops = replayPitStops(monza, shape);
 
-  it('shows no card for the red-flag wait, and the next real stop by its source number', () => {
+  it('shows no card for the red-flag wait, and the next real stop as stop 1', () => {
     const waitAt = leaderCumulative(monza, 3) + 60_000;
     const waited = monza.laps.find((lap) => lap.lap === 3)!.rows.filter((row) => row.inPit);
     for (const row of waited) {
@@ -129,8 +129,7 @@ describe('pitStopCardAt at the Monza red flag', () => {
     const ids = new Set(waited.map((row) => row.driverId));
     const next = stops.find((stop) => ids.has(stop.driverId))!;
     const card = pitStopCardAt(monza, next.driverId, next.atMs + 1_000, stops, shape);
-    // The source counts the wait as stop 1, so the first real stop after it is stop 2.
-    expect(card?.stop).toBe(next.stop);
-    expect(card?.stop).toBeGreaterThan(1);
+    // The source counts the wait as stop 1; only the stops shown are counted, so this is stop 1.
+    expect(card?.stop).toBe(1);
   });
 });

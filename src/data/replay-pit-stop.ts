@@ -45,8 +45,9 @@ function positionAt(
  * no card. The position in is the car's place as it enters, the
  * position out its place at the exit, held from then on rather than followed. A stop is on the
  * last lap of one stint, so the compound off is that stint's and the compound on the next one's;
- * either unknown leaves both out. A stop the dataset does not number is counted among the car's
- * drawable stops. Places are read with the circuit's speed `profile`, as the tower reads them.
+ * either unknown leaves both out. The stop number is the stop's among the car's drawable stops,
+ * so a hidden red-flag wait is not counted. Places are read with the circuit's speed `profile`,
+ * as the tower reads them.
  */
 export function pitStopCardAt(
   race: ReplayRace,
@@ -59,8 +60,7 @@ export function pitStopCardAt(
   // The stops are in time order, so the car's latest one begun is the last that has.
   const own = stops.filter((stop) => stop.driverId === driverId);
   const begun = own.filter((stop) => elapsedMs >= stop.atMs).length;
-  const index = begun - 1;
-  const stop = own[index];
+  const stop = own[begun - 1];
   if (!stop) return null;
   const outAt = stop.atMs + stop.durationMs;
   if (elapsedMs >= outAt + PIT_STOP_CARD_HOLD_MS) return null;
@@ -77,7 +77,7 @@ export function pitStopCardAt(
   return {
     key: `${driverId}-${stop.lap}`,
     driverId,
-    stop: stop.stop ?? index + 1,
+    stop: stop.stop,
     laneTime: (out ? stop.durationMs : elapsedMs - stop.atMs) / 1000,
     compoundOff: tyres ? off : undefined,
     compoundOn: tyres ? on : undefined,

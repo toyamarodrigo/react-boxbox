@@ -323,7 +323,7 @@ const PitStopMarks = memo(function PitStopMarks({
   return (
     <TooltipProvider delayDuration={150}>
       {stops.map((stop) => {
-        const label = `${stop.code} pit stop${stop.stop === null ? '' : ` ${stop.stop}`}, lap ${stop.lap}, ${(stop.durationMs / 1000).toFixed(1)}s`;
+        const label = `${stop.code} pit stop ${stop.stop}, lap ${stop.lap}, ${(stop.durationMs / 1000).toFixed(1)}s`;
         return (
           <Tooltip key={`${stop.driverId}:${stop.lap}`}>
             <TooltipTrigger asChild>
