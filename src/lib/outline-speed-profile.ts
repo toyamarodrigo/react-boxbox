@@ -11,6 +11,7 @@
  * A model, never telemetry: the speeds only shape how a lap's real time is shared out.
  */
 import type { SpeedProfile } from '../data/speed-profile';
+import { RACING_LINE_MARGIN_M, offsetPoints, racingLineOffsets } from './racing-line';
 
 /** Distance between the evenly spaced points the speeds are worked out at. */
 export const SAMPLE_STEP_M = 4;
@@ -34,6 +35,10 @@ export const BRAKING = 44;
 export const PROFILE_POINTS = 201;
 /** Decimals the generated time shares are rounded to. */
 export const PROFILE_DECIMALS = 4;
+/** Distance between the stored racing line's offsets, in metres (about every third sample). */
+export const RACING_LINE_STEP_M = 12;
+/** Decimals the stored racing line's offsets are rounded to (10 cm). */
+export const RACING_LINE_DECIMALS = 1;
 
 type Point = readonly [number, number];
 
@@ -106,19 +111,37 @@ function angleDelta(a: number, b: number): number {
   return delta;
 }
 
-/** The fastest a car takes each point: the grip limit for its curvature, under top speed. */
-function cornerSpeeds(points: readonly Point[], stepM: number): Float64Array {
+const windowLength = (points: readonly Point[], index: number, k: number) => {
   const n = points.length;
-  const heading = points.map((_, index) => {
-    const [ax, ay] = points[(index - 1 + n) % n]!;
-    const [bx, by] = points[(index + 1) % n]!;
+  let length = 0;
+  for (let at = index - k; at < index + k; at++) length += segmentLength(points, (at + n) % n);
+  return length;
+};
+
+/**
+ * The fastest a car takes each point: the grip limit for the racing line's curvature there, under
+ * top speed. The turn is measured on the line, over the outline's distance stretched by how much
+ * longer the line is there than the outline, so a line on the outline reads the outline's corners.
+ */
+function cornerSpeeds(
+  line: readonly Point[],
+  outline: readonly Point[],
+  stepM: number,
+): Float64Array {
+  const n = line.length;
+  const heading = line.map((_, index) => {
+    const [ax, ay] = line[(index - 1 + n) % n]!;
+    const [bx, by] = line[(index + 1) % n]!;
     return Math.atan2(by - ay, bx - ax);
   });
   const k = CURVATURE_HALF_WINDOW;
   const caps = new Float64Array(n);
   for (let index = 0; index < n; index++) {
     const turn = Math.abs(angleDelta(heading[(index - k + n) % n]!, heading[(index + k) % n]!));
-    const curvature = turn / (2 * k * stepM);
+    const outlineLength = windowLength(outline, index, k);
+    const stretch =
+      line === outline || outlineLength === 0 ? 1 : windowLength(line, index, k) / outlineLength;
+    const curvature = turn / (2 * k * stepM * stretch);
     caps[index] = Math.min(TOP_SPEED, Math.sqrt(LATERAL_GRIP / Math.max(curvature, 1e-9)));
   }
   return caps;
@@ -163,24 +186,41 @@ export type OutlineSpeeds = {
   flying: Float64Array;
   /** Lap 1: from rest at the line, then the flying lap wherever that is slower. */
   standing: Float64Array;
+  /** The racing line's offset at each point, metres to the left of travel; zeros without a width. */
+  offsets: Float64Array;
 };
+
+/** The outline resampled every `stepM` and smoothed, in metres, the line first. */
+function lapSamples(d: string, lengthM: number): { points: Point[]; stepM: number } {
+  const outline = parseOutline(d);
+  if (outline.length < 3 || !(lengthM > 0)) throw new Error('outline: expected a closed lap');
+  let drawn = 0;
+  for (let index = 0; index < outline.length; index++) drawn += segmentLength(outline, index);
+  const metres = lengthM / drawn;
+  const count = Math.max(4 * CURVATURE_HALF_WINDOW, Math.round(lengthM / SAMPLE_STEP_M));
+  const points = smooth(resample(outline, count)).map(([x, y]): Point => [x * metres, y * metres]);
+  return { points, stepM: lengthM / count };
+}
 
 /**
  * The modelled speeds round a closed outline: `d` in `viewBox` units (`M x y L x y … Z`), scaled
- * to `lengthM` metres.
+ * to `lengthM` metres. With the track's `widthM`, the speeds are worked out along the racing line
+ * inside it (ADR 0005 amendment); without, along the outline itself.
  */
-export function outlineSpeeds(d: string, lengthM: number): OutlineSpeeds {
-  const outline = parseOutline(d);
-  if (outline.length < 3 || !(lengthM > 0)) throw new Error('outline: expected a closed lap');
-  const count = Math.max(4 * CURVATURE_HALF_WINDOW, Math.round(lengthM / SAMPLE_STEP_M));
-  const stepM = lengthM / count;
-  const caps = cornerSpeeds(smooth(resample(outline, count)), stepM);
+export function outlineSpeeds(d: string, lengthM: number, widthM?: number): OutlineSpeeds {
+  const { points, stepM } = lapSamples(d, lengthM);
+  const offsets =
+    widthM === undefined
+      ? new Float64Array(points.length)
+      : racingLineOffsets(points, widthM / 2 - RACING_LINE_MARGIN_M);
+  const line = widthM === undefined ? points : offsetPoints(points, offsets);
+  const caps = cornerSpeeds(line, points, stepM);
   const flying = backwardPass(forwardPass(caps, stepM, false), stepM);
   const start = forwardPass(caps, stepM, true);
   // The standing start only ever lowers speeds while it accelerates, so every braking point of
   // the flying lap still holds.
   const standing = flying.map((speed, index) => Math.min(speed, start[index]!));
-  return { stepM, flying, standing };
+  return { stepM, flying, standing, offsets };
 }
 
 /**
@@ -222,11 +262,57 @@ function timeShares(elapsed: Float64Array): number[] {
 }
 
 /**
- * The speed profile of a closed outline (`d` in `viewBox` units, `lengthM` metres round): the
- * flying lap's time shares, and lap 1's from a standing start in `start`.
+ * The stored racing line: `RACING_LINE_STEP_M` apart round the lap, entry `j` at the share
+ * `j / length` of the lap's distance, rounded.
  */
-export function speedProfileFromOutline(d: string, lengthM: number): Required<SpeedProfile> {
-  const { stepM, flying, standing } = outlineSpeeds(d, lengthM);
+function storedOffsets(offsets: Float64Array, lengthM: number): number[] {
+  const n = offsets.length;
+  const count = Math.max(4, Math.round(lengthM / RACING_LINE_STEP_M));
+  const line: number[] = [];
+  for (let entry = 0; entry < count; entry++) {
+    const at = (entry * n) / count;
+    const index = Math.floor(at);
+    const a = offsets[index % n]!;
+    const b = offsets[(index + 1) % n]!;
+    line.push(Number((a + (b - a) * (at - index)).toFixed(RACING_LINE_DECIMALS)) || 0);
+  }
+  return line;
+}
+
+/** What `circuits:build` stores for a circuit's lap. */
+export type LapModel = {
+  profile: Required<SpeedProfile>;
+  /** The racing line's offsets, metres to the left of travel (see `storedOffsets`). */
+  racingLine: number[];
+};
+
+/**
+ * The speed profile and racing line of a closed outline (`d` in `viewBox` units, `lengthM` metres
+ * round, `widthM` wide): the flying lap's time shares, lap 1's from a standing start in `start`,
+ * and the line's offsets.
+ */
+export function lapModelFromOutline(d: string, lengthM: number, widthM: number): LapModel {
+  const { stepM, flying, standing, offsets } = outlineSpeeds(d, lengthM, widthM);
+  return {
+    profile: {
+      time: timeShares(elapsedSeconds(flying, flying, stepM)),
+      start: timeShares(elapsedSeconds(standing, flying, stepM)),
+    },
+    racingLine: storedOffsets(offsets, lengthM),
+  };
+}
+
+/**
+ * The speed profile of a closed outline (`d` in `viewBox` units, `lengthM` metres round), along
+ * the racing line when `widthM` is given: the flying lap's time shares, and lap 1's from a
+ * standing start in `start`.
+ */
+export function speedProfileFromOutline(
+  d: string,
+  lengthM: number,
+  widthM?: number,
+): Required<SpeedProfile> {
+  const { stepM, flying, standing } = outlineSpeeds(d, lengthM, widthM);
   return {
     time: timeShares(elapsedSeconds(flying, flying, stepM)),
     start: timeShares(elapsedSeconds(standing, flying, stepM)),

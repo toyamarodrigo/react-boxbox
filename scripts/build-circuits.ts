@@ -3,7 +3,8 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { speedProfileFromOutline } from '../src/lib/outline-speed-profile.ts';
+import { trackWidthFor } from '../src/data/track-widths.ts';
+import { lapModelFromOutline } from '../src/lib/outline-speed-profile.ts';
 import { type PitLaneOptions, pitLaneOffsetFor, pitLanePoints } from '../src/lib/pit-lane.ts';
 import {
   TRACK_MAP_STROKE_WIDTH,
@@ -24,8 +25,9 @@ import {
  * around the line, shifted to the inside of the loop and eased back onto the track
  * (see `src/lib/pit-lane.ts`). `PIT_LANES` overrides the defaults per venue.
  *
- * Each circuit also carries its speed profile (ADR 0005), modelled from the drawn outline's
- * curvature with grip, braking, acceleration and top-speed limits
+ * Each circuit also carries its racing line, a minimum-curvature path inside the track's width
+ * (see `src/lib/racing-line.ts`), and its speed profile (ADR 0005), modelled from the racing
+ * line's curvature with grip, braking, acceleration and top-speed limits
  * (see `src/lib/outline-speed-profile.ts`).
  */
 const SOURCE = 'https://raw.githubusercontent.com/bacinger/f1-circuits/master/circuits';
@@ -131,6 +133,12 @@ async function main() {
     const feature = await fetchCircuit(id);
     const fitted = fit(project(feature.geometry.coordinates, REVERSED.has(id)));
     const d = pointsToPath(fitted.points);
+    // From the rounded `d` the Track Map draws, so the shares are of the very same path.
+    const { profile, racingLine } = lapModelFromOutline(
+      d,
+      feature.properties.length,
+      trackWidthFor(id),
+    );
     circuits.push({
       id,
       name: feature.properties.Name,
@@ -139,8 +147,8 @@ async function main() {
       d,
       viewBox: fitted.viewBox,
       pit: pitLane(fitted.points, id),
-      // From the rounded `d` the Track Map draws, so the shares are of the very same path.
-      profile: speedProfileFromOutline(d, feature.properties.length),
+      profile,
+      racingLine,
     });
     process.stdout.write(`${id} ${feature.properties.Name} (${fitted.viewBox})\n`);
   }
@@ -148,7 +156,7 @@ async function main() {
   const body = circuits
     .map(
       (c) =>
-        `  {\n    id: ${JSON.stringify(c.id)},\n    name: ${JSON.stringify(c.name)},\n    location: ${JSON.stringify(c.location)},\n    lengthM: ${c.lengthM},\n    viewBox: ${JSON.stringify(c.viewBox)},\n    d: ${JSON.stringify(c.d)},\n    pit: { entry: ${c.pit.entry}, exit: ${c.pit.exit}, d: ${JSON.stringify(c.pit.d)} },\n    profile: {\n      time: ${JSON.stringify(c.profile.time)},\n      start: ${JSON.stringify(c.profile.start)},\n    },\n  }`,
+        `  {\n    id: ${JSON.stringify(c.id)},\n    name: ${JSON.stringify(c.name)},\n    location: ${JSON.stringify(c.location)},\n    lengthM: ${c.lengthM},\n    viewBox: ${JSON.stringify(c.viewBox)},\n    d: ${JSON.stringify(c.d)},\n    pit: { entry: ${c.pit.entry}, exit: ${c.pit.exit}, d: ${JSON.stringify(c.pit.d)} },\n    profile: {\n      time: ${JSON.stringify(c.profile.time)},\n      start: ${JSON.stringify(c.profile.start)},\n    },\n    racingLine: ${JSON.stringify(c.racingLine)},\n  }`,
     )
     .join(',\n');
 
@@ -174,10 +182,16 @@ export type Circuit = {
    */
   pit: { entry: number; exit: number; d: string };
   /**
-   * How a lap's time is shared out along it (ADR 0005), modelled from the outline: a flying lap
-   * in \`time\`, lap 1 from a standing start in \`start\`. An approximation, never telemetry.
+   * How a lap's time is shared out along it (ADR 0005), modelled along the racing line: a flying
+   * lap in \`time\`, lap 1 from a standing start in \`start\`. An approximation, never telemetry.
    */
   profile: Required<SpeedProfile>;
+  /**
+   * The racing line, generated inside the track's width: metres to the left of travel (as the
+   * Track Map draws it), evenly spaced round the lap, entry \`j\` at the share \`j / length\` of
+   * the outline's distance. It only moves a car sideways.
+   */
+  racingLine: readonly number[];
 };
 
 export const CIRCUITS: readonly Circuit[] = [

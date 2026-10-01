@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { CIRCUITS } from '@/data/circuits';
 import { WHOLE_LAP, timeShareAt } from '@/data/speed-profile';
+import { trackWidthFor } from '@/data/track-widths';
 import {
   PROFILE_POINTS,
+  RACING_LINE_STEP_M,
   TOP_SPEED,
+  elapsedSeconds,
+  lapModelFromOutline,
   outlineSpeeds,
   speedProfileFromOutline,
 } from './outline-speed-profile';
+import { RACING_LINE_MARGIN_M } from './racing-line';
 
 const STRAIGHT_M = 1000;
 const HAIRPIN_RADIUS_M = 15;
@@ -78,9 +83,48 @@ describe('speedProfileFromOutline', () => {
   });
 });
 
+/** The corner minimum speeds of a lap, in km/h: every point slower than both its neighbours. */
+function cornerMinima(speeds: Float64Array): number[] {
+  const n = speeds.length;
+  const minima: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const here = speeds[i]!;
+    if (here < speeds[(i - 1 + n) % n]! && here <= speeds[(i + 1) % n]!) minima.push(here * 3.6);
+  }
+  return minima;
+}
+
+describe('the speed profile along the racing line', () => {
+  it('takes a hairpin faster than the outline does', () => {
+    const { d, lengthM } = stadium(0.3);
+    const outline = outlineSpeeds(d, lengthM);
+    const line = outlineSpeeds(d, lengthM, 12);
+    const hairpin = Math.round((STRAIGHT_M + (Math.PI * HAIRPIN_RADIUS_M) / 2) / line.stepM);
+    expect(line.flying[hairpin]!).toBeGreaterThan(outline.flying[hairpin]! * 1.04);
+  });
+
+  it('takes Monza faster, its slowest corners most of all', () => {
+    const monza = CIRCUITS.find((circuit) => circuit.id === 'it-1922')!;
+    const outline = outlineSpeeds(monza.d, monza.lengthM);
+    const line = outlineSpeeds(monza.d, monza.lengthM, trackWidthFor(monza.id));
+    const lapTime = ({ flying, stepM }: typeof line) =>
+      elapsedSeconds(flying, flying, stepM)[flying.length]!;
+    expect(lapTime(line)).toBeLessThan(lapTime(outline) - 3);
+    expect(Math.min(...line.flying)).toBeGreaterThan(Math.min(...outline.flying) * 1.2);
+    // The chicanes: the three slowest corners of the outline all rise.
+    const slowest = (speeds: Float64Array) =>
+      cornerMinima(speeds)
+        .sort((a, b) => a - b)
+        .slice(0, 3);
+    const [before, after] = [slowest(outline.flying), slowest(line.flying)];
+    for (let i = 0; i < 3; i++) expect(after[i]!).toBeGreaterThan(before[i]!);
+    expect(Math.max(...line.flying)).toBeLessThanOrEqual(TOP_SPEED);
+  });
+});
+
 describe('the generated circuits', () => {
   it.each(CIRCUITS.map((circuit) => [circuit.id, circuit] as const))(
-    '%s carries one lap of valid speed profile, up to date with its outline',
+    '%s carries one lap of valid speed profile and racing line, up to date with its outline',
     (_id, circuit) => {
       for (const time of [circuit.profile.time, circuit.profile.start]) {
         expect(time).toHaveLength(PROFILE_POINTS);
@@ -88,7 +132,13 @@ describe('the generated circuits', () => {
         expect(time.at(-1)).toBe(1);
         for (let i = 1; i < time.length; i++) expect(time[i]!).toBeGreaterThan(time[i - 1]!);
       }
-      expect(speedProfileFromOutline(circuit.d, circuit.lengthM)).toEqual(circuit.profile);
+      const limit = trackWidthFor(circuit.id) / 2 - RACING_LINE_MARGIN_M;
+      expect(circuit.racingLine).toHaveLength(Math.round(circuit.lengthM / RACING_LINE_STEP_M));
+      for (const offset of circuit.racingLine) expect(Math.abs(offset)).toBeLessThanOrEqual(limit);
+      expect(lapModelFromOutline(circuit.d, circuit.lengthM, trackWidthFor(circuit.id))).toEqual({
+        profile: circuit.profile,
+        racingLine: circuit.racingLine,
+      });
     },
   );
 });
