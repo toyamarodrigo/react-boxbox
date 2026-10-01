@@ -53,6 +53,7 @@ import {
   speedTrapBestAt,
   stintAt,
 } from '../data/replay-timing';
+import type { SpeedProfile } from '../data/speed-profile';
 import {
   byDateDescending,
   formatRaceDate,
@@ -758,6 +759,7 @@ function Stage({
   replay,
   stints,
   pit,
+  profile,
   followedId,
   onFollow,
   valueMode,
@@ -767,6 +769,7 @@ function Stage({
   replay: RaceReplay;
   stints: StintsByDriver;
   pit: PitLaneShape | undefined;
+  profile: SpeedProfile | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
   valueMode: TowerValueMode;
@@ -792,9 +795,9 @@ function Stage({
    */
   const followedLap = useMemo(() => {
     if (followedId === undefined) return 0;
-    const running = carLapsAt(race, replay.elapsedMs, pit).get(followedId)?.lap;
+    const running = carLapsAt(race, replay.elapsedMs, pit, profile).get(followedId)?.lap;
     return running ?? stints.get(followedId)?.at(-1)?.toLap ?? 0;
-  }, [followedId, race, replay.elapsedMs, pit, stints]);
+  }, [followedId, race, replay.elapsedMs, pit, profile, stints]);
 
   /**
    * Whether this race has any OpenF1 timing. 2021-22 Abu Dhabi has none, and neither the sector
@@ -1033,6 +1036,7 @@ function StrategyPanel({
   replay,
   stints,
   pit,
+  profile,
   followedId,
   onFollow,
   comparedIds,
@@ -1042,6 +1046,7 @@ function StrategyPanel({
   replay: RaceReplay;
   stints: StintsByDriver;
   pit: PitLaneShape | undefined;
+  profile: SpeedProfile | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
   comparedIds: readonly string[];
@@ -1057,8 +1062,9 @@ function StrategyPanel({
   const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
   // Nothing is measured while the panel is closed: this runs on every tick when it is open.
   const cars = useMemo(
-    () => (open && tab === 'strategy' ? carLapsAt(race, replay.elapsedMs, pit) : undefined),
-    [open, tab, race, replay.elapsedMs, pit],
+    () =>
+      open && tab === 'strategy' ? carLapsAt(race, replay.elapsedMs, pit, profile) : undefined,
+    [open, tab, race, replay.elapsedMs, pit, profile],
   );
 
   /**
@@ -1227,6 +1233,7 @@ function StrategyPanel({
                     elapsedMs={replay.elapsedMs}
                     finished={replay.finished}
                     pit={pit}
+                    profile={profile}
                     stints={stints}
                     followedId={followedId}
                     comparedIds={comparedIds}
@@ -1282,7 +1289,10 @@ function ReplayPage() {
     () => (race.data ? circuitForRace(race.data.circuit) : undefined),
     [race.data],
   );
-  const replay = useRaceReplay(race.data, { pit: circuit?.pit });
+  const replay = useRaceReplay(race.data, {
+    pit: circuit?.pit,
+    profile: circuit?.profile,
+  });
 
   const stints = useMemo(
     () => (race.data ? stintsByDriver(race.data) : new Map<string, ReplayStint[]>()),
@@ -1478,6 +1488,7 @@ function ReplayPage() {
             replay={replay}
             stints={stints}
             pit={circuit.pit}
+            profile={circuit.profile}
             followedId={followedId}
             onFollow={follow}
             valueMode={valueMode}
@@ -1497,6 +1508,7 @@ function ReplayPage() {
               replay={replay}
               stints={stints}
               pit={circuit.pit}
+              profile={circuit.profile}
               followedId={followedId}
               onFollow={follow}
               comparedIds={comparedIds}

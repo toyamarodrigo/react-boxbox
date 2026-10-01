@@ -31,6 +31,7 @@ import {
   stintAt,
   trackStatusAt,
 } from './replay-timing';
+import { WHOLE_LAP, distanceAt } from './speed-profile';
 
 const race = testReplayRace();
 
@@ -290,7 +291,10 @@ describe('pit stops on the lane at the Monza red flag', () => {
     return (along % 1) * circuit.lengthM;
   };
 
-  it('moves every car into the lane and out of it without a jump', () => {
+  it.each([
+    ['at constant speed', undefined],
+    ['by the speed profile', circuit.profile],
+  ] as const)('moves every car into the lane and out of it without a jump, %s', (_how, profile) => {
     // Every car stops on lap 3 for about 30 minutes and leaves the lane on lap 4.
     const from = leaderCumulative(monza, 2) - 5_000;
     const to = leaderCumulative(monza, 4) + 60_000;
@@ -298,7 +302,7 @@ describe('pit stops on the lane at the Monza red flag', () => {
     const pitted = new Set<string>();
     let worst = { jump: 0, at: 0, id: '' };
     for (let ms = from; ms <= to; ms += 100) {
-      for (const [id, car] of carLapsAt(monza, ms, shape)) {
+      for (const [id, car] of carLapsAt(monza, ms, shape, profile)) {
         if (car.inPit) pitted.add(id);
         const here = metres(car);
         const was = last.get(id);
@@ -313,6 +317,96 @@ describe('pit stops on the lane at the Monza red flag', () => {
     expect([...pitted].sort()).toEqual(stopped.map((row) => row.driverId).sort());
     // 100 ms at 360 km/h is 10 m.
     expect(worst.jump, `${worst.id} at ${worst.at} ms`).toBeLessThan(15);
+  });
+});
+
+describe('the speed profile through the position function at Monza', () => {
+  const file = generatedReplayFiles().find((name) => path.basename(name) === '2026-13.json');
+  if (!file) {
+    it.skip('is not generated yet, so the Monza check is skipped', () => {});
+    return;
+  }
+  const monza = replayRaceSchema.parse(readJson(file));
+  const circuit = circuitById('it-1922')!;
+  const { profile } = circuit;
+  const shape = { entry: circuit.pit.entry, exit: circuit.pit.exit };
+  const carAt = (id: string, ms: number) => carLapsAt(monza, ms, shape, profile).get(id);
+
+  /** A driver's line crossing on `lap`, with the time the lap took. */
+  const crossing = (id: string, lap: number) => {
+    const row = monza.laps.find((item) => item.lap === lap)!.rows.find((r) => r.driverId === id)!;
+    return { end: row.cumulativeMs!, time: row.lapTimeMs!, inPit: row.inPit };
+  };
+  const winner = monza.results.find((result) => result.position === 1)!.driverId;
+
+  it('crosses the line at the real lap time', () => {
+    for (let lap = 10; lap <= 20; lap++) {
+      const { end, inPit } = crossing(winner, lap);
+      if (inPit) continue;
+      expect(carAt(winner, end - 1)).toMatchObject({ lap, inPit: false });
+      expect(carAt(winner, end - 1)?.progress).toBeGreaterThan(0.999);
+      expect(carAt(winner, end)).toMatchObject({ lap: lap + 1, progress: 0, distance: lap });
+    }
+  });
+
+  it('is not halfway round halfway through its lap time', () => {
+    const { end, time } = crossing(winner, 15);
+    const half = carAt(winner, end - time / 2)!;
+    expect(Math.abs(half.progress - 0.5)).toBeGreaterThan(0.01);
+    expect(half.progress).toBeCloseTo(distanceAt(profile, WHOLE_LAP, 0.5), 6);
+    // Without the profile the same moment is plain proportion.
+    expect(carLapsAt(monza, end - time / 2, shape).get(winner)?.progress).toBeCloseTo(0.5, 6);
+  });
+
+  it('starts lap 1 from rest', () => {
+    const one = crossing(winner, 1);
+    const two = crossing(winner, 2);
+    const early = (lap: { end: number; time: number }) =>
+      carAt(winner, lap.end - lap.time + lap.time * 0.05)!.progress;
+    expect(carAt(winner, 0)?.progress).toBe(0);
+    expect(early(one)).toBeLessThan(early(two) / 2);
+  });
+
+  it('runs the pit lane at constant speed and the in-lap stretched to the entry', () => {
+    const stop = replayPitStops(monza, shape).find((item) => item.lap !== 3)!;
+    for (const share of [0.25, 0.5, 0.75]) {
+      const car = carAt(stop.driverId, stop.atMs + share * stop.durationMs)!;
+      expect(car.inPit).toBe(true);
+      expect(car.progress).toBeCloseTo(share, 6);
+    }
+    const entering = carAt(stop.driverId, stop.atMs - 1)!;
+    expect(entering.inPit).toBe(false);
+    expect(entering.distance - (entering.lap - 1)).toBeCloseTo(shape.entry, 3);
+  });
+
+  it('leaves the gaps at the line as they were', () => {
+    for (let lap = 10; lap <= 30; lap += 5) {
+      const second = monza.laps
+        .find((item) => item.lap === lap)!
+        .rows.find((row) => row.position === 2)!;
+      const at = second.cumulativeMs!;
+      const gap = (options: Parameters<typeof replayLiveRows>[2]) =>
+        replayLiveRows(monza, at, options).find((row) => row.driverId === second.driverId);
+      const before = gap({ pit: shape })!;
+      const after = gap({ pit: shape, profile })!;
+      expect(after.gapToLeader).toBeCloseTo(before.gapToLeader!, 6);
+      expect(after.interval).toBeCloseTo(before.interval!, 6);
+    }
+  });
+
+  it('puts the tower and the Track Map in the same order, with no car behind a negative gap', () => {
+    const end = leaderCumulative(monza, monza.totalLaps);
+    for (let ms = 1_000; ms < end; ms += 7_000) {
+      const rows = replayLiveRows(monza, ms, { pit: shape, profile });
+      const cars = carLapsAt(monza, ms, shape, profile);
+      const running = rows.filter((row) => cars.has(row.driverId));
+      const distances = running.map((row) => cars.get(row.driverId)!.distance);
+      expect(distances, `${ms} ms`).toEqual([...distances].sort((a, b) => b - a));
+      for (const row of running) {
+        if (row.interval !== null)
+          expect(row.interval, `${row.driverId} at ${ms} ms`).toBeGreaterThanOrEqual(0);
+      }
+    }
   });
 });
 

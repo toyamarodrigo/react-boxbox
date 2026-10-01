@@ -1,5 +1,6 @@
 import { FICTIONAL_CIRCUIT } from '../content/track-map/circuit';
 import { CIRCUITS } from './circuits';
+import { CONSTANT_SPEED, type SpeedProfile } from './speed-profile';
 
 export type ReplayCircuit = {
   d: string;
@@ -7,6 +8,11 @@ export type ReplayCircuit = {
   name: string;
   /** The approximate pit lane: an open `d`, and where it leaves and rejoins the lap. */
   pit: { entry: number; exit: number; d: string };
+  /**
+   * How a lap's time is shared out along it (ADR 0005), for every view that places a car. Aster
+   * Park is drawn with curves the profile builder does not read, so it runs at constant speed.
+   */
+  profile: SpeedProfile;
   /** True when the outline is a real venue from the generated dataset, false for Aster Park. */
   real: boolean;
 };
@@ -45,6 +51,7 @@ const FALLBACK: ReplayCircuit = {
   viewBox: FICTIONAL_CIRCUIT.viewBox,
   name: FICTIONAL_CIRCUIT.name,
   pit: FICTIONAL_CIRCUIT.pit,
+  profile: CONSTANT_SPEED,
   real: false,
 };
 
@@ -60,6 +67,13 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
       return wanted.includes(location) || wanted.includes(name) || name.includes(wanted);
     });
   return match
-    ? { d: match.d, viewBox: match.viewBox, name: match.name, pit: match.pit, real: true }
+    ? {
+        d: match.d,
+        viewBox: match.viewBox,
+        name: match.name,
+        pit: match.pit,
+        profile: match.profile,
+        real: true,
+      }
     : FALLBACK;
 }

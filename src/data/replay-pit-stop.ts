@@ -1,5 +1,6 @@
 import type { TyreCompound } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
+import type { SpeedProfile } from './speed-profile';
 import { type PitLaneShape, type ReplayPitStop, carLapsAt, stintAt } from './replay-timing';
 
 /** How long the card stays up after the car leaves the lane, in ms of race time. */
@@ -26,8 +27,11 @@ function positionAt(
   driverId: string,
   atMs: number,
   pit: PitLaneShape,
+  profile: SpeedProfile | undefined,
 ): number | undefined {
-  const order = [...carLapsAt(race, atMs, pit)].sort((a, b) => b[1].distance - a[1].distance);
+  const order = [...carLapsAt(race, atMs, pit, profile)].sort(
+    (a, b) => b[1].distance - a[1].distance,
+  );
   const index = order.findIndex(([id]) => id === driverId);
   return index === -1 ? undefined : index + 1;
 }
@@ -41,7 +45,7 @@ function positionAt(
  * position out its place at the exit, held from then on rather than followed. A stop is on the
  * last lap of one stint, so the compound off is that stint's and the compound on the next one's;
  * either unknown leaves both out. A stop the dataset does not number is counted among the car's
- * drawable stops.
+ * drawable stops. Places are read with the circuit's speed `profile`, as the tower reads them.
  */
 export function pitStopCardAt(
   race: ReplayRace,
@@ -49,6 +53,7 @@ export function pitStopCardAt(
   elapsedMs: number,
   stops: readonly ReplayPitStop[],
   pit: PitLaneShape,
+  profile?: SpeedProfile,
 ): ReplayPitStopCard | null {
   // The stops are in time order, so the car's latest one begun is the last that has.
   const own = stops.filter((stop) => stop.driverId === driverId);
@@ -59,7 +64,7 @@ export function pitStopCardAt(
   const outAt = stop.atMs + stop.durationMs;
   if (elapsedMs >= outAt + PIT_STOP_CARD_HOLD_MS) return null;
 
-  const positionIn = positionAt(race, driverId, stop.atMs, pit);
+  const positionIn = positionAt(race, driverId, stop.atMs, pit, profile);
   if (positionIn === undefined) return null;
   const out = elapsedMs >= outAt;
 
@@ -76,6 +81,6 @@ export function pitStopCardAt(
     compoundOff: tyres ? off : undefined,
     compoundOn: tyres ? on : undefined,
     positionIn,
-    positionOut: out ? positionAt(race, driverId, outAt, pit) : undefined,
+    positionOut: out ? positionAt(race, driverId, outAt, pit, profile) : undefined,
   };
 }

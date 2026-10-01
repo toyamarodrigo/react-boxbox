@@ -38,6 +38,7 @@ function ReplayMap({ race, circuit }: { race: ReplayRace; circuit: ReplayCircuit
     speed: SHOWCASE_SPEED,
     autoPlay: true,
     pit: circuit.pit,
+    profile: circuit.profile,
   });
 
   // No controls means no way back to the start, so the chequered flag rewinds it. `restart`

@@ -105,7 +105,14 @@ export function CircuitPanel({
   const stopCard =
     followedId === undefined
       ? null
-      : pitStopCardAt(race, followedId, replay.elapsedMs, replay.pitStops, circuit.pit);
+      : pitStopCardAt(
+          race,
+          followedId,
+          replay.elapsedMs,
+          replay.pitStops,
+          circuit.pit,
+          circuit.profile,
+        );
   const stopDriver = stopCard
     ? race.drivers.find((driver) => driver.id === stopCard.driverId)
     : undefined;
@@ -113,7 +120,11 @@ export function CircuitPanel({
   // The followed driver's battle, or the one highest up the order; none once the flag is out.
   const battle = replay.finished
     ? null
-    : battleCardAt(race, replay.elapsedMs, followedId, { rows: replay.rows, pit: circuit.pit });
+    : battleCardAt(race, replay.elapsedMs, followedId, {
+        rows: replay.rows,
+        pit: circuit.pit,
+        profile: circuit.profile,
+      });
   const battleCar = (driverId: string) => {
     const driver = race.drivers.find((entry) => entry.id === driverId);
     return driver

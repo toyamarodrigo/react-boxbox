@@ -22,6 +22,7 @@ import {
   WHOLE_LAP,
   distanceAt,
   isConstantSpeed,
+  profileForLap,
   timeShareAt,
 } from './speed-profile';
 
@@ -105,21 +106,38 @@ function indexRace(race: ReplayRace): RaceIndex {
 }
 
 /**
- * When a car reaches a race distance (laps completed plus a fraction), on its own clock, by the
- * speed profile laid over the whole lap; without one, at constant speed. `null` when the car
- * never recorded that lap.
+ * When a car reaches a race distance (laps completed plus a fraction), on its own clock: the
+ * inverse of where `carLapsAt` puts it, with the same speed profile and pit stretches, so a gap
+ * read at a place on the track agrees with the order there. At the line it is the line time.
+ * `null` when the car never recorded that lap.
  */
 function timeAtDistance(
   laps: readonly DriverLap[],
   distance: number,
+  pit?: PitLaneShape,
   profile?: SpeedProfile,
 ): number | null {
   const number = Math.floor(distance) + 1;
-  const lap = laps.find((item) => item.lap === number);
+  const at = laps.findIndex((item) => item.lap === number);
+  const lap = laps[at];
   if (!lap) return null;
   const fraction = distance - (number - 1);
-  const time = profile ? timeShareAt(profile, WHOLE_LAP, fraction) : fraction;
-  return lap.start + time * (lap.end - lap.start);
+  if (fraction <= 0) return lap.start;
+  if (!pit) {
+    const shape = profile && profileForLap(profile, lap.lap);
+    const time = shape ? timeShareAt(shape, WHOLE_LAP, fraction) : fraction;
+    return lap.start + time * (lap.end - lap.start);
+  }
+  // A stop splits the lap into the track and the lane, each with its own pace: search the lap's
+  // clock for the moment the car is placed there. Its place only moves forwards in a lap.
+  let low = lap.start;
+  let high = lap.end;
+  for (let step = 0; step < 60 && high - low > 1e-6; step++) {
+    const middle = (low + high) / 2;
+    if (placeCar(laps, at, middle, pit, profile).fraction < fraction) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
 }
 
 /** The fastest of a car's timed laps before lap `until`, in seconds. */
@@ -301,6 +319,9 @@ function pitWindow(
   };
 }
 
+/** Where a car is placed on its lap: `CarLap` without the lap itself. */
+type Placed = { progress: number; fraction: number; inPit: boolean };
+
 /**
  * Where a car is on `stretch` of the lap once `elapsed` of the `duration` it takes there has
  * gone, by the speed profile. At constant speed it is plain proportion, worked out the way it
@@ -329,11 +350,13 @@ function placeWithPit(
   index: number,
   elapsedMs: number,
   shape: PitLaneShape,
-  profile: SpeedProfile | undefined,
-): { progress: number; fraction: number; inPit: boolean } {
+  speed: SpeedProfile | undefined,
+): Placed {
   const lap = laps[index]!;
   const previous = laps[index - 1];
   const stop = pitWindow(laps, index, shape);
+  // Lap 1 can be an in-lap: it still starts from rest.
+  const profile = speed && profileForLap(speed, lap.lap);
   const earlier =
     previous && previous.lap === lap.lap - 1 ? pitWindow(laps, index - 1, shape) : null;
 
@@ -373,9 +396,10 @@ function placeWithPit(
  * With a `pit` shape, a lap with a timed stop puts the car in the pit lane for the stop's
  * duration around the line; without one, the lap's own pit flag stands for the whole lap.
  *
- * With a speed `profile`, a car on track moves by it between the line and the pit lane; without
- * one, or with `CONSTANT_SPEED`, it moves at constant speed. The pit lane is constant speed
- * either way.
+ * With a speed `profile`, a car on track moves by it between the line and the pit lane, lap 1
+ * by its standing start; without one, or with `CONSTANT_SPEED`, it moves at constant speed. The
+ * pit lane is constant speed either way. A neutralised lap is just a longer lap: the same shape,
+ * stretched over its time.
  *
  * A car with no lap in progress — it has retired, or its lap cannot be timed — is absent.
  */
@@ -392,9 +416,7 @@ export function carLapsAt(
     const at = laps.findIndex((item) => elapsedMs >= item.start && elapsedMs < item.end);
     const lap = laps[at];
     if (!lap) continue;
-    const placed = pit
-      ? placeWithPit(laps, at, elapsedMs, pit, profile)
-      : placeOnLap(lap, elapsedMs, profile);
+    const placed = placeCar(laps, at, elapsedMs, pit, profile);
     cars.set(driver.id, {
       lap: lap.lap,
       row: lap.row,
@@ -406,8 +428,25 @@ export function carLapsAt(
   return cars;
 }
 
-/** The profile over the whole lap, line to line; the lap's own pit flag stands for the whole lap. */
-function placeOnLap(lap: DriverLap, elapsedMs: number, profile: SpeedProfile | undefined) {
+/** Where a car is on the lap at `index` of its laps at `elapsedMs`, with or without the pit lane. */
+function placeCar(
+  laps: readonly DriverLap[],
+  index: number,
+  elapsedMs: number,
+  pit: PitLaneShape | undefined,
+  profile: SpeedProfile | undefined,
+): Placed {
+  return pit
+    ? placeWithPit(laps, index, elapsedMs, pit, profile)
+    : placeOnLap(laps[index]!, elapsedMs, profile);
+}
+
+/**
+ * The profile over the whole lap, line to line, from rest on lap 1; the lap's own pit flag
+ * stands for the whole lap.
+ */
+function placeOnLap(lap: DriverLap, elapsedMs: number, speed: SpeedProfile | undefined): Placed {
+  const profile = speed && profileForLap(speed, lap.lap);
   const fraction = onTrack(profile, WHOLE_LAP, elapsedMs - lap.start, lap.end - lap.start);
   return { progress: fraction, fraction, inPit: lap.row.inPit };
 }
@@ -505,7 +544,7 @@ export function replayLiveRows(
   /** How long ago `aheadId` passed the point `car` is at, in ms; `null` when it cannot be timed. */
   const timeBehind = (car: CarLap | undefined, aheadId: string | undefined): number | null => {
     const laps = aheadId === undefined ? undefined : index.get(aheadId);
-    const passed = car && laps ? timeAtDistance(laps, car.distance, profile) : null;
+    const passed = car && laps ? timeAtDistance(laps, car.distance, pit, profile) : null;
     return passed === null ? null : gapAtMs - passed;
   };
 

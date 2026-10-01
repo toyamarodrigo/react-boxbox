@@ -3,6 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { speedProfileFromOutline } from '../src/lib/outline-speed-profile.ts';
 import { type PitLaneOptions, pitLaneOffsetFor, pitLanePoints } from '../src/lib/pit-lane.ts';
 import {
   TRACK_MAP_STROKE_WIDTH,
@@ -22,6 +23,10 @@ import {
  * The source has no pit lanes, so each one is approximated: the stretch of the lap
  * around the line, shifted to the inside of the loop and eased back onto the track
  * (see `src/lib/pit-lane.ts`). `PIT_LANES` overrides the defaults per venue.
+ *
+ * Each circuit also carries its speed profile (ADR 0005), modelled from the drawn outline's
+ * curvature with grip, braking, acceleration and top-speed limits
+ * (see `src/lib/outline-speed-profile.ts`).
  */
 const SOURCE = 'https://raw.githubusercontent.com/bacinger/f1-circuits/master/circuits';
 
@@ -125,14 +130,17 @@ async function main() {
   for (const id of CALENDAR_2026) {
     const feature = await fetchCircuit(id);
     const fitted = fit(project(feature.geometry.coordinates, REVERSED.has(id)));
+    const d = pointsToPath(fitted.points);
     circuits.push({
       id,
       name: feature.properties.Name,
       location: feature.properties.Location,
       lengthM: feature.properties.length,
-      d: pointsToPath(fitted.points),
+      d,
       viewBox: fitted.viewBox,
       pit: pitLane(fitted.points, id),
+      // From the rounded `d` the Track Map draws, so the shares are of the very same path.
+      profile: speedProfileFromOutline(d, feature.properties.length),
     });
     process.stdout.write(`${id} ${feature.properties.Name} (${fitted.viewBox})\n`);
   }
@@ -140,7 +148,7 @@ async function main() {
   const body = circuits
     .map(
       (c) =>
-        `  {\n    id: ${JSON.stringify(c.id)},\n    name: ${JSON.stringify(c.name)},\n    location: ${JSON.stringify(c.location)},\n    lengthM: ${c.lengthM},\n    viewBox: ${JSON.stringify(c.viewBox)},\n    d: ${JSON.stringify(c.d)},\n    pit: { entry: ${c.pit.entry}, exit: ${c.pit.exit}, d: ${JSON.stringify(c.pit.d)} },\n  }`,
+        `  {\n    id: ${JSON.stringify(c.id)},\n    name: ${JSON.stringify(c.name)},\n    location: ${JSON.stringify(c.location)},\n    lengthM: ${c.lengthM},\n    viewBox: ${JSON.stringify(c.viewBox)},\n    d: ${JSON.stringify(c.d)},\n    pit: { entry: ${c.pit.entry}, exit: ${c.pit.exit}, d: ${JSON.stringify(c.pit.d)} },\n    profile: {\n      time: ${JSON.stringify(c.profile.time)},\n      start: ${JSON.stringify(c.profile.start)},\n    },\n  }`,
     )
     .join(',\n');
 
@@ -148,6 +156,8 @@ async function main() {
 //
 // Circuit layouts are the intellectual property of their venues. This project is
 // unofficial and not affiliated with any racing series, circuit, or team.
+
+import type { SpeedProfile } from './speed-profile';
 
 export type Circuit = {
   id: string;
@@ -163,6 +173,11 @@ export type Circuit = {
    * from pit entry to pit exit, with the lap fractions where it leaves and rejoins the track.
    */
   pit: { entry: number; exit: number; d: string };
+  /**
+   * How a lap's time is shared out along it (ADR 0005), modelled from the outline: a flying lap
+   * in \`time\`, lap 1 from a standing start in \`start\`. An approximation, never telemetry.
+   */
+  profile: Required<SpeedProfile>;
 };
 
 export const CIRCUITS: readonly Circuit[] = [

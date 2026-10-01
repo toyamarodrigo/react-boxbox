@@ -13,10 +13,21 @@
  * lap. `time[i]` is read at the share `i / (time.length - 1)` of the lap's distance: it starts
  * at 0 on the line, ends at 1 back on it, and increases in between.
  */
-export type SpeedProfile = { readonly time: readonly number[] };
+export type SpeedProfile = {
+  readonly time: readonly number[];
+  /**
+   * The same for lap 1, which starts from rest at the line; `time` stands for it when absent.
+   */
+  readonly start?: readonly number[];
+};
 
 /** The same speed all the way round: every share of the lap's time covers the same distance. */
 export const CONSTANT_SPEED: SpeedProfile = { time: [0, 1] };
+
+/** The profile a car follows on lap `lap`: lap 1 from a standing start, every other lap flying. */
+export function profileForLap(profile: SpeedProfile, lap: number): SpeedProfile {
+  return lap === 1 && profile.start ? { time: profile.start } : profile;
+}
 
 /**
  * A part of the lap the profile is laid over, as shares of the lap's distance. A whole lap runs
