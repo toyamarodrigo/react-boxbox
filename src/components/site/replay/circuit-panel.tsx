@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { battleCardAt } from '@/data/replay-battle';
@@ -6,12 +6,14 @@ import { pitStopCardAt } from '@/data/replay-pit-stop';
 import type { ReplayRace } from '@/data/replay-schema';
 import { emphasiseMarker, flaggedSectorsAt, trackStatusAt } from '@/data/replay-timing';
 import { REPLAY_MARKER_TRANSITION_MS, type RaceReplay } from '@/data/use-race-replay';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TrackMarker } from '@/registry/boxbox/lib/types';
 import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
+import { OnboardView } from './onboard-view';
 
 /**
  * The tallest each card gets: an overtake tag, both tyres, a position out. Drawn invisible under
@@ -41,6 +43,14 @@ const PIT_STOP_CARD_SIZER = (
     size="sm"
   />
 );
+
+/** What the Track Map panel shows: the 2D map, or the Onboard view in its place. */
+type TrackView = 'map' | 'onboard';
+
+const TRACK_VIEWS: readonly { value: TrackView; label: string }[] = [
+  { value: 'map', label: 'Map' },
+  { value: 'onboard', label: 'Onboard' },
+];
 
 /** One place in the strip under the map: the sizer and the card share one grid cell. */
 function CardSlot({
@@ -94,6 +104,8 @@ export function CircuitPanel({
     [replay.markers, followedId, comparedIds],
   );
   const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
+  // Local for now; the Moment link will carry it (#20).
+  const [view, setView] = useState<TrackView>('map');
 
   /**
    * The flag flying over the track, over the map it belongs to. At the finish it is the chequered
@@ -135,6 +147,24 @@ export function CircuitPanel({
   const battleAhead = battle ? battleCar(battle.aheadId) : undefined;
   const battleBehind = battle ? battleCar(battle.behindId) : undefined;
 
+  // The same map either way; as the Onboard view's minimap it draws its cars smaller.
+  const trackMap = (size: 'sm' | 'md') => (
+    <TrackMap
+      size={size}
+      // A new outline restarts the markers, so their lap counters do not carry over.
+      key={circuit.name}
+      path={circuit.d}
+      pitLane={circuit.pit.d}
+      viewBox={circuit.viewBox}
+      markers={markers}
+      sectors={flagged}
+      // After a seek the cars snap to the new time; sliding there would cross the circuit.
+      transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
+      onMarkerClick={handleMarkerClick}
+      dimOthers={followedId !== undefined}
+    />
+  );
+
   return (
     <figure className="flex flex-col gap-3 border border-border bg-card p-5">
       {/*
@@ -144,19 +174,31 @@ export function CircuitPanel({
        * a change of flag rather than ten times a second.
        */}
       <FlagBanner status={status} visible={status !== 'green'} />
-      <TrackMap
-        // A new outline restarts the markers, so their lap counters do not carry over.
-        key={circuit.name}
-        path={circuit.d}
-        pitLane={circuit.pit.d}
-        viewBox={circuit.viewBox}
-        markers={markers}
-        sectors={flagged}
-        // After a seek the cars snap to the new time; sliding there would cross the circuit.
-        transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
-        onMarkerClick={handleMarkerClick}
-        dimOthers={followedId !== undefined}
-      />
+      <fieldset aria-label="Track view" className="flex gap-1 self-end">
+        {TRACK_VIEWS.map(({ value, label }) => (
+          <Button
+            key={value}
+            size="xs"
+            variant={view === value ? 'default' : 'outline'}
+            aria-pressed={view === value}
+            onClick={() => setView(value)}
+          >
+            {label}
+          </Button>
+        ))}
+      </fieldset>
+      {view === 'onboard' ? (
+        <OnboardView
+          race={race}
+          replay={replay}
+          circuit={circuit}
+          followedId={followedId}
+          comparedIds={comparedIds}
+          minimap={trackMap('sm')}
+        />
+      ) : (
+        trackMap('md')
+      )}
       {/*
        * Under the map rather than over it, so no graphic covers a stretch of track. Both places
        * keep the height of their tallest card, so the page never moves as a card comes and goes.

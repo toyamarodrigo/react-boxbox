@@ -6,6 +6,13 @@ import { clearReplayCache } from '../data/use-replay-data';
 import { stubElementSize } from '../test/chart-size';
 import { getRouter } from '../router';
 
+// The Onboard view's 3D scene never loads in jsdom: a stand-in reports the camera it was given.
+vi.mock('../components/site/replay/onboard/onboard-scene', () => ({
+  default: ({ camera }: { camera: string }) => (
+    <div data-slot="onboard-scene-stand-in" data-camera={camera} />
+  ),
+}));
+
 const index = testReplayIndex();
 const race = testReplayRace();
 
@@ -1811,5 +1818,75 @@ describe('replay page, standings', () => {
       await screen.findByText('There are no standings for this race in the dataset.'),
     ).toBeInTheDocument();
     expect(document.querySelector('[data-slot="standings"]')).toBeNull();
+  });
+});
+
+describe('replay page, onboard view', () => {
+  const viewButton = (name: string) =>
+    within(screen.getByRole('group', { name: 'Track view' })).getByRole('button', { name });
+  const cameraButton = (name: string) =>
+    within(screen.getByRole('group', { name: 'Camera' })).getByRole('button', { name });
+  const scene = () => document.querySelector('[data-slot="onboard-scene-stand-in"]');
+  const hud = () => document.querySelector('[data-slot="onboard-hud"]');
+  const notice = () => document.querySelector('[data-slot="onboard-notice"]');
+
+  async function openOnboard(path = '/replay') {
+    renderReplay(path);
+    await screen.findByRole('group', { name: 'Track view' });
+    fireEvent.click(viewButton('Onboard'));
+    await waitFor(() => expect(scene()).not.toBeNull());
+  }
+
+  it('switches the panel between the Track Map and the Onboard view', async () => {
+    renderReplay();
+    await screen.findByRole('group', { name: 'Track view' });
+    expect(viewButton('Map')).toHaveAttribute('aria-pressed', 'true');
+    expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull();
+
+    fireEvent.click(viewButton('Onboard'));
+    expect(viewButton('Onboard')).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      await screen.findByText('Unofficial layout · generated surroundings · approximate motion'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(scene()).not.toBeNull());
+    // The Track Map stays, as the minimap, with every car.
+    expect(screen.getByRole('group', { name: 'Track map, 4 cars' })).toBeInTheDocument();
+
+    fireEvent.click(viewButton('Map'));
+    expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Track map, 4 cars' })).toBeInTheDocument();
+  });
+
+  it('rides with the leader and says so without a followed driver', async () => {
+    await openOnboard('/replay?t=30');
+    expect(notice()).toHaveTextContent('Following leader · pick a driver');
+    expect(hud()).toHaveTextContent(/ALP\s*P1\s*Lap 1\/3/);
+    expect(hud()).not.toHaveTextContent('vs');
+  });
+
+  it('asks for a compared driver with a followed driver alone', async () => {
+    await openOnboard('/replay?driver=CHA&t=30');
+    expect(notice()).toHaveTextContent('Add a compared driver to see them on track');
+    expect(hud()).toHaveTextContent(/CHA\s*P3\s*Lap 1\/3/);
+  });
+
+  it('shows the followed driver against the first compared driver, never a speed', async () => {
+    await openOnboard('/replay?driver=CHA&vs=DEL,ALP&t=30');
+    expect(hud()).toHaveTextContent(/CHA\s*P3\s*Lap 1\/3\s*vs DEL/);
+    expect(notice()).toBeNull();
+    const view = document.querySelector('[data-slot="onboard-view"]');
+    expect(view).toHaveAccessibleName('Onboard view, riding with CHA, DEL on track too');
+    expect(view?.textContent).not.toMatch(/km\/h|kph|mph|gear/i);
+  });
+
+  it('switches between the T-cam and the chase cam', async () => {
+    await openOnboard();
+    expect(scene()).toHaveAttribute('data-camera', 'tcam');
+    expect(cameraButton('T-cam')).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(cameraButton('Chase'));
+    expect(scene()).toHaveAttribute('data-camera', 'chase');
+    expect(cameraButton('Chase')).toHaveAttribute('aria-pressed', 'true');
+    expect(cameraButton('T-cam')).toHaveAttribute('aria-pressed', 'false');
   });
 });
