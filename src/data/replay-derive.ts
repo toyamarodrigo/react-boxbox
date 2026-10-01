@@ -149,6 +149,8 @@ export function deriveLaps(rawLaps: RawLap[], rawPitStops: RawPitStop[]): Replay
         pitDurationMs: stop?.duration === undefined ? null : parseLapTime(stop.duration),
         pitStop:
           stopNumber === null || Number.isNaN(stopNumber) || stopNumber < 1 ? null : stopNumber,
+        // A second source too: `withStationary` fills it when OpenF1 has the stop.
+        stationaryMs: null,
         overtake: false,
         lapsBehind: 0,
         // Timing is a second source: `withTiming` fills these when OpenF1 has the race.
@@ -439,6 +441,90 @@ export function withTiming(laps: readonly ReplayLap[], timing: OpenF1Timing): Re
       };
     }),
   }));
+}
+
+/** One row of OpenF1's `pit`: one stop. Durations are seconds. */
+export type RawOpenF1Pit = {
+  driver_number?: number | null;
+  lap_number?: number | null;
+  /** Pit entry to pit exit. */
+  lane_duration?: number | null;
+  /** Standing still in the box; only from the 2024 United States Grand Prix on. */
+  stop_duration?: number | null;
+};
+
+/** What the stationary join takes: OpenF1's `pit` and `drivers` plus the race's own driver codes. */
+export type OpenF1PitStops = {
+  drivers: readonly RawOpenF1Driver[];
+  stops: readonly RawOpenF1Pit[];
+  /** Same join as the compounds: the three-letter code, never the jolpica `number` field. */
+  codes: readonly { id: string; code: string }[];
+};
+
+/**
+ * Merges OpenF1's stationary times into the derived laps' pit stops.
+ *
+ * The match is on the driver code and the lap, with the compounds' one lap of tolerance
+ * (`COMPOUND_LAP_TOLERANCE`): the nearest OpenF1 stop to the jolpica stop's lap, the earlier one
+ * when two are equally near. Each OpenF1 stop is spent once, so two jolpica stops on consecutive
+ * laps — a red-flag restart — cannot both claim it. A stop with no candidate, or with no usable
+ * `stop_duration`, keeps `null`.
+ *
+ * Returns the laps, copied rather than mutated, and how the stops fared: `matched` with a figure,
+ * `blank` when the OpenF1 stop has none (most of 2026 so far), `unjoined` when no OpenF1 stop fits.
+ */
+export function withStationary(
+  laps: readonly ReplayLap[],
+  source: OpenF1PitStops,
+): { laps: ReplayLap[]; matched: number; blank: number; unjoined: number } {
+  const acronyms = acronymsByNumber(source.drivers);
+  const codes = new Map(
+    source.codes.map((driver) => [driver.id, driver.code.trim().toUpperCase()]),
+  );
+
+  const byCode = new Map<string, RawOpenF1Pit[]>();
+  for (const stop of source.stops) {
+    if (stop.driver_number == null || stop.lap_number == null) continue;
+    const code = acronyms.get(stop.driver_number);
+    if (code === undefined) continue;
+    const list = byCode.get(code) ?? [];
+    list.push(stop);
+    byCode.set(code, list);
+  }
+  for (const list of byCode.values()) {
+    list.sort((a, b) => (a.lap_number ?? 0) - (b.lap_number ?? 0));
+  }
+
+  const spent = new Set<RawOpenF1Pit>();
+  let matched = 0;
+  let blank = 0;
+  let unjoined = 0;
+  const merged = laps.map((lap) => ({
+    lap: lap.lap,
+    rows: lap.rows.map((row) => {
+      if (!row.inPit) return { ...row };
+      let best: RawOpenF1Pit | undefined;
+      let closest = Number.POSITIVE_INFINITY;
+      for (const candidate of byCode.get(codes.get(row.driverId) ?? '') ?? []) {
+        if (spent.has(candidate)) continue;
+        const distance = Math.abs((candidate.lap_number ?? 0) - lap.lap);
+        if (distance > COMPOUND_LAP_TOLERANCE || distance >= closest) continue;
+        best = candidate;
+        closest = distance;
+      }
+      const seconds = best?.stop_duration;
+      const stationaryMs =
+        typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+          ? Math.round(seconds * 1000)
+          : null;
+      if (best === undefined) unjoined += 1;
+      else if (stationaryMs === null) blank += 1;
+      else matched += 1;
+      if (best) spent.add(best);
+      return { ...row, stationaryMs };
+    }),
+  }));
+  return { laps: merged, matched, blank, unjoined };
 }
 
 /** One row of OpenF1's `race_control`: one message, with whatever of the fields applies to it. */

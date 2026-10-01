@@ -372,6 +372,126 @@ describe('pit stops on the lane at the Monza red flag', () => {
   });
 });
 
+describe('stationary time through the position function', () => {
+  const load = (fileName: string) => {
+    const file = generatedReplayFiles().find((name) => path.basename(name) === fileName);
+    return file ? replayRaceSchema.parse(readJson(file)) : null;
+  };
+  const shapeOf = (race: ReplayRace) => {
+    const circuit = circuitForRace(race.circuit);
+    return { entry: circuit.pit.entry, exit: circuit.pit.exit };
+  };
+  const STEP_MS = 10;
+
+  /** How long the car stands still inside the stop's window, and whether it is in the lane throughout. */
+  const standing = (
+    race: ReplayRace,
+    stop: { driverId: string; atMs: number; durationMs: number },
+  ) => {
+    const shape = shapeOf(race);
+    let still = 0;
+    let inLane = true;
+    let last: number | undefined;
+    for (let ms = stop.atMs + 1; ms < stop.atMs + stop.durationMs; ms += STEP_MS) {
+      const car = carLapsAt(race, ms, shape).get(stop.driverId)!;
+      inLane &&= car.inPit;
+      if (last !== undefined && car.distance === last) still += STEP_MS;
+      last = car.distance;
+    }
+    return { still, inLane };
+  };
+
+  const spa = load('2026-10.json');
+  it.skipIf(spa === null)(
+    'stands a car still for exactly its stationary time, inside its window',
+    () => {
+      const race = spa!;
+      const shape = shapeOf(race);
+      // Gasly on lap 14: 24.177 s in the lane, 3.4 s of it in the box.
+      const row = race.laps
+        .find((lap) => lap.lap === 14)!
+        .rows.find((r) => r.driverId === 'gasly')!;
+      expect(row).toMatchObject({ inPit: true, pitDurationMs: 24_177, stationaryMs: 3_400 });
+      const stop = replayPitStops(race, shape).find((s) => s.driverId === 'gasly' && s.lap === 14)!;
+      expect(stop.durationMs).toBe(24_177);
+
+      const { still, inLane } = standing(race, stop);
+      expect(inLane).toBe(true);
+      expect(Math.abs(still - 3_400)).toBeLessThanOrEqual(STEP_MS);
+
+      // It stands at the box, halfway along the lane, and the stop is no longer than without it.
+      const atBox = stop.atMs + (stop.durationMs - 3_400) / 2;
+      const at = (ms: number) => carLapsAt(race, ms, shape).get('gasly')!;
+      expect(at(atBox - 1).progress).toBeLessThan(0.5);
+      expect(at(atBox + 1).progress).toBe(0.5);
+      expect(at(atBox + 3_399).progress).toBe(0.5);
+      expect(at(atBox + 3_401).progress).toBeGreaterThan(0.5);
+      // It moves on the way in and on the way out.
+      expect(at(stop.atMs - 1_000).inPit).toBe(false);
+      expect(at(stop.atMs - 1_000).distance).toBeLessThan(at(stop.atMs - 900).distance);
+      expect(at(stop.atMs + stop.durationMs + 1).inPit).toBe(false);
+      expect(at(stop.atMs + stop.durationMs + 1_000).distance).toBeGreaterThan(
+        at(stop.atMs + stop.durationMs + 900).distance,
+      );
+    },
+  );
+
+  it.skipIf(spa === null)('ignores a stationary time as long as the stop', () => {
+    const race = spa!;
+    const shape = shapeOf(race);
+    const bad: ReplayRace = {
+      ...race,
+      laps: race.laps.map((lap) => ({
+        ...lap,
+        rows: lap.rows.map((r) =>
+          r.pitDurationMs === null ? r : { ...r, stationaryMs: r.pitDurationMs },
+        ),
+      })),
+    };
+    const stop = replayPitStops(bad, shape).find((s) => s.driverId === 'gasly' && s.lap === 14)!;
+    expect(standing(bad, stop).still).toBe(0);
+  });
+
+  const lasVegas = load('2023-21.json');
+  it.skipIf(lasVegas === null)('never stops a car in a race with no stationary times', () => {
+    const race = lasVegas!;
+    const rows = race.laps.flatMap((lap) => lap.rows);
+    expect(rows.every((r) => r.stationaryMs === null)).toBe(true);
+    const stops = replayPitStops(race, shapeOf(race));
+    expect(stops.length).toBeGreaterThan(0);
+    for (const stop of stops)
+      expect(standing(race, stop), stop.driverId).toEqual({ still: 0, inLane: true });
+  });
+
+  it.each([
+    ['Monaco 2026', '2026-6.json', 68],
+    ['Monza 2026', '2026-13.json', 3],
+  ] as const)(
+    'leaves the %s red-flag waits as they were, whatever their stationary time',
+    (_name, fileName, redLap) => {
+      const race = load(fileName);
+      if (race === null) return;
+      const shape = shapeOf(race);
+      const given: ReplayRace = {
+        ...race,
+        laps: race.laps.map((lap) =>
+          lap.lap === redLap
+            ? { ...lap, rows: lap.rows.map((r) => (r.inPit ? { ...r, stationaryMs: 3_000 } : r)) }
+            : lap,
+        ),
+      };
+      const from = leaderCumulative(race, redLap - 1);
+      const to = leaderCumulative(race, redLap + 1) + 60_000;
+      // The row is the one the race was given; where the car is drawn is what must not change.
+      const placed = (on: ReplayRace, ms: number) =>
+        [...carLapsAt(on, ms, shape)].map(([id, car]) => [id, car.lap, car.progress, car.inPit]);
+      for (let ms = from; ms <= to; ms += 250) {
+        expect(placed(given, ms)).toEqual(placed(race, ms));
+      }
+    },
+  );
+});
+
 describe.each([
   // The race, the lap the red flag stopped, and how many cars only leave the lane after it.
   ['Monaco 2026', '2026-6.json', 68, 9],

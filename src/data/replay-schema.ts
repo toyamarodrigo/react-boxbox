@@ -36,6 +36,12 @@ export const replayLapRowSchema = z.object({
   pitDurationMs: z.number().int().min(0).nullable().default(null),
   /** Which stop of the race this was for the car: 1 for the first. */
   pitStop: z.number().int().min(1).nullable().default(null),
+  /**
+   * The part of this lap's stop the car stood still in its box, from OpenF1's `stop_duration`.
+   * Known only from the 2024 United States Grand Prix on; `null` before, and for a stop the
+   * source has no figure for.
+   */
+  stationaryMs: z.number().int().min(0).nullable().default(null),
   overtake: z.boolean(),
   lapsBehind: z.number().int().min(0),
   /**
@@ -186,6 +192,8 @@ export const replaySourceSchema = z.object({
   timing: replayOpenF1SourceSchema.optional(),
   /** Where the race-control messages came from. */
   raceControl: replayOpenF1SourceSchema.optional(),
+  /** Where the pit stops' stationary times came from. */
+  stationary: replayOpenF1SourceSchema.optional(),
   /** Where the standings came from: the drivers' table, with the teams' table beside it. */
   standings: replayJolpicaSourceSchema.optional(),
 });

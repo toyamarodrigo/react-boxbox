@@ -10,12 +10,15 @@ import {
   parseLapTime,
   raceStartMs,
   tyreCompoundOf,
+  withStationary,
   withTiming,
   type OpenF1Compounds,
+  type OpenF1PitStops,
   type OpenF1RaceControl,
   type OpenF1Timing,
   type RawLap,
   type RawOpenF1Lap,
+  type RawOpenF1Pit,
   type RawOpenF1RaceControl,
   type RawOpenF1Stint,
   type RawPitStop,
@@ -560,6 +563,67 @@ describe('withTiming', () => {
     );
     expect(rowOf(all, 1, 'alpha')?.speedTrapKph).toBe(300);
     expect(rowOf(laps, 1, 'alpha')?.speedTrapKph).toBe(null);
+  });
+});
+
+describe('withStationary', () => {
+  const laps = deriveLaps(rawLaps, rawPitStops);
+  const rowOf = (all: readonly ReturnType<typeof deriveLaps>[number][], lap: number, id: string) =>
+    all.find((entry) => entry.lap === lap)?.rows.find((row) => row.driverId === id);
+
+  const pits = (stops: RawOpenF1Pit[]): OpenF1PitStops => ({
+    // charlie is car 44 to OpenF1 and something else to jolpica: the join is on the code.
+    drivers: [
+      { driver_number: 44, name_acronym: 'cha' },
+      { driver_number: 55, name_acronym: 'ALP' },
+    ],
+    stops,
+    codes: [
+      { id: 'alpha', code: 'ALP' },
+      { id: 'charlie', code: 'CHA' },
+      { id: 'bravo', code: 'BRA' },
+    ],
+  });
+
+  it('puts the stationary time on the stop of the same car and lap', () => {
+    const merged = withStationary(
+      laps,
+      pits([{ driver_number: 44, lap_number: 3, lane_duration: 22.4, stop_duration: 2.43 }]),
+    );
+    expect(rowOf(merged.laps, 3, 'charlie')?.stationaryMs).toBe(2_430);
+    expect(merged).toMatchObject({ matched: 1, blank: 0, unjoined: 0 });
+    // Only a stop carries one; the laps given are not touched.
+    expect(rowOf(merged.laps, 2, 'charlie')?.stationaryMs).toBe(null);
+    expect(rowOf(merged.laps, 3, 'alpha')?.stationaryMs).toBe(null);
+    expect(rowOf(laps, 3, 'charlie')?.stationaryMs).toBe(null);
+  });
+
+  it('joins a stop one lap off, but not two, and spends each OpenF1 stop once', () => {
+    const off = withStationary(
+      laps,
+      pits([{ driver_number: 44, lap_number: 4, stop_duration: 3 }]),
+    );
+    expect(rowOf(off.laps, 3, 'charlie')?.stationaryMs).toBe(3_000);
+    const far = withStationary(
+      laps,
+      pits([{ driver_number: 44, lap_number: 5, stop_duration: 3 }]),
+    );
+    expect(rowOf(far.laps, 3, 'charlie')?.stationaryMs).toBe(null);
+    expect(far).toMatchObject({ matched: 0, unjoined: 1 });
+  });
+
+  it('keeps a stop with no usable figure, or no car to join, at null', () => {
+    const blank = withStationary(
+      laps,
+      pits([{ driver_number: 44, lap_number: 3, lane_duration: 22.4, stop_duration: null }]),
+    );
+    expect(rowOf(blank.laps, 3, 'charlie')?.stationaryMs).toBe(null);
+    expect(blank).toMatchObject({ matched: 0, blank: 1, unjoined: 0 });
+    const stranger = withStationary(
+      laps,
+      pits([{ driver_number: 99, lap_number: 3, stop_duration: 2.4 }]),
+    );
+    expect(rowOf(stranger.laps, 3, 'charlie')?.stationaryMs).toBe(null);
   });
 });
 
