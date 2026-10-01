@@ -9,7 +9,13 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, type RootState, useFrame } from '@react-three/fiber';
-import { BoxGeometry, type Mesh, type PerspectiveCamera } from 'three';
+import {
+  BoxGeometry,
+  type Mesh,
+  PCFShadowMap,
+  type PerspectiveCamera,
+  setConsoleFunction,
+} from 'three';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { onboardFrame } from '@/data/onboard-frame';
 import type { ReplayRace } from '@/data/replay-schema';
@@ -22,6 +28,37 @@ const SKY = '#bcd4e6';
 /** A generic formula car's footprint as a box: length, height, width, in metres. */
 const CAR_GEOMETRY = new BoxGeometry(5.6, 1, 1.9);
 const UNKNOWN_TEAM_COLOUR = '#888888';
+
+/**
+ * Where a T-cam sits on the car it rides with, in metres from the car's centre: up off the
+ * track, ahead of the centre (just behind the front axle, which is about 1.8 m ahead), and the
+ * small downward pitch it looks ahead along the track with, in radians.
+ */
+const TCAM = { height: 1.1, ahead: 1.4, pitch: 0.03 } as const;
+
+/**
+ * No shadows. Named so R3F does not fall back on PCFSoftShadowMap, which WebGPURenderer has
+ * removed and warns about; PCFShadowMap works on WebGPU and on its WebGL2 backend.
+ */
+const NO_SHADOWS = { enabled: false, type: PCFShadowMap } as const;
+
+/**
+ * R3F 9 makes a `THREE.Clock` for every canvas, which three r183+ warns is deprecated. The
+ * scene times nothing with it (it reads R3F's frame delta), so only that one warning is dropped
+ * and every other message goes to the console as three sends it. Remove with R3F 10, which uses
+ * `THREE.Timer` (pmndrs/react-three-fiber#3741).
+ */
+setConsoleFunction((type, message, ...params) => {
+  if (type === 'warn' && String(message).includes('Clock: This module has been deprecated')) {
+    return;
+  }
+  const log = type === 'error' ? console.error : type === 'warn' ? console.warn : console.log;
+  // As three's own default: a TSL stack trace is shown as an error with the message.
+  const [first] = params;
+  const trace = first as { isStackTrace?: boolean; getError?: (message: string) => Error };
+  if (trace?.isStackTrace && trace.getError) log(trace.getError(message));
+  else log(message, ...params);
+});
 
 /** What the scene reads of the Replay clock. */
 type ReplayClock = Pick<RaceReplay, 'elapsedMs' | 'isPlaying' | 'speed' | 'endMs' | 'jumped'>;
@@ -133,15 +170,16 @@ function Scene({
         pointAt(car.inPit ? track.pit : track.lap, car.metres),
       ]),
     );
+    const ride = frame.riding?.driverId;
     for (const [driverId, mesh] of cars.current) {
       const point = placed.get(driverId);
-      mesh.visible = point !== undefined;
+      // In T-cam the camera is on the riding car, so its own body would fill the view.
+      mesh.visible = point !== undefined && !(mode === 'tcam' && driverId === ride);
       if (!point) continue;
       mesh.position.set(point.x, 0.5, point.z);
       mesh.rotation.y = -point.heading;
     }
 
-    const ride = frame.riding?.driverId;
     const car = ride === undefined ? undefined : placed.get(ride);
     if (!car || ride === undefined) return;
     const last = view.current;
@@ -161,14 +199,18 @@ function Scene({
     const dx = Math.cos(last.heading);
     const dz = Math.sin(last.heading);
     if (mode === 'tcam') {
-      // Just above and behind the airbox, rigid on the car, looking along the track.
-      const back = 0.6;
+      // Rigid on the car just behind its front axle, looking ahead along the track.
       camera.position.set(
-        car.x - Math.cos(car.heading) * back,
-        1.3,
-        car.z - Math.sin(car.heading) * back,
+        car.x + Math.cos(car.heading) * TCAM.ahead,
+        TCAM.height,
+        car.z + Math.sin(car.heading) * TCAM.ahead,
       );
-      camera.lookAt(camera.position.x + dx * 50, 0.9, camera.position.z + dz * 50);
+      const ahead = 50;
+      camera.lookAt(
+        camera.position.x + dx * ahead,
+        TCAM.height - Math.tan(TCAM.pitch) * ahead,
+        camera.position.z + dz * ahead,
+      );
     } else {
       camera.position.set(car.x - dx * 9.5, 3.2, car.z - dz * 9.5);
       camera.lookAt(car.x + dx * 12, 1, car.z + dz * 12);
@@ -242,6 +284,7 @@ export default function OnboardScene(props: SceneProps) {
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.25, far: 2600, position: [0, 2, 0] }}
         gl={webgpuRenderer}
+        shadows={NO_SHADOWS}
         onCreated={(state) => setBackend(backendLabel(state))}
       >
         <Scene {...props} track={track} />
