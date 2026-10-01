@@ -29,8 +29,16 @@ The elapsed time of the race the Replay clock is at. All positions, gaps and sti
 _Avoid_: Playhead, cursor
 
 **Followed driver**:
-The one driver the viewer has chosen on the Replay page. The Timing Tower expands that driver's row and the Track Map emphasises that car; at most one at a time.
+The one driver the viewer has chosen on the Replay page. The Timing Tower expands that driver's row, the Track Map emphasises that car and the Onboard view rides with it; at most one at a time.
 _Avoid_: Selected driver, focus driver, tracked driver
+
+**Onboard view**:
+The circuit drawn in 3D as seen from the followed driver's car, with the other cars around it, at race time. Without a followed driver it rides with the leader. It is an alternative to the Track Map on the Replay page, not a recording: the circuit, its surroundings and the cars are generated.
+_Avoid_: Street view, 3D map, cockpit view, POV
+
+**Speed profile**:
+How fast a car is taken to be at each point of a lap: slower in tight corners, faster on straights, stretched so the lap still takes its real time. It decides where a car is between two line crossings, for the Track Map, the Timing Tower and the Onboard view alike. It is an approximation, never telemetry.
+_Avoid_: Telemetry, speed trace, racing line
 
 **Compared driver**:
 A driver the viewer puts next to the followed driver, up to three at a time. Every comparison is measured against the followed driver, never between compared drivers. There is no compared driver without a followed driver.
@@ -55,6 +63,10 @@ _Avoid_: Run, tyre phase
 **Pit window**:
 The stretch of race time a car spends in the pit lane during one stop.
 _Avoid_: Pit period
+
+**Stationary time**:
+The part of a pit window a car stands still in its box. Known only for races from the 2024 United States Grand Prix on; earlier curated races have the pit window alone.
+_Avoid_: Stop time, pit duration, pit stop time
 
 **Gap**:
 How far a car is behind the leader, in time. Only ever measured against the leader.
