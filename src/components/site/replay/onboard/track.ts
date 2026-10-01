@@ -35,6 +35,11 @@ export type TrackModel = {
    * on the outline and only its place across the track and its heading change.
    */
   line: Centreline;
+  /**
+   * The pit lane, its ends eased onto the lap's centreline at pit entry and pit exit, so the lane
+   * leaves and rejoins the track without a gap. The approximate outline lane ends a few metres
+   * off the lap.
+   */
   pit: Centreline;
   /**
    * The pit lane the cars drive: its ends eased onto the racing line, so a car leaves and rejoins
@@ -43,6 +48,8 @@ export type TrackModel = {
   pitLine: Centreline;
   /** Full width of the track, in metres. */
   width: number;
+  /** Dressed as a street circuit: walls and buildings, no run-off or grass. */
+  street: boolean;
   /** The middle of the outline and how far it reaches, for the ground and the scenery. */
   centre: { x: number; z: number };
   radius: number;
@@ -137,6 +144,15 @@ export function angleDelta(a: number, b: number): number {
 export type TrackPoint = { x: number; z: number; heading: number };
 
 /**
+ * The point `left` metres to the left of travel from `x`, `z` at `heading` (negative is right).
+ * Left of travel is `(sin h, −cos h)` in `x`/`z`, as the Track Map draws it (SVG `y` down): the
+ * racing line's offsets, the scenery's bands and the garages all use it.
+ */
+export function sideways(x: number, z: number, heading: number, left: number): [number, number] {
+  return [x + Math.sin(heading) * left, z - Math.cos(heading) * left];
+}
+
+/**
  * The place `metres` along a line, in the onboard frame's metres (see `nominal`); a closed line
  * wraps, an open one clamps.
  */
@@ -180,19 +196,14 @@ function offsetAt(racingLine: readonly number[], share: number): number {
   return a + (b - a) * (at - index);
 }
 
-/**
- * The lap moved onto the racing line. Left of travel is `(sin h, −cos h)` in `x`/`z`, as the
- * Track Map draws it (SVG `y` down).
- */
+/** The lap moved onto the racing line, each sample `sideways` by the line's offset. */
 function racingLine(lap: Centreline, offsets: readonly number[]): Centreline {
   const n = lap.x.length;
   const x = new Float64Array(n);
   const z = new Float64Array(n);
   for (let index = 0; index < n; index++) {
     const offset = offsetAt(offsets, index / n);
-    const heading = lap.heading[index]!;
-    x[index] = lap.x[index]! + Math.sin(heading) * offset;
-    z[index] = lap.z[index]! - Math.cos(heading) * offset;
+    [x[index], z[index]] = sideways(lap.x[index]!, lap.z[index]!, lap.heading[index]!, offset);
   }
   const heading = new Float64Array(n);
   const reach = LINE_HEADING_REACH;
@@ -204,35 +215,42 @@ function racingLine(lap: Centreline, offsets: readonly number[]): Centreline {
   return { ...lap, x, z, heading };
 }
 
-/** How far into the pit lane, from either end, a car eases off the racing line, in metres. */
+/** How far into the pit lane, from either end, its blends ease out, in metres. */
 const PIT_LINE_BLEND_M = 120;
 
-/**
- * The pit lane with its ends moved onto the racing line: by the line's offset at pit entry at its
- * start and at pit exit at its end, eased to none `PIT_LINE_BLEND_M` into the lane.
- */
-function pitLine(pit: Centreline, entryOffset: number, exitOffset: number): Centreline {
-  const n = pit.x.length;
-  const x = Float64Array.from(pit.x);
-  const z = Float64Array.from(pit.z);
-  const ease = (metres: number) => {
-    const t = Math.min(Math.max(metres / PIT_LINE_BLEND_M, 0), 1);
-    return (1 + Math.cos(Math.PI * t)) / 2;
-  };
-  for (let index = 0; index < n; index++) {
-    const along = pit.s[index]!;
-    const offset = entryOffset * ease(along) + exitOffset * ease(pit.length - along);
-    x[index] = pit.x[index]! + Math.sin(pit.heading[index]!) * offset;
-    z[index] = pit.z[index]! - Math.cos(pit.heading[index]!) * offset;
-  }
-  const heading = new Float64Array(n);
-  for (let index = 0; index < n; index++) {
-    const before = Math.max(0, index - 1);
-    const after = Math.min(n - 1, index + 1);
-    heading[index] = Math.atan2(z[after]! - z[before]!, x[after]! - x[before]!);
-  }
-  return { ...pit, x, z, heading };
+/** Eases from 1 at `metres` 0 to 0 at `PIT_LINE_BLEND_M`, flat either side. */
+function easeOut(metres: number): number {
+  const t = Math.min(Math.max(metres / PIT_LINE_BLEND_M, 0), 1);
+  return (1 + Math.cos(Math.PI * t)) / 2;
 }
+
+type Shift = { dx: number; dz: number };
+
+/**
+ * An open line with its start moved by `start` and its end by `end`, each eased to nothing
+ * `PIT_LINE_BLEND_M` into the line; the headings follow the moved samples.
+ */
+function blendEnds(line: Centreline, start: Shift, end: Shift): Centreline {
+  const n = line.x.length;
+  const x = new Float64Array(n);
+  const z = new Float64Array(n);
+  for (let index = 0; index < n; index++) {
+    const a = easeOut(line.s[index]!);
+    const b = easeOut(line.length - line.s[index]!);
+    x[index] = line.x[index]! + start.dx * a + end.dx * b;
+    z[index] = line.z[index]! + start.dz * a + end.dz * b;
+  }
+  return centreline(
+    Array.from(x, (value, index) => [value, z[index]!] as OutlinePoint),
+    false,
+    line.nominal,
+  );
+}
+
+const shift = (from: TrackPoint, to: TrackPoint): Shift => ({
+  dx: to.x - from.x,
+  dz: to.z - from.z,
+});
 
 /** The circuit in metres: the lap and the pit lane, each measured as the onboard frame does. */
 export function trackModel(circuit: ReplayCircuit): TrackModel {
@@ -247,10 +265,24 @@ export function trackModel(circuit: ReplayCircuit): TrackModel {
     true,
     circuit.lengthM,
   );
-  const pit = centreline(
+  const outlinePit = centreline(
     smooth(resample(scale(outlinePoints(circuit.pit.d)), false, SAMPLE_STEP_M), false, 2),
     false,
     circuit.pitLengthM,
+  );
+  const line = racingLine(lap, circuit.racingLine);
+  const entry = circuit.pit.entry * circuit.lengthM;
+  const exit = circuit.pit.exit * circuit.lengthM;
+  // The lane's ends onto the lap, then the cars' lane's ends onto the racing line from there.
+  const pit = blendEnds(
+    outlinePit,
+    shift(pointAt(outlinePit, 0), pointAt(lap, entry)),
+    shift(pointAt(outlinePit, circuit.pitLengthM), pointAt(lap, exit)),
+  );
+  const pitLine = blendEnds(
+    pit,
+    shift(pointAt(lap, entry), pointAt(line, entry)),
+    shift(pointAt(lap, exit), pointAt(line, exit)),
   );
 
   let minX = Infinity;
@@ -265,14 +297,11 @@ export function trackModel(circuit: ReplayCircuit): TrackModel {
   }
   return {
     lap,
-    line: racingLine(lap, circuit.racingLine),
+    line,
     pit,
-    pitLine: pitLine(
-      pit,
-      offsetAt(circuit.racingLine, circuit.pit.entry),
-      offsetAt(circuit.racingLine, circuit.pit.exit),
-    ),
+    pitLine,
     width: circuit.widthM,
+    street: circuit.street,
     centre: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 },
     radius: Math.hypot(maxX - minX, maxZ - minZ) / 2,
   };

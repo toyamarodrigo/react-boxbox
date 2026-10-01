@@ -2,7 +2,7 @@ import { FICTIONAL_CIRCUIT } from '../content/track-map/circuit';
 import { CIRCUITS } from './circuits';
 import { outlinePoints, polylineLength } from '../lib/svg-outline';
 import { CONSTANT_SPEED, type SpeedProfile } from './speed-profile';
-import { trackWidthFor } from './track-widths';
+import { isStreetCircuit, trackWidthFor } from './track-widths';
 
 export type ReplayCircuit = {
   d: string;
@@ -23,6 +23,11 @@ export type ReplayCircuit = {
   pitLengthM: number;
   /** How wide the Onboard view draws the track, in metres (`track-widths.ts`). */
   widthM: number;
+  /**
+   * True when the Onboard view dresses the circuit as a street circuit, with walls and buildings
+   * instead of run-off and grass (`track-widths.ts`). False for Aster Park.
+   */
+  street: boolean;
   /**
    * The racing line the Onboard view drives (`circuits.ts`): metres to the left of travel,
    * evenly spaced round the lap. Empty for Aster Park, whose cars keep to the outline.
@@ -78,6 +83,7 @@ const FALLBACK: ReplayCircuit = {
   lengthM: ASTER_PARK_LENGTH_M,
   pitLengthM: pitLengthM(FICTIONAL_CIRCUIT.d, FICTIONAL_CIRCUIT.pit.d, ASTER_PARK_LENGTH_M),
   widthM: trackWidthFor(undefined),
+  street: false,
   racingLine: [],
 };
 
@@ -103,6 +109,7 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
         lengthM: match.lengthM,
         pitLengthM: pitLengthM(match.d, match.pit.d, match.lengthM),
         widthM: trackWidthFor(match.id),
+        street: isStreetCircuit(match.id),
         racingLine: match.racingLine,
       }
     : FALLBACK;
