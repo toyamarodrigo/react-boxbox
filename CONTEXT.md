@@ -33,7 +33,7 @@ The one driver the viewer has chosen on the Replay page. The Timing Tower expand
 _Avoid_: Selected driver, focus driver, tracked driver
 
 **Onboard view**:
-The circuit drawn in 3D as seen from the followed driver's car, with the other cars around it, at race time. Without a followed driver it rides with the leader. It is an alternative to the Track Map on the Replay page, not a recording: the circuit, its surroundings and the cars are generated.
+The circuit drawn in 3D as seen from the followed driver's car, at race time. It shows a pair at most: the followed driver's car and, when there is one, the first compared driver's car; the other cars only appear on its minimap. Without a followed driver it rides with the leader, alone. It is an alternative to the Track Map on the Replay page, not a recording: the circuit, its surroundings and the cars are generated.
 _Avoid_: Street view, 3D map, cockpit view, POV
 
 **Speed profile**:
