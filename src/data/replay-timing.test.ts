@@ -271,6 +271,24 @@ describe('pit stops on the lane', () => {
     expect(rows(315_000)?.drs).toBe(false);
     expect(rows(330_000)?.inPit).toBe(false);
   });
+
+  it('leaves out a wait longer than the car’s median lap when race control has no red flag', () => {
+    // Charlie's laps take 158 s to 160 s; 170 s in the lane is a wait, 20 s is a stop.
+    const waited: ReplayRace = {
+      ...pitted,
+      raceControl: [],
+      laps: pitted.laps.map((lap) => ({
+        ...lap,
+        rows: lap.rows.map((row) =>
+          row.pitDurationMs === null ? row : { ...row, pitDurationMs: 170_000 },
+        ),
+      })),
+    };
+    expect(replayPitStops(waited, shape)).toEqual([]);
+    // The car is still in the lane for the Track Map and the tower.
+    expect(carLapsAt(waited, 300_000, shape).get('charlie')).toMatchObject({ inPit: true });
+    expect(replayPitStops({ ...pitted, raceControl: [] }, shape)).toHaveLength(1);
+  });
 });
 
 describe('pit stops on the lane at the Monza red flag', () => {
@@ -317,6 +335,21 @@ describe('pit stops on the lane at the Monza red flag', () => {
     expect([...pitted].sort()).toEqual(stopped.map((row) => row.driverId).sort());
     // 100 ms at 360 km/h is 10 m.
     expect(worst.jump, `${worst.id} at ${worst.at} ms`).toBeLessThan(15);
+  });
+
+  it('keeps the red-flag wait in the lane but out of the pit stops, and the real stops in', () => {
+    const stops = replayPitStops(monza, shape);
+    expect(stops.filter((stop) => stop.lap === 3)).toEqual([]);
+    // Mid-wait, every car that stopped on lap 3 is still in the lane.
+    const waiting = carLapsAt(monza, leaderCumulative(monza, 3) + 60_000, shape);
+    const stopped = monza.laps.find((lap) => lap.lap === 3)!.rows.filter((row) => row.inPit);
+    for (const row of stopped) expect(waiting.get(row.driverId)?.inPit).toBe(true);
+    // A real stop of the same race is still listed, with the source's own number.
+    const real = stops.find((stop) => stop.durationMs < 60_000)!;
+    const source = monza.laps
+      .find((lap) => lap.lap === real.lap)!
+      .rows.find((row) => row.driverId === real.driverId)!;
+    expect(real.stop).toBe(source.pitStop);
   });
 });
 

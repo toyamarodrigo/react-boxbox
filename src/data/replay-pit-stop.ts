@@ -41,7 +41,8 @@ function positionAt(
  * `PIT_STOP_CARD_HOLD_MS` of race time after the exit, otherwise `null`.
  *
  * The windows are the drawable stops of `replayPitStops`, so the card and the tower's `IN PIT`
- * agree on when the car is in the lane. The position in is the car's place as it enters, the
+ * agree on when the car is in the lane; a red-flag wait is not among them, so it has `IN PIT` and
+ * no card. The position in is the car's place as it enters, the
  * position out its place at the exit, held from then on rather than followed. A stop is on the
  * last lap of one stint, so the compound off is that stint's and the compound on the next one's;
  * either unknown leaves both out. A stop the dataset does not number is counted among the car's

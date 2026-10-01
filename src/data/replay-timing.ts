@@ -477,14 +477,52 @@ export type ReplayPitStop = {
   durationMs: number;
 };
 
-/** Every drawable pit stop of the race: who, which lap, and when the car enters the lane. */
+/** The middle of a car's timed lap times; `null` for a car with none. */
+function medianLapMs(laps: readonly DriverLap[]): number | null {
+  const times = laps
+    .map((lap) => lap.row.lapTimeMs)
+    .filter((ms): ms is number => ms !== null)
+    .sort((a, b) => a - b);
+  if (times.length === 0) return null;
+  const middle = Math.floor(times.length / 2);
+  return times.length % 2 === 1 ? times[middle]! : (times[middle - 1]! + times[middle]!) / 2;
+}
+
+/**
+ * Whether a pit window is a red-flag wait rather than a pit stop. Under a red flag every car
+ * waits in the pit lane, and the source counts the wait as pit lane time.
+ *
+ * With red-flag periods known, a wait is a window that overlaps one of them. With none known (a
+ * race with no race-control messages, or none the track status reads as red), it is a window
+ * longer than the car's `medianLapMs`: no real stop takes a lap.
+ */
+function isRedFlagWait(
+  window: Pick<PitWindow, 'inAt' | 'outAt' | 'duration'>,
+  redFlags: readonly NeutralisationPeriod[],
+  medianLapMs: number | null,
+): boolean {
+  if (redFlags.length > 0) {
+    return redFlags.some((period) => period.fromMs < window.outAt && period.toMs > window.inAt);
+  }
+  return medianLapMs !== null && window.duration > medianLapMs;
+}
+
+/**
+ * Every drawable pit stop of the race: who, which lap, and when the car enters the lane.
+ *
+ * A red-flag wait is left out: the car is in the pit lane (`carLapsAt` still has it `inPit`), but
+ * it is not a stop for the timeline's marks or the Pit stop card. The stops left keep the
+ * source's own numbers, which count the wait.
+ */
 export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitStop[] {
   const codes = new Map(race.drivers.map((driver) => [driver.id, driver.code]));
+  const redFlags = neutralisationPeriods(race).filter((period) => period.status === 'red');
   const stops: ReplayPitStop[] = [];
   for (const [driverId, laps] of indexRace(race)) {
+    const median = medianLapMs(laps);
     for (const [index, lap] of laps.entries()) {
       const window = pitWindow(laps, index, pit);
-      if (window) {
+      if (window && !isRedFlagWait(window, redFlags, median)) {
         stops.push({
           driverId,
           code: codes.get(driverId) ?? driverId,
