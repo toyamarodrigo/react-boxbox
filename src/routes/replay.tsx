@@ -84,7 +84,8 @@ import {
   formatGap,
   formatLapTime,
 } from '@/registry/boxbox/ui/timing-tower';
-import { CircuitPanel } from '../components/site/replay/circuit-panel';
+import { CircuitPanel, type TrackView } from '../components/site/replay/circuit-panel';
+import type { OnboardCamera } from '../components/site/replay/onboard-view';
 import { Compare } from '../components/site/replay/compare';
 import { LapGrid } from '../components/site/replay/lap-grid';
 import { StandingsPanel } from '../components/site/replay/standings';
@@ -107,6 +108,10 @@ import { seo } from '../lib/seo';
 /** The two things the tower's value column can measure here; `lapTime` is a docs-only mode. */
 const VALUE_MODES = ['leader', 'interval'] as const;
 type TowerValueMode = (typeof VALUE_MODES)[number];
+
+/** What the Track Map panel shows, and the camera the Onboard view rides with; the defaults first. */
+const TRACK_VIEWS = ['map', 'onboard'] as const satisfies readonly TrackView[];
+const ONBOARD_CAMERAS = ['tcam', 'chase'] as const satisfies readonly OnboardCamera[];
 
 /**
  * A race is addressed by season and round, the way the source API addresses it, so a link to
@@ -136,6 +141,12 @@ const searchSchema = z.object({
    * a followed driver it is ignored. `.catch()` for the same reason as `value`.
    */
   vs: z.string().optional().catch(undefined),
+  /**
+   * The Track Map panel's view and the Onboard view's camera, so a moment link opens the same
+   * onboard moment. Absent is the default (`map`, `tcam`); `.catch()` for the same reason as `value`.
+   */
+  view: z.enum(TRACK_VIEWS).optional().catch(undefined),
+  camera: z.enum(ONBOARD_CAMERAS).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -151,6 +162,27 @@ export const Route = createFileRoute('/replay')({
   }),
   component: ReplayPage,
 });
+
+/**
+ * A choice the URL holds, shown on the click that makes it rather than a render later, when the
+ * router's navigation lands: a switch should answer at once. Whatever the URL says next wins.
+ */
+function useSearchChoice<T>(fromUrl: T, write: (value: T) => void): [T, (value: T) => void] {
+  const [shown, setShown] = useState(fromUrl);
+  const [seen, setSeen] = useState(fromUrl);
+  if (fromUrl !== seen) {
+    setSeen(fromUrl);
+    setShown(fromUrl);
+  }
+  const choose = useCallback(
+    (value: T) => {
+      setShown(value);
+      write(value);
+    },
+    [write],
+  );
+  return [shown, choose];
+}
 
 const JOLPICA_URL = 'https://github.com/jolpica/jolpica-f1';
 
@@ -1274,14 +1306,21 @@ function ReplayPage() {
   const entry = races.find((race) => race.id === requested) ?? races[0];
 
   // A whole new search, so another race starts with no followed driver: that driver belongs to
-  // the race it was picked in. The column mode is a preference about the tower and means the
-  // same thing in every race, so it rides along. Stable, so the memoised picker skips the ticks.
+  // the race it was picked in. The column mode, the track view and the camera are preferences
+  // that mean the same thing in every race, so they ride along. Stable, so the memoised picker
+  // skips the ticks.
   const selectRace = useCallback(
     (next: ReplayIndexEntry) =>
       void navigate({
-        search: { season: next.season, round: next.round, value: search.value },
+        search: {
+          season: next.season,
+          round: next.round,
+          value: search.value,
+          view: search.view,
+          camera: search.camera,
+        },
       }),
-    [navigate, search.value],
+    [navigate, search.value, search.view, search.camera],
   );
 
   const race = useReplayRace(entry?.id);
@@ -1316,9 +1355,37 @@ function ReplayPage() {
   }, [race.data]);
 
   /**
+   * The track view and the camera replace the URL like the column does, with the defaults
+   * stripped. Neither changes on the clock's ticks, so playing never rewrites the URL.
+   */
+  const writeView = useCallback(
+    (next: TrackView) => {
+      void navigate({
+        search: ({ view: _view, ...rest }) => (next === 'map' ? rest : { ...rest, view: next }),
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate],
+  );
+  const writeCamera = useCallback(
+    (next: OnboardCamera) => {
+      void navigate({
+        search: ({ camera: _camera, ...rest }) =>
+          next === 'tcam' ? rest : { ...rest, camera: next },
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate],
+  );
+  const [view, setView] = useSearchChoice<TrackView>(search.view ?? 'map', writeView);
+  const [camera, setCamera] = useSearchChoice<OnboardCamera>(search.camera ?? 'tcam', writeCamera);
+
+  /**
    * The link to the race time on the clock, whole seconds, with the view the viewer has: the
-   * followed driver, the compared drivers and a column other than the default. Built through the
-   * router so the search is written the way the page reads it back.
+   * followed driver, the compared drivers, and a column, track view and camera other than the
+   * defaults. Built through the router so the search is written the way the page reads it back.
    */
   const router = useRouter();
   const momentLink = () => {
@@ -1331,6 +1398,8 @@ function ReplayPage() {
         driver: code,
         vs: race.data ? comparedSearch(race.data, comparedIds) : undefined,
         value: valueMode === 'leader' ? undefined : valueMode,
+        view: view === 'map' ? undefined : view,
+        camera: camera === 'tcam' ? undefined : camera,
         t: Math.floor(replay.elapsedMs / 1000),
       },
     });
@@ -1502,6 +1571,10 @@ function ReplayPage() {
               followedId={followedId}
               comparedIds={comparedIds}
               onFollow={follow}
+              view={view}
+              onView={setView}
+              camera={camera}
+              onCamera={setCamera}
             />
             <StrategyPanel
               race={race.data}

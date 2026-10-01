@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { onboardFrame } from '@/data/onboard-frame';
@@ -33,6 +33,8 @@ export function OnboardView({
   followedId,
   comparedIds,
   minimap,
+  camera,
+  onCamera,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -40,8 +42,9 @@ export function OnboardView({
   followedId: string | undefined;
   comparedIds: readonly string[];
   minimap: React.ReactNode;
+  camera: OnboardCamera;
+  onCamera: (camera: OnboardCamera) => void;
 }) {
-  const [camera, setCamera] = useState<OnboardCamera>('tcam');
   const frame = useMemo(
     () => onboardFrame(race, circuit, replay.elapsedMs, followedId, comparedIds),
     [race, circuit, replay.elapsedMs, followedId, comparedIds],
@@ -120,7 +123,7 @@ export function OnboardView({
             size="xs"
             variant={camera === value ? 'default' : 'secondary'}
             aria-pressed={camera === value}
-            onClick={() => setCamera(value)}
+            onClick={() => onCamera(value)}
           >
             {name}
           </Button>

@@ -357,6 +357,26 @@ describe('replay page, race picker', () => {
     expect(racePicker()).toHaveTextContent('2029 Classic');
     await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
   });
+
+  it('keeps the track view and the camera across a race change', async () => {
+    const router = renderReplay('/replay?view=onboard&camera=chase');
+    await screen.findByRole('heading', { name: second.name });
+
+    await pickRace('2029 Classic');
+    expect(await screen.findByRole('heading', { name: classic.name })).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({
+      season: 2029,
+      round: 5,
+      view: 'onboard',
+      camera: 'chase',
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="onboard-scene-stand-in"]')).toHaveAttribute(
+        'data-camera',
+        'chase',
+      ),
+    );
+  });
 });
 
 describe('replay page, followed driver', () => {
@@ -765,6 +785,70 @@ describe('replay page, moment link', () => {
       season: String(race.season),
       round: String(race.round),
       t: '0',
+    });
+  });
+
+  describe('track view and camera', () => {
+    const viewButton = (name: string) =>
+      within(screen.getByRole('group', { name: 'Track view' })).getByRole('button', { name });
+    const cameraButton = (name: string) =>
+      within(screen.getByRole('group', { name: 'Camera' })).getByRole('button', { name });
+    const scene = () => document.querySelector('[data-slot="onboard-scene-stand-in"]');
+    const searchKeys = (router: ReturnType<typeof getRouter>) =>
+      Object.keys(router.state.location.search);
+
+    it('opens on the view and the camera in the search, and copies them', async () => {
+      const writeText = stubClipboard();
+      renderReplay('/replay?view=onboard&camera=chase&t=30');
+      await screen.findByRole('group', { name: 'Track view' });
+      await waitFor(() => expect(scene()).toHaveAttribute('data-camera', 'chase'));
+      expect(viewButton('Onboard')).toHaveAttribute('aria-pressed', 'true');
+      expect(cameraButton('Chase')).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(copyButton());
+      await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+      const url = new URL(writeText.mock.calls[0]![0]);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        season: String(race.season),
+        round: String(race.round),
+        view: 'onboard',
+        camera: 'chase',
+        t: '30',
+      });
+    });
+
+    it('opens the defaults on a view or a camera it does not know, without erroring', async () => {
+      const router = renderReplay('/replay?view=street&camera=drone');
+      await screen.findByRole('group', { name: 'Track view' });
+      expect(screen.queryByText(/Invalid|Error/)).toBeNull();
+      expect(viewButton('Map')).toHaveAttribute('aria-pressed', 'true');
+      expect(searchKeys(router)).not.toContain('view');
+      expect(searchKeys(router)).not.toContain('camera');
+
+      fireEvent.click(viewButton('Onboard'));
+      await waitFor(() => expect(scene()).toHaveAttribute('data-camera', 'tcam'));
+    });
+
+    it('writes a choice to the URL in place and leaves the defaults out of it', async () => {
+      const router = renderReplay('/replay');
+      await screen.findByRole('group', { name: 'Track view' });
+      const length = router.history.length;
+
+      fireEvent.click(viewButton('Onboard'));
+      await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'onboard' }));
+      await waitFor(() => expect(scene()).not.toBeNull());
+      expect(searchKeys(router)).not.toContain('camera');
+
+      fireEvent.click(cameraButton('Chase'));
+      await waitFor(() => expect(router.state.location.search).toMatchObject({ camera: 'chase' }));
+      expect(scene()).toHaveAttribute('data-camera', 'chase');
+
+      fireEvent.click(cameraButton('T-cam'));
+      await waitFor(() => expect(searchKeys(router)).not.toContain('camera'));
+      fireEvent.click(viewButton('Map'));
+      await waitFor(() => expect(searchKeys(router)).not.toContain('view'));
+      expect(router.state.location.href).toBe('/replay');
+      expect(router.history.length).toBe(length);
     });
   });
 

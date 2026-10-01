@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { battleCardAt } from '@/data/replay-battle';
@@ -13,7 +13,7 @@ import { BattleCard } from '@/registry/boxbox/ui/battle-card';
 import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
 import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { TrackMap } from '@/registry/boxbox/ui/track-map';
-import { OnboardView } from './onboard-view';
+import { type OnboardCamera, OnboardView } from './onboard-view';
 
 /**
  * The tallest each card gets: an overtake tag, both tyres, a position out. Drawn invisible under
@@ -45,7 +45,7 @@ const PIT_STOP_CARD_SIZER = (
 );
 
 /** What the Track Map panel shows: the 2D map, or the Onboard view in its place. */
-type TrackView = 'map' | 'onboard';
+export type TrackView = 'map' | 'onboard';
 
 const TRACK_VIEWS: readonly { value: TrackView; label: string }[] = [
   { value: 'map', label: 'Map' },
@@ -86,6 +86,10 @@ export function CircuitPanel({
   followedId,
   comparedIds,
   onFollow,
+  view,
+  onView,
+  camera,
+  onCamera,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -93,6 +97,11 @@ export function CircuitPanel({
   followedId: string | undefined;
   comparedIds: readonly string[];
   onFollow: (driverId: string) => void;
+  /** The view and the camera live in the URL, so a Moment link carries them. */
+  view: TrackView;
+  onView: (view: TrackView) => void;
+  camera: OnboardCamera;
+  onCamera: (camera: OnboardCamera) => void;
 }) {
   // Following a driver overrides the emphasis the timing gives the car furthest along; the
   // compared drivers take the lesser one, so they stay in view while the rest of the field fades.
@@ -104,8 +113,6 @@ export function CircuitPanel({
     [replay.markers, followedId, comparedIds],
   );
   const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
-  // Local for now; the Moment link will carry it (#20).
-  const [view, setView] = useState<TrackView>('map');
 
   /**
    * The flag flying over the track, over the map it belongs to. At the finish it is the chequered
@@ -181,7 +188,7 @@ export function CircuitPanel({
             size="xs"
             variant={view === value ? 'default' : 'outline'}
             aria-pressed={view === value}
-            onClick={() => setView(value)}
+            onClick={() => onView(value)}
           >
             {label}
           </Button>
@@ -195,6 +202,8 @@ export function CircuitPanel({
           followedId={followedId}
           comparedIds={comparedIds}
           minimap={trackMap('sm')}
+          camera={camera}
+          onCamera={onCamera}
         />
       ) : (
         trackMap('md')
