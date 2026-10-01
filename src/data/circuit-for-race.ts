@@ -23,6 +23,11 @@ export type ReplayCircuit = {
   pitLengthM: number;
   /** How wide the Onboard view draws the track, in metres (`track-widths.ts`). */
   widthM: number;
+  /**
+   * The racing line the Onboard view drives (`circuits.ts`): metres to the left of travel,
+   * evenly spaced round the lap. Empty for Aster Park, whose cars keep to the outline.
+   */
+  racingLine: readonly number[];
 };
 
 /** The pit lane's length in metres: the outline's scale is the lap length over its drawn length. */
@@ -73,6 +78,7 @@ const FALLBACK: ReplayCircuit = {
   lengthM: ASTER_PARK_LENGTH_M,
   pitLengthM: pitLengthM(FICTIONAL_CIRCUIT.d, FICTIONAL_CIRCUIT.pit.d, ASTER_PARK_LENGTH_M),
   widthM: trackWidthFor(undefined),
+  racingLine: [],
 };
 
 /** The outline to draw a race on: the real venue when the dataset has it, Aster Park otherwise. */
@@ -97,6 +103,7 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
         lengthM: match.lengthM,
         pitLengthM: pitLengthM(match.d, match.pit.d, match.lengthM),
         widthM: trackWidthFor(match.id),
+        racingLine: match.racingLine,
       }
     : FALLBACK;
 }

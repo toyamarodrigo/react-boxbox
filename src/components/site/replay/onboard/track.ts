@@ -1,6 +1,7 @@
 /**
  * The circuit as the Onboard view drives it: the lap and the pit lane as smooth centrelines in
- * metres. No three.js and no race logic here, only geometry.
+ * metres, and the racing line the cars drive across them. No three.js and no race logic here,
+ * only geometry.
  *
  * World axes: `x` is the SVG x and `z` the SVG y, both scaled to metres by the lap's official
  * length over its drawn length; `y` is up. Seen from above, that keeps the outline the way round
@@ -28,7 +29,18 @@ export type Centreline = {
 
 export type TrackModel = {
   lap: Centreline;
+  /**
+   * The racing line the cars drive: the lap's samples moved sideways by the circuit's racing line,
+   * still measured by the lap's distance (`s` is the lap's), so a car is as far along the lap as
+   * on the outline and only its place across the track and its heading change.
+   */
+  line: Centreline;
   pit: Centreline;
+  /**
+   * The pit lane the cars drive: its ends eased onto the racing line, so a car leaves and rejoins
+   * the line where the lane leaves and rejoins the lap, without a sideways jump.
+   */
+  pitLine: Centreline;
   /** Full width of the track, in metres. */
   width: number;
   /** The middle of the outline and how far it reaches, for the ground and the scenery. */
@@ -151,6 +163,77 @@ export function pointAt(line: Centreline, metres: number): TrackPoint {
   };
 }
 
+/** Samples either side the racing line's heading is taken across, so it turns smoothly. */
+const LINE_HEADING_REACH = 2;
+
+/**
+ * The offset `share` of the way round a closed racing line (metres to the left of travel, evenly
+ * spaced, entry `j` at the share `j / length`); none on an empty one.
+ */
+function offsetAt(racingLine: readonly number[], share: number): number {
+  const n = racingLine.length;
+  if (n === 0) return 0;
+  const at = (((share * n) % n) + n) % n;
+  const index = Math.floor(at);
+  const a = racingLine[index % n]!;
+  const b = racingLine[(index + 1) % n]!;
+  return a + (b - a) * (at - index);
+}
+
+/**
+ * The lap moved onto the racing line. Left of travel is `(sin h, −cos h)` in `x`/`z`, as the
+ * Track Map draws it (SVG `y` down).
+ */
+function racingLine(lap: Centreline, offsets: readonly number[]): Centreline {
+  const n = lap.x.length;
+  const x = new Float64Array(n);
+  const z = new Float64Array(n);
+  for (let index = 0; index < n; index++) {
+    const offset = offsetAt(offsets, index / n);
+    const heading = lap.heading[index]!;
+    x[index] = lap.x[index]! + Math.sin(heading) * offset;
+    z[index] = lap.z[index]! - Math.cos(heading) * offset;
+  }
+  const heading = new Float64Array(n);
+  const reach = LINE_HEADING_REACH;
+  for (let index = 0; index < n; index++) {
+    const before = (index - reach + n) % n;
+    const after = (index + reach) % n;
+    heading[index] = Math.atan2(z[after]! - z[before]!, x[after]! - x[before]!);
+  }
+  return { ...lap, x, z, heading };
+}
+
+/** How far into the pit lane, from either end, a car eases off the racing line, in metres. */
+const PIT_LINE_BLEND_M = 120;
+
+/**
+ * The pit lane with its ends moved onto the racing line: by the line's offset at pit entry at its
+ * start and at pit exit at its end, eased to none `PIT_LINE_BLEND_M` into the lane.
+ */
+function pitLine(pit: Centreline, entryOffset: number, exitOffset: number): Centreline {
+  const n = pit.x.length;
+  const x = Float64Array.from(pit.x);
+  const z = Float64Array.from(pit.z);
+  const ease = (metres: number) => {
+    const t = Math.min(Math.max(metres / PIT_LINE_BLEND_M, 0), 1);
+    return (1 + Math.cos(Math.PI * t)) / 2;
+  };
+  for (let index = 0; index < n; index++) {
+    const along = pit.s[index]!;
+    const offset = entryOffset * ease(along) + exitOffset * ease(pit.length - along);
+    x[index] = pit.x[index]! + Math.sin(pit.heading[index]!) * offset;
+    z[index] = pit.z[index]! - Math.cos(pit.heading[index]!) * offset;
+  }
+  const heading = new Float64Array(n);
+  for (let index = 0; index < n; index++) {
+    const before = Math.max(0, index - 1);
+    const after = Math.min(n - 1, index + 1);
+    heading[index] = Math.atan2(z[after]! - z[before]!, x[after]! - x[before]!);
+  }
+  return { ...pit, x, z, heading };
+}
+
 /** The circuit in metres: the lap and the pit lane, each measured as the onboard frame does. */
 export function trackModel(circuit: ReplayCircuit): TrackModel {
   const outline = outlinePoints(circuit.d);
@@ -182,7 +265,13 @@ export function trackModel(circuit: ReplayCircuit): TrackModel {
   }
   return {
     lap,
+    line: racingLine(lap, circuit.racingLine),
     pit,
+    pitLine: pitLine(
+      pit,
+      offsetAt(circuit.racingLine, circuit.pit.entry),
+      offsetAt(circuit.racingLine, circuit.pit.exit),
+    ),
     width: circuit.widthM,
     centre: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 },
     radius: Math.hypot(maxX - minX, maxZ - minZ) / 2,

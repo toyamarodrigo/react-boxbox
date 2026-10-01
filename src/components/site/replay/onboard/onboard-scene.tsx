@@ -188,7 +188,7 @@ function Scene({
     const placed = new Map(
       frame.cars.map((car) => [
         car.driverId,
-        pointAt(car.inPit ? track.pit : track.lap, car.metres),
+        pointAt(car.inPit ? track.pitLine : track.line, car.metres),
       ]),
     );
     const ghosts = new Set(frame.cars.filter((car) => car.ghost).map((car) => car.driverId));
