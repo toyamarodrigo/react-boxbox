@@ -234,6 +234,13 @@ describe('replay page', () => {
     expect(racePicker()).toHaveTextContent('2030 Test');
   });
 
+  // SPIKE (issue #9): the Onboard view spike is honoured on the Monza race only, never here.
+  it('keeps the Track Map, without the Onboard view spike, on any race but Monza', async () => {
+    renderReplay(`/replay?season=${race.season}&round=${race.round}&onboard=spike`);
+    expect(await screen.findByRole('group', { name: 'Track map, 4 cars' })).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull();
+  });
+
   it('offers a retry when the race does not load', async () => {
     vi.stubGlobal(
       'fetch',

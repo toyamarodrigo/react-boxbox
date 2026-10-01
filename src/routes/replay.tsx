@@ -143,7 +143,17 @@ const searchSchema = z.object({
    * a followed driver it is ignored. `.catch()` for the same reason as `value`.
    */
   vs: z.string().optional().catch(undefined),
+  /**
+   * SPIKE (issue #9), undocumented and linked from nowhere: `onboard=spike` swaps the Track Map
+   * for the throwaway Onboard view, on the Monza race only. `renderer=webgl` forces the
+   * WebGLRenderer instead of the WebGPURenderer, to compare frame rates.
+   */
+  onboard: z.literal('spike').optional().catch(undefined),
+  renderer: z.enum(['webgpu', 'webgl']).optional().catch(undefined),
 });
+
+/** SPIKE (issue #9): the one race the Onboard view spike runs on. */
+const ONBOARD_SPIKE_CIRCUIT = 'Autodromo Nazionale di Monza';
 
 export const Route = createFileRoute('/replay')({
   // `validateSearch` goes first so the router can infer the search type for the rest.
@@ -598,6 +608,9 @@ const GapChart = lazy(() =>
   import('@/registry/boxbox/ui/gap-chart').then((module) => ({ default: module.GapChart })),
 );
 
+/** SPIKE (issue #9): three.js only arrives when the spike's search param asks for it. */
+const OnboardSpike = lazy(() => import('../components/site/replay/onboard-spike/onboard-view'));
+
 /** A car's stints by driver id: one lookup per race rather than a scan per render. */
 type StintsByDriver = Map<string, ReplayStint[]>;
 
@@ -961,6 +974,7 @@ function Circuit({
   followedId,
   comparedIds,
   onFollow,
+  onboard,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -968,6 +982,8 @@ function Circuit({
   followedId: string | undefined;
   comparedIds: readonly string[];
   onFollow: (driverId: string) => void;
+  /** SPIKE (issue #9): the renderer of the Onboard view to draw in place of the map, if any. */
+  onboard?: 'webgpu' | 'webgl';
 }) {
   // Following a driver overrides the emphasis the timing gives the car furthest along; the
   // compared drivers take the lesser one, so they stay in view while the rest of the field fades.
@@ -1018,19 +1034,25 @@ function Circuit({
        * a change of flag rather than ten times a second.
        */}
       <FlagBanner status={status} visible={status !== 'green'} />
-      <TrackMap
-        // A new outline restarts the markers, so their lap counters do not carry over.
-        key={circuit.name}
-        path={circuit.d}
-        pitLane={circuit.pit.d}
-        viewBox={circuit.viewBox}
-        markers={markers}
-        sectors={flagged}
-        // After a seek the cars snap to the new time; sliding there would cross the circuit.
-        transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
-        onMarkerClick={handleMarkerClick}
-        dimOthers={followedId !== undefined}
-      />
+      {onboard ? (
+        <Suspense fallback={<Message>Loading the Onboard view…</Message>}>
+          <OnboardSpike race={race} replay={replay} followedId={followedId} renderer={onboard} />
+        </Suspense>
+      ) : (
+        <TrackMap
+          // A new outline restarts the markers, so their lap counters do not carry over.
+          key={circuit.name}
+          path={circuit.d}
+          pitLane={circuit.pit.d}
+          viewBox={circuit.viewBox}
+          markers={markers}
+          sectors={flagged}
+          // After a seek the cars snap to the new time; sliding there would cross the circuit.
+          transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
+          onMarkerClick={handleMarkerClick}
+          dimOthers={followedId !== undefined}
+        />
+      )}
       {/*
        * Under the map rather than over it, so no graphic covers a stretch of track. Both places
        * keep the height of their tallest card, so the page never moves as a card comes and goes.
@@ -1474,6 +1496,10 @@ function ReplayPage() {
     [race.data],
   );
   const followedId = race.data ? followedDriverId(race.data, search.driver) : undefined;
+  const onboard =
+    search.onboard === 'spike' && race.data?.circuit === ONBOARD_SPIKE_CIRCUIT
+      ? (search.renderer ?? 'webgpu')
+      : undefined;
   const valueMode: TowerValueMode = search.value ?? 'leader';
   // One array per race, search and followed driver, so the memoised markers skip the ticks.
   const comparedIds = useMemo(
@@ -1676,6 +1702,7 @@ function ReplayPage() {
               followedId={followedId}
               comparedIds={comparedIds}
               onFollow={follow}
+              onboard={onboard}
             />
             <StrategyPanel
               race={race.data}
