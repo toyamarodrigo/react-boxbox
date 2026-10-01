@@ -21,7 +21,8 @@ const BATTLE_CARD_SIZER = (
   <BattleCard
     position={20}
     ahead={{ code: 'WWW' }}
-    behind={{ code: 'WWW' }}
+    // Two codes, not one: the card keys its rows by code.
+    behind={{ code: 'MMM' }}
     interval={88.888}
     trend={-8.8}
     overtake
