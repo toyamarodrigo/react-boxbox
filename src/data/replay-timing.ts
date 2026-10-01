@@ -492,17 +492,26 @@ function medianLapMs(laps: readonly DriverLap[]): number | null {
  * Whether a pit window is a red-flag wait rather than a pit stop. Under a red flag every car
  * waits in the pit lane, and the source counts the wait as pit lane time.
  *
- * With red-flag periods known, a wait is a window that overlaps one of them. With none known (a
- * race with no race-control messages, or none the track status reads as red), it is a window
- * longer than the car's `medianLapMs`: no real stop takes a lap.
+ * With red-flag periods known, a wait is a window that overlaps one of them, or one that comes
+ * after a red on a lap the car started before the red ended. That second case is the car leaving
+ * the pit lane after the red: the source gives the lap only its pit lane time, so the window is
+ * drawn at the end of the lap, after the restart, though the car went in during the red. At
+ * Monaco 2026 (lap 68) and Zandvoort 2023 (lap 64) such passes enter up to 15 s after the
+ * restart's `SESSION STARTED`, so no rule on the entry time alone hides them all.
+ *
+ * With none known (a race with no race-control messages, or none the track status reads as red),
+ * it is a window longer than the car's `medianLapMs`: no real stop takes a lap.
  */
 function isRedFlagWait(
   window: Pick<PitWindow, 'inAt' | 'outAt' | 'duration'>,
+  lapStartMs: number,
   redFlags: readonly NeutralisationPeriod[],
   medianLapMs: number | null,
 ): boolean {
   if (redFlags.length > 0) {
-    return redFlags.some((period) => period.fromMs < window.outAt && period.toMs > window.inAt);
+    return redFlags.some(
+      (period) => period.fromMs < window.outAt && period.toMs > Math.min(window.inAt, lapStartMs),
+    );
   }
   return medianLapMs !== null && window.duration > medianLapMs;
 }
@@ -523,7 +532,7 @@ export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitSt
     let shown = 0;
     for (const [index, lap] of laps.entries()) {
       const window = pitWindow(laps, index, pit);
-      if (window && !isRedFlagWait(window, redFlags, median)) {
+      if (window && !isRedFlagWait(window, lap.start, redFlags, median)) {
         stops.push({
           driverId,
           code: codes.get(driverId) ?? driverId,

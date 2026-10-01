@@ -2,6 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FinishStatus } from '@/registry/boxbox/lib/types';
 import { circuitById } from './circuits';
+import { circuitForRace } from './circuit-for-race';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
 import { type ReplayRace, type ReplayRaceControl, replayRaceSchema } from './replay-schema';
 import {
@@ -365,6 +366,44 @@ describe('pit stops on the lane at the Monza red flag', () => {
     for (const stop of stops)
       byCar.set(stop.driverId, [...(byCar.get(stop.driverId) ?? []), stop.stop]);
     expect(byCar.size).toBeGreaterThan(0);
+    for (const numbers of byCar.values()) {
+      expect(numbers).toEqual(numbers.map((_, index) => index + 1));
+    }
+  });
+});
+
+describe.each([
+  // The race, the lap the red flag stopped, and how many cars only leave the lane after it.
+  ['Monaco 2026', '2026-6.json', 68, 9],
+  ['Zandvoort 2023', '2023-13.json', 64, 12],
+] as const)('pit stops around the %s red flag', (_name, fileName, redLap, passes) => {
+  const file = generatedReplayFiles().find((name) => path.basename(name) === fileName);
+  if (!file) {
+    it.skip(`is not generated yet, so the ${_name} check is skipped`, () => {});
+    return;
+  }
+  const race = replayRaceSchema.parse(readJson(file));
+  const circuit = circuitForRace(race.circuit);
+  const shape = { entry: circuit.pit.entry, exit: circuit.pit.exit };
+
+  it('leaves out the cars leaving the lane after the red, though they enter after the restart', () => {
+    const rows = race.laps.find((lap) => lap.lap === redLap)!.rows.filter((row) => row.inPit);
+    // A pass of about a minute or less: the cars that wait the whole red have the wait instead.
+    const after = rows.filter((row) => (row.pitDurationMs ?? 0) < 120_000);
+    expect(circuit.real).toBe(true);
+    expect(after).toHaveLength(passes);
+    const stops = replayPitStops(race, shape);
+    expect(stops.filter((stop) => stop.lap === redLap)).toEqual([]);
+  });
+
+  it('keeps the real stops, numbered 1, 2, 3… among the stops shown', () => {
+    const red = neutralisationPeriods(race).find((period) => period.status === 'red')!;
+    const stops = replayPitStops(race, shape);
+    expect(stops.some((stop) => stop.atMs + stop.durationMs <= red.fromMs)).toBe(true);
+    expect(stops.some((stop) => stop.lap > redLap)).toBe(true);
+    const byCar = new Map<string, number[]>();
+    for (const stop of stops)
+      byCar.set(stop.driverId, [...(byCar.get(stop.driverId) ?? []), stop.stop]);
     for (const numbers of byCar.values()) {
       expect(numbers).toEqual(numbers.map((_, index) => index + 1));
     }
