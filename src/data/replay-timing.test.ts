@@ -338,8 +338,13 @@ describe('pit stops on the lane at the Monza red flag', () => {
   });
 
   it('keeps the red-flag wait in the lane but out of the pit stops, and the real stops in', () => {
+    // The red period is known, so the wait is left out because it overlaps it, not by its length.
+    const red = neutralisationPeriods(monza).find((period) => period.status === 'red')!;
     const stops = replayPitStops(monza, shape);
     expect(stops.filter((stop) => stop.lap === 3)).toEqual([]);
+    expect(
+      stops.every((stop) => stop.atMs + stop.durationMs <= red.fromMs || stop.atMs >= red.toMs),
+    ).toBe(true);
     // Mid-wait, every car that stopped on lap 3 is still in the lane.
     const waiting = carLapsAt(monza, leaderCumulative(monza, 3) + 60_000, shape);
     const stopped = monza.laps.find((lap) => lap.lap === 3)!.rows.filter((row) => row.inPit);
@@ -1219,6 +1224,9 @@ describe('race control on the generated dataset', () => {
     '2023-21.json': ['vsc', 'sc', 'sc'],
     '2024-21.json': ['vsc', 'sc', 'red', 'sc'],
     '2025-1.json': ['sc', 'sc', 'sc'],
+    '2026-6.json': ['sc', 'sc', 'red'],
+    '2026-12.json': ['red', 'vsc', 'vsc'],
+    '2026-13.json': ['sc', 'red', 'vsc'],
     '2026-14.json': ['vsc'],
     '2026-15.json': ['sc', 'sc'],
   };
@@ -1263,6 +1271,37 @@ describe('race control on the generated dataset', () => {
     expect(periods[2]?.status).toBe('red');
     expect(periods[2]?.fromMs).toBe(red?.atMs);
     expect(trackStatusAt(real, (red?.atMs ?? 0) + 1000)).toBe('red');
+  });
+
+  it('reads Monza 2026’s text-only red flag and holds it until the session starts again', () => {
+    const file = files.find((entry) => path.basename(entry) === '2026-13.json');
+    if (file === undefined) return;
+    const real = replayRaceSchema.parse(readJson(file));
+    // 2026 sends the red as a message only, and a TRACK CLEAR while the cars are still stopped.
+    const red = real.raceControl.find((entry) => entry.message === 'RED FLAG - RACE SUSPENDED');
+    const clear = real.raceControl.find((entry) => entry.message === 'TRACK CLEAR');
+    const restart = real.raceControl.find(
+      (entry) =>
+        entry.category === 'SessionStatus' &&
+        entry.message === 'SESSION STARTED' &&
+        entry.atMs > (red?.atMs ?? 0),
+    );
+    expect(red?.flag).toBeNull();
+    expect(red?.lap).toBe(3);
+    expect(clear?.atMs).toBeGreaterThan(red?.atMs ?? 0);
+    expect(clear?.atMs).toBeLessThan(restart?.atMs ?? 0);
+
+    const periods = neutralisationPeriods(real);
+    expect(periods.map((period) => [period.status, period.fromLap, period.toLap])).toEqual([
+      ['sc', 3, 3],
+      ['red', 3, 4],
+      ['vsc', 28, 29],
+    ]);
+    expect(periods[0]?.toMs).toBe(red?.atMs);
+    expect(periods[1]?.fromMs).toBe(red?.atMs);
+    expect(periods[1]?.toMs).toBe(restart?.atMs);
+    expect(trackStatusAt(real, clear?.atMs ?? 0)).toBe('red');
+    expect(trackStatusAt(real, (restart?.atMs ?? 0) + 1000)).toBe('green');
   });
 
   it('opens Australia 2025 neutralised, on the first lap', () => {

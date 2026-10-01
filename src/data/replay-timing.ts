@@ -1241,6 +1241,10 @@ function zonesAsSectors(zones: ReadonlyMap<number, TrackStatus>, count: number):
  * - `RED` is red and puts every local flag out, and it ends the car state with them: the race is
  *   stopped, and a safety car deployed into a stoppage never gets an ending message of its own
  *   (São Paulo 2024). Without this the car would outrank the red for the rest of the race;
+ * - a message reading `RED FLAG` with no flag of its own is the same red: from 2026 the source
+ *   sends the stoppage as text only (`RED FLAG - RACE SUSPENDED`). It also sends a `TRACK CLEAR`
+ *   while the cars are still stopped, so this red is held until the session starts again (the
+ *   `SESSION STARTED` note after it) and no track-wide flag moves it before then;
  * - `CHEQUERED` is chequered, and ends the car state for the same reason: the race is over;
  * - a message naming a sector opens a zone for `YELLOW` / `DOUBLE YELLOW` and closes it for
  *   `CLEAR` / `GREEN`, without touching the flag over the track;
@@ -1269,6 +1273,8 @@ function indexRaceControl(race: ReplayRace): RaceControlIndex {
 
   let safety: TrackStatus | null = null;
   let flag: TrackStatus = 'green';
+  /** A text-only red is out: only the session starting again ends it. */
+  let suspended = false;
   const zones = new Map<number, TrackStatus>();
 
   for (const message of messages) {
@@ -1279,18 +1285,26 @@ function indexRaceControl(race: ReplayRace): RaceControlIndex {
 
     if (rule !== undefined) {
       safety = rule.state;
+    } else if (suspended && message.category === 'SessionStatus' && text === 'SESSION STARTED') {
+      suspended = false;
+      flag = 'green';
+      zones.clear();
     } else if (scope !== 'DRIVER') {
-      if (value === 'RED') {
+      if (value === 'RED' || (value === null && text.startsWith('RED FLAG'))) {
         flag = 'red';
         safety = null;
+        suspended = value === null;
         zones.clear();
       } else if (value === 'CHEQUERED') {
         flag = 'chequered';
         safety = null;
+        suspended = false;
       } else if (message.sector !== null && scope !== 'TRACK') {
         if (value === 'YELLOW') zones.set(message.sector, 'yellow');
         else if (value === 'DOUBLE YELLOW') zones.set(message.sector, 'double-yellow');
         else if (value === 'CLEAR' || value === 'GREEN') zones.delete(message.sector);
+      } else if (suspended) {
+        // The race is stopped: a track-wide flag before the restart does not end the red.
       } else if (value === 'YELLOW') {
         flag = 'yellow';
       } else if (value === 'DOUBLE YELLOW') {
