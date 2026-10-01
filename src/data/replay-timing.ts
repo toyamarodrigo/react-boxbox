@@ -16,6 +16,14 @@ import type {
   ReplayRaceControl,
   ReplayStint,
 } from './replay-schema';
+import {
+  type LapStretch,
+  type SpeedProfile,
+  WHOLE_LAP,
+  distanceAt,
+  isConstantSpeed,
+  timeShareAt,
+} from './speed-profile';
 
 /**
  * Maps a replay race onto the shapes the registry components take. Everything here is pure:
@@ -98,13 +106,20 @@ function indexRace(race: ReplayRace): RaceIndex {
 
 /**
  * When a car reaches a race distance (laps completed plus a fraction), on its own clock, by the
- * same constant-speed assumption as `carLapsAt`. `null` when the car never recorded that lap.
+ * speed profile laid over the whole lap; without one, at constant speed. `null` when the car
+ * never recorded that lap.
  */
-function timeAtDistance(laps: readonly DriverLap[], distance: number): number | null {
+function timeAtDistance(
+  laps: readonly DriverLap[],
+  distance: number,
+  profile?: SpeedProfile,
+): number | null {
   const number = Math.floor(distance) + 1;
   const lap = laps.find((item) => item.lap === number);
   if (!lap) return null;
-  return lap.start + (distance - (number - 1)) * (lap.end - lap.start);
+  const fraction = distance - (number - 1);
+  const time = profile ? timeShareAt(profile, WHOLE_LAP, fraction) : fraction;
+  return lap.start + time * (lap.end - lap.start);
 }
 
 /** The fastest of a car's timed laps before lap `until`, in seconds. */
@@ -243,15 +258,33 @@ function pitWindow(lap: DriverLap, shape: PitLaneShape) {
 }
 
 /**
+ * Where a car is on `stretch` of the lap once `elapsed` of the `duration` it takes there has
+ * gone, by the speed profile. At constant speed it is plain proportion, worked out the way it
+ * always was, so a constant profile gives exactly the numbers no profile gives.
+ */
+function onTrack(
+  profile: SpeedProfile | undefined,
+  stretch: LapStretch,
+  elapsed: number,
+  duration: number,
+): number {
+  if (!profile || isConstantSpeed(profile)) {
+    return stretch.from + ((stretch.to - stretch.from) * elapsed) / duration;
+  }
+  return distanceAt(profile, stretch, elapsed / duration);
+}
+
+/**
  * Where a car is on the lap `lap` at `elapsedMs` when its pit stops are drawn: on the lane
- * between entry and exit, stretched to reach the entry from the start of an in-lap, and to
- * reach the line from the exit on an out-lap.
+ * between entry and exit at constant speed, and on the track by the speed profile, stretched to
+ * reach the entry from the start of an in-lap, and to reach the line from the exit on an out-lap.
  */
 function placeWithPit(
   laps: readonly DriverLap[],
   index: number,
   elapsedMs: number,
   shape: PitLaneShape,
+  profile: SpeedProfile | undefined,
 ): { progress: number; fraction: number; inPit: boolean } {
   const lap = laps[index]!;
   const previous = laps[index - 1];
@@ -267,17 +300,17 @@ function placeWithPit(
     return { progress, fraction: shape.entry + progress * earlier.span - 1, inPit: true };
   }
   if (stop) {
-    const fraction = (shape.entry * (elapsedMs - lap.start)) / (stop.inAt - lap.start);
+    const stretch = { from: 0, to: shape.entry };
+    const fraction = onTrack(profile, stretch, elapsedMs - lap.start, stop.inAt - lap.start);
     return { progress: fraction, fraction, inPit: false };
   }
   if (earlier && earlier.outAt < lap.end) {
-    const fraction =
-      shape.exit + ((1 - shape.exit) * (elapsedMs - earlier.outAt)) / (lap.end - earlier.outAt);
+    const stretch = { from: shape.exit, to: 1 };
+    const fraction = onTrack(profile, stretch, elapsedMs - earlier.outAt, lap.end - earlier.outAt);
     return { progress: fraction, fraction, inPit: false };
   }
   // No drawable stop touches this lap. A stop that could not be drawn still flags the lap.
-  const fraction = (elapsedMs - lap.start) / (lap.end - lap.start);
-  return { progress: fraction, fraction, inPit: lap.row.inPit };
+  return placeOnLap(lap, elapsedMs, profile);
 }
 
 /**
@@ -291,12 +324,17 @@ function placeWithPit(
  * With a `pit` shape, a lap with a timed stop puts the car in the pit lane for the stop's
  * duration around the line; without one, the lap's own pit flag stands for the whole lap.
  *
+ * With a speed `profile`, a car on track moves by it between the line and the pit lane; without
+ * one, or with `CONSTANT_SPEED`, it moves at constant speed. The pit lane is constant speed
+ * either way.
+ *
  * A car with no lap in progress — it has retired, or its lap cannot be timed — is absent.
  */
 export function carLapsAt(
   race: ReplayRace,
   elapsedMs: number,
   pit?: PitLaneShape,
+  profile?: SpeedProfile,
 ): Map<string, CarLap> {
   const index = indexRace(race);
   const cars = new Map<string, CarLap>();
@@ -305,7 +343,9 @@ export function carLapsAt(
     const at = laps.findIndex((item) => elapsedMs >= item.start && elapsedMs < item.end);
     const lap = laps[at];
     if (!lap) continue;
-    const placed = pit ? placeWithPit(laps, at, elapsedMs, pit) : placeOnLap(lap, elapsedMs);
+    const placed = pit
+      ? placeWithPit(laps, at, elapsedMs, pit, profile)
+      : placeOnLap(lap, elapsedMs, profile);
     cars.set(driver.id, {
       lap: lap.lap,
       row: lap.row,
@@ -317,15 +357,22 @@ export function carLapsAt(
   return cars;
 }
 
-/** Constant speed around the lap; the lap's own pit flag stands for the whole lap. */
-function placeOnLap(lap: DriverLap, elapsedMs: number) {
-  const fraction = (elapsedMs - lap.start) / (lap.end - lap.start);
+/** The profile over the whole lap, line to line; the lap's own pit flag stands for the whole lap. */
+function placeOnLap(lap: DriverLap, elapsedMs: number, profile: SpeedProfile | undefined) {
+  const fraction = onTrack(profile, WHOLE_LAP, elapsedMs - lap.start, lap.end - lap.start);
   return { progress: fraction, fraction, inPit: lap.row.inPit };
 }
 
 /** The running order at a moment: cars furthest along the race first. Stable for ties. */
-function orderAt(race: ReplayRace, elapsedMs: number, pit?: PitLaneShape): [string, CarLap][] {
-  return [...carLapsAt(race, elapsedMs, pit)].sort((a, b) => b[1].distance - a[1].distance);
+function orderAt(
+  race: ReplayRace,
+  elapsedMs: number,
+  pit?: PitLaneShape,
+  profile?: SpeedProfile,
+): [string, CarLap][] {
+  return [...carLapsAt(race, elapsedMs, pit, profile)].sort(
+    (a, b) => b[1].distance - a[1].distance,
+  );
 }
 
 /** A pit stop the timeline can draw and describe. */
@@ -377,6 +424,8 @@ export type LiveRowsOptions = {
   referenceMs?: number;
   /** The circuit's pit lane, so `IN PIT` covers the stop itself rather than the whole lap. */
   pit?: PitLaneShape;
+  /** The circuit's speed profile, so the order and the gaps read cars where the Track Map does. */
+  profile?: SpeedProfile;
 };
 
 /**
@@ -394,20 +443,20 @@ export type LiveRowsOptions = {
 export function replayLiveRows(
   race: ReplayRace,
   elapsedMs: number,
-  { gapAtMs = elapsedMs, referenceMs, pit }: LiveRowsOptions = {},
+  { gapAtMs = elapsedMs, referenceMs, pit, profile }: LiveRowsOptions = {},
 ): TimingRow[] {
   const index = indexRace(race);
-  const order = orderAt(race, elapsedMs, pit);
-  const measured = gapAtMs === elapsedMs ? new Map(order) : carLapsAt(race, gapAtMs, pit);
+  const order = orderAt(race, elapsedMs, pit, profile);
+  const measured = gapAtMs === elapsedMs ? new Map(order) : carLapsAt(race, gapAtMs, pit, profile);
   const reference =
     referenceMs === undefined
       ? null
-      : new Map(orderAt(race, referenceMs, pit).map(([id], i) => [id, i + 1]));
+      : new Map(orderAt(race, referenceMs, pit, profile).map(([id], i) => [id, i + 1]));
 
   /** How long ago `aheadId` passed the point `car` is at, in ms; `null` when it cannot be timed. */
   const timeBehind = (car: CarLap | undefined, aheadId: string | undefined): number | null => {
     const laps = aheadId === undefined ? undefined : index.get(aheadId);
-    const passed = car && laps ? timeAtDistance(laps, car.distance) : null;
+    const passed = car && laps ? timeAtDistance(laps, car.distance, profile) : null;
     return passed === null ? null : gapAtMs - passed;
   };
 
@@ -482,8 +531,9 @@ export function replayLiveRows(
 /**
  * Where each car sits on the track at `elapsedMs`, as progress from 0 to 1 around its own lap.
  *
- * The replay carries one time per lap, so a car is assumed to circulate at a constant speed. It
- * is an interpolation, not telemetry, and the page says so. The car furthest along the race is
+ * The replay carries one time per lap, so a car moves by the speed `profile` between line
+ * crossings, or at constant speed without one. It is an interpolation, not telemetry, and the
+ * page says so. The car furthest along the race is
  * emphasised as the leader. Markers keep the order of `race.drivers`, so the Track Map sees a
  * stable list and animates each car rather than re-keying the set.
  */
@@ -491,8 +541,9 @@ export function replayProgress(
   race: ReplayRace,
   elapsedMs: number,
   pit?: PitLaneShape,
+  profile?: SpeedProfile,
 ): TrackMarker[] {
-  const cars = carLapsAt(race, elapsedMs, pit);
+  const cars = carLapsAt(race, elapsedMs, pit, profile);
   const teams = new Map(race.teams.map((team) => [team.id, team]));
 
   let leader: { id: string; distance: number } | null = null;
