@@ -2,7 +2,8 @@
  * The static scene of the Onboard view, built once per circuit: ground, a flat ribbon of the
  * circuit's width along the centreline, white edge lines, kerbs where the track bends, the pit
  * lane, a start line, trackside boards and trees for a sense of speed. Generic and generated:
- * nothing here is a real landmark.
+ * nothing here is a real landmark. The teams' garages along the pit lane change with the race, so
+ * `buildGarages` makes them on their own.
  *
  * Everything flat lies on the ground and is drawn first, in order, without writing depth, so the
  * layers never flicker against each other however far away they are.
@@ -22,7 +23,7 @@ import {
   Object3D,
   PlaneGeometry,
 } from 'three';
-import { type Centreline, type TrackModel, angleDelta } from './track';
+import { type Centreline, type TrackModel, type TrackPoint, angleDelta, pointAt } from './track';
 
 const GROUND = '#4f7d3c';
 const ASPHALT = '#3b3e44';
@@ -198,7 +199,100 @@ export function buildScenery(track: TrackModel): Group {
   return group;
 }
 
-/** Frees what `buildScenery` put on the GPU. */
+/** One team's garage: its box share along the pit lane (see `garageShares`) and its colour. */
+export type Garage = { share: number; colour: string };
+
+/**
+ * A garage's size in metres, its widest front along the lane, and how far its front stands from
+ * the lane's centreline, where the car stops.
+ */
+const GARAGE = { depth: 12, height: 5, width: 11, front: 6 } as const;
+const GARAGE_OPENING = '#1d1f23';
+
+/**
+ * Which side of the pit lane faces away from the lap, as the sign of a `band` offset: the
+ * garage side. Read once at the middle of the lane, so every garage stands in one row.
+ */
+function garageSide({ lap, pit }: TrackModel): 1 | -1 {
+  const sample = Math.floor(pit.x.length / 2);
+  const px = pit.x[sample]!;
+  const pz = pit.z[sample]!;
+  let nearest = 0;
+  let best = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < lap.x.length; index++) {
+    const distance = Math.hypot(lap.x[index]! - px, lap.z[index]! - pz);
+    if (distance < best) {
+      best = distance;
+      nearest = index;
+    }
+  }
+  const heading = pit.heading[sample]!;
+  const away =
+    (px - lap.x[nearest]!) * -Math.sin(heading) + (pz - lap.z[nearest]!) * Math.cos(heading);
+  return away >= 0 ? 1 : -1;
+}
+
+/**
+ * Generic garages along the pit lane, one per team in its colour, each centred on its team's box
+ * so a car stops in front of it: a plain block with a dark opening facing the lane. No logos and
+ * no names.
+ */
+export function buildGarages(track: TrackModel, garages: readonly Garage[]): Group {
+  const group = new Group();
+  if (garages.length === 0) return group;
+  const { pit } = track;
+  const side = garageSide(track);
+  const shares = garages.map((garage) => garage.share).sort((a, b) => a - b);
+  const closest = shares.reduce(
+    (gap, share, index) => (index === 0 ? gap : Math.min(gap, share - shares[index - 1]!)),
+    1,
+  );
+  const width = Math.min(GARAGE.width, closest * pit.nominal * 0.9);
+
+  const box = new BoxGeometry(1, 1, 1);
+  const blocks = new InstancedMesh(
+    box,
+    new MeshLambertMaterial({ color: '#ffffff' }),
+    garages.length,
+  );
+  const openings = new InstancedMesh(
+    box.clone(),
+    new MeshLambertMaterial({ color: GARAGE_OPENING }),
+    garages.length,
+  );
+  const holder = new Object3D();
+  const place = (
+    mesh: InstancedMesh,
+    index: number,
+    point: TrackPoint,
+    out: number,
+    size: [number, number, number],
+  ) => {
+    holder.position.set(
+      point.x - Math.sin(point.heading) * side * out,
+      size[1] / 2,
+      point.z + Math.cos(point.heading) * side * out,
+    );
+    holder.rotation.set(0, -point.heading, 0);
+    holder.scale.set(...size);
+    holder.updateMatrix();
+    mesh.setMatrixAt(index, holder.matrix);
+  };
+  for (const [index, garage] of garages.entries()) {
+    const point = pointAt(pit, garage.share * pit.nominal);
+    place(blocks, index, point, GARAGE.front + GARAGE.depth / 2, [
+      width,
+      GARAGE.height,
+      GARAGE.depth,
+    ]);
+    blocks.setColorAt(index, new Color(garage.colour));
+    place(openings, index, point, GARAGE.front - 0.05, [width * 0.8, GARAGE.height * 0.75, 0.2]);
+  }
+  group.add(blocks, openings);
+  return group;
+}
+
+/** Frees what `buildScenery` or `buildGarages` put on the GPU. */
 export function disposeScenery(group: Group) {
   group.traverse((object) => {
     if (object instanceof Mesh) {

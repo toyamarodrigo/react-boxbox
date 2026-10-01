@@ -23,6 +23,8 @@ export type OnboardCar = {
   inPit: boolean;
   /** Metres from the start line along the lap, or from the pit entry along the lane. */
   metres: number;
+  /** Standing still in its team's box, for the stop's stationary time; never on the lap. */
+  stationary: boolean;
   /**
    * Drawn see-through: a car other than the one the camera rides with that is within
    * `GHOST_OVERLAP_M` of it, so two cars in one place do not hide each other.
@@ -67,6 +69,7 @@ function onboardCar(
     position,
     inPit: car.inPit,
     metres: share * (car.inPit ? circuit.pitLengthM : circuit.lengthM),
+    stationary: car.stationary,
     ghost: false,
   };
 }

@@ -19,10 +19,11 @@ import {
 } from 'three';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { CAR_LENGTH_M, onboardFrame } from '@/data/onboard-frame';
+import { garageShares } from '@/data/pit-garages';
 import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import type { OnboardCamera } from '../onboard-view';
-import { buildScenery, disposeScenery } from './scenery';
+import { buildGarages, buildScenery, disposeScenery } from './scenery';
 import { type TrackModel, angleDelta, pointAt, trackModel } from './track';
 
 const SKY = '#bcd4e6';
@@ -148,6 +149,19 @@ function Scene({
 }: SceneProps & { track: TrackModel }) {
   const scenery = useMemo(() => buildScenery(track), [track]);
   useEffect(() => () => disposeScenery(scenery), [scenery]);
+  // Each team's garage at its box, where `carLapsAt` stops its cars.
+  const garages = useMemo(
+    () =>
+      buildGarages(
+        track,
+        [...garageShares(race)].map(([teamId, share]) => ({
+          share,
+          colour: race.teams.find((team) => team.id === teamId)?.color ?? UNKNOWN_TEAM_COLOUR,
+        })),
+      ),
+    [track, race],
+  );
+  useEffect(() => () => disposeScenery(garages), [garages]);
 
   const colours = useMemo(
     () =>
@@ -243,6 +257,7 @@ function Scene({
         intensity={2}
       />
       <primitive object={scenery} />
+      <primitive object={garages} />
       {race.drivers.map((driver) => (
         <mesh
           key={driver.id}

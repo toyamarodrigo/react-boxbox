@@ -1,9 +1,11 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { circuitForRace } from './circuit-for-race';
 import { GHOST_OVERLAP_M, onboardFrame } from './onboard-frame';
-import { testReplayRace } from './replay-fixtures';
-import type { ReplayRace } from './replay-schema';
-import { carLapsAt } from './replay-timing';
+import { boxShare } from './pit-garages';
+import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
+import { type ReplayRace, replayRaceSchema } from './replay-schema';
+import { carLapsAt, replayPitStops } from './replay-timing';
 
 const race = testReplayRace();
 /** The invented circuit the fixture race runs on, with its pit lane and lengths. */
@@ -180,5 +182,61 @@ describe('onboardFrame', () => {
       false,
       true,
     ]);
+  });
+});
+
+describe('onboardFrame in the pit lane', () => {
+  const load = (fileName: string) => {
+    const file = generatedReplayFiles().find((name) => path.basename(name) === fileName);
+    return file ? replayRaceSchema.parse(readJson(file)) : null;
+  };
+  /** Every 10 ms from a second before the stop to a second after it, the riding car's flag. */
+  const ridingThrough = (
+    on: ReplayRace,
+    stop: { driverId: string; atMs: number; durationMs: number },
+  ) => {
+    const onCircuit = circuitForRace(on.circuit);
+    const frames = [];
+    for (let ms = stop.atMs - 1_000; ms < stop.atMs + stop.durationMs + 1_000; ms += 10) {
+      frames.push(onboardFrame(on, onCircuit, ms, stop.driverId, []).riding!);
+    }
+    return { frames, onCircuit };
+  };
+
+  const melbourne = load('2026-1.json');
+  it.skipIf(melbourne === null)('stands the car in its box only for its stationary time', () => {
+    const race = melbourne!;
+    const shape = circuitForRace(race.circuit).pit;
+    // Alonso on lap 11: 25.895 s in the lane, 10 s of it in the box.
+    const stop = replayPitStops(race, shape).find((s) => s.driverId === 'alonso' && s.lap === 11)!;
+    const { frames, onCircuit } = ridingThrough(race, stop);
+    const still = frames.filter((car) => car.stationary);
+    expect(Math.abs(still.length * 10 - 10_000)).toBeLessThanOrEqual(10);
+    // One unbroken stretch, in the lane, in front of the team's garage.
+    const first = frames.findIndex((car) => car.stationary);
+    expect(frames.slice(first, first + still.length).every((car) => car.stationary)).toBe(true);
+    for (const car of still) {
+      expect(car.inPit).toBe(true);
+      expect(car.metres).toBeCloseTo(boxShare(race, 'alonso') * onCircuit.pitLengthM, 6);
+    }
+    expect(frames[0]!.stationary).toBe(false);
+    expect(frames.at(-1)!.stationary).toBe(false);
+  });
+
+  const lasVegas = load('2023-21.json');
+  it.skipIf(lasVegas === null)('never stops a car in a race before stationary times', () => {
+    const race = lasVegas!;
+    const shape = circuitForRace(race.circuit).pit;
+    for (const stop of replayPitStops(race, shape).slice(0, 6)) {
+      expect(ridingThrough(race, stop).frames.some((car) => car.stationary)).toBe(false);
+    }
+  });
+
+  it('is never stationary on the lap', () => {
+    for (const ms of [0, 40_000, 99_000, 105_000]) {
+      for (const car of onboardFrame(race, circuit, ms, 'alpha', ['bravo']).cars) {
+        expect(car.stationary).toBe(false);
+      }
+    }
   });
 });

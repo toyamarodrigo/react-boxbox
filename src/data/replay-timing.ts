@@ -25,6 +25,7 @@ import {
   profileForLap,
   timeShareAt,
 } from './speed-profile';
+import { boxShare } from './pit-garages';
 
 /**
  * Maps a replay race onto the shapes the registry components take. Everything here is pure:
@@ -114,7 +115,7 @@ function indexRace(race: ReplayRace): RaceIndex {
 function timeAtDistance(
   laps: readonly DriverLap[],
   distance: number,
-  pit?: PitLaneShape,
+  pit?: CarPitLane,
   profile?: SpeedProfile,
   redFlags: readonly NeutralisationPeriod[] = NO_PERIODS,
 ): number | null {
@@ -255,10 +256,18 @@ export type CarLap = {
   distance: number;
   /** The car is in the pit lane right now (needs a `PitLaneShape`; otherwise the lap's flag). */
   inPit: boolean;
+  /** The car stands still in its team's box, for the stop's stationary time (needs a `PitLaneShape`). */
+  stationary: boolean;
 };
 
 /** Where a circuit's pit lane leaves and rejoins the lap, as fractions of it. */
 export type PitLaneShape = { entry: number; exit: number };
+
+/**
+ * The pit lane as one car uses it: the circuit's lane, and where along it the car's team has its
+ * box (`boxShare`), from 0 at the entry to 1 at the exit.
+ */
+type CarPitLane = PitLaneShape & { box: number };
 
 /** A stop drawn on the lane: when the car is in it, and how far along it is at a moment. */
 type PitWindow = {
@@ -269,24 +278,20 @@ type PitWindow = {
   span: number;
   /** How far along the lane the car is at `ms`, from 0 at the entry to 1 at the exit. */
   progressAt: (ms: number) => number;
+  /** When the car stands still in its box, on its clock; `null` for a stop it drives through. */
+  still: { fromMs: number; toMs: number } | null;
 };
 
 /**
- * Where along the pit lane a car stops in its box, from 0 at the entry to 1 at the exit. One
- * share for every team until the garages are placed per team.
+ * How far along the lane a car is `elapsed` into a stop of `duration`: at constant speed to its
+ * `box`, standing still there for `still`, then at the same speed to the exit. With `still` at 0
+ * it is plain proportion over the whole stop.
  */
-const PIT_BOX_SHARE = 0.5;
-
-/**
- * How far along the lane a car is `elapsed` into a stop of `duration`: at constant speed to the
- * box, standing still there for `still`, then at the same speed to the exit. With `still` at 0 it
- * is plain proportion over the whole stop.
- */
-function laneProgress(elapsed: number, duration: number, still: number): number {
+function laneProgress(elapsed: number, duration: number, still: number, box: number): number {
   const driving = duration - still;
-  const toBox = PIT_BOX_SHARE * driving;
+  const toBox = box * driving;
   if (elapsed < toBox) return elapsed / driving;
-  if (elapsed < toBox + still) return PIT_BOX_SHARE;
+  if (elapsed < toBox + still) return box;
   return (elapsed - still) / driving;
 }
 
@@ -301,14 +306,14 @@ function laneProgress(elapsed: number, duration: number, still: number): number 
  * leaves the lane where the track meets it. Such a stop that does not end within the next lap
  * cannot be drawn: `null`.
  *
- * A stop with a stationary time has the car stand still in its box for exactly that long, inside
- * the same window; the drive in and out shares the rest. A red-flag wait ignores it, and so does
+ * A stop with a stationary time has the car stand still in its team's box (`shape.box`) for
+ * exactly that long, inside the same window; the drive in and out shares the rest. A red-flag wait ignores it, and so does
  * a stationary time as long as the whole stop, which the source cannot mean.
  */
 function pitWindow(
   laps: readonly DriverLap[],
   index: number,
-  shape: PitLaneShape,
+  shape: CarPitLane,
   redFlags: readonly NeutralisationPeriod[] = NO_PERIODS,
 ): PitWindow | null {
   const lap = laps[index]!;
@@ -327,12 +332,14 @@ function pitWindow(
       !isRedFlagWait({ inAt, outAt, duration }, lap.start, redFlags, null)
         ? stationary
         : 0;
+    const stillFrom = inAt + shape.box * (duration - still);
     return {
       inAt,
       outAt,
       duration,
       span,
-      progressAt: (ms) => laneProgress(ms - inAt, duration, still),
+      progressAt: (ms) => laneProgress(ms - inAt, duration, still, shape.box),
+      still: still > 0 ? { fromMs: stillFrom, toMs: stillFrom + still } : null,
     };
   }
 
@@ -350,11 +357,16 @@ function pitWindow(
       ms < lap.end
         ? (atLine * (ms - longInAt)) / (lap.end - longInAt)
         : atLine + ((1 - atLine) * (ms - lap.end)) / (outAt - lap.end),
+    still: null,
   };
 }
 
 /** Where a car is placed on its lap: `CarLap` without the lap itself. */
-type Placed = { progress: number; fraction: number; inPit: boolean };
+type Placed = { progress: number; fraction: number; inPit: boolean; stationary: boolean };
+
+/** Whether `stop` has the car standing in its box at `ms`. */
+const standsAt = (stop: PitWindow, ms: number) =>
+  stop.still !== null && ms >= stop.still.fromMs && ms < stop.still.toMs;
 
 /**
  * Where a car is on `stretch` of the lap once `elapsed` of the `duration` it takes there has
@@ -383,7 +395,7 @@ function placeWithPit(
   laps: readonly DriverLap[],
   index: number,
   elapsedMs: number,
-  shape: PitLaneShape,
+  shape: CarPitLane,
   speed: SpeedProfile | undefined,
   redFlags: readonly NeutralisationPeriod[],
 ): Placed {
@@ -397,11 +409,21 @@ function placeWithPit(
 
   if (stop && elapsedMs >= stop.inAt) {
     const progress = stop.progressAt(elapsedMs);
-    return { progress, fraction: shape.entry + progress * stop.span, inPit: true };
+    return {
+      progress,
+      fraction: shape.entry + progress * stop.span,
+      inPit: true,
+      stationary: standsAt(stop, elapsedMs),
+    };
   }
   if (earlier && elapsedMs < earlier.outAt && earlier.outAt < lap.end) {
     const progress = earlier.progressAt(elapsedMs);
-    return { progress, fraction: shape.entry + progress * earlier.span - 1, inPit: true };
+    return {
+      progress,
+      fraction: shape.entry + progress * earlier.span - 1,
+      inPit: true,
+      stationary: standsAt(earlier, elapsedMs),
+    };
   }
   if (stop) {
     // A lap that is both an out-lap and an in-lap runs from the exit, not from the line.
@@ -409,12 +431,12 @@ function placeWithPit(
     const from = out ?? lap.start;
     const stretch = { from: out === null ? 0 : shape.exit, to: shape.entry };
     const fraction = onTrack(profile, stretch, elapsedMs - from, stop.inAt - from);
-    return { progress: fraction, fraction, inPit: false };
+    return { progress: fraction, fraction, inPit: false, stationary: false };
   }
   if (earlier && earlier.outAt < lap.end) {
     const stretch = { from: shape.exit, to: 1 };
     const fraction = onTrack(profile, stretch, elapsedMs - earlier.outAt, lap.end - earlier.outAt);
-    return { progress: fraction, fraction, inPit: false };
+    return { progress: fraction, fraction, inPit: false, stationary: false };
   }
   // No drawable stop touches this lap. A stop that could not be drawn still flags the lap.
   return placeOnLap(lap, elapsedMs, profile);
@@ -429,7 +451,8 @@ function placeWithPit(
  * leader's lap is what made cars jump back to the start line at each lap boundary.
  *
  * With a `pit` shape, a lap with a timed stop puts the car in the pit lane for the stop's
- * duration around the line; without one, the lap's own pit flag stands for the whole lap.
+ * duration around the line, standing still at its team's box (`boxShare`) for the stop's
+ * stationary time; without one, the lap's own pit flag stands for the whole lap.
  *
  * With a speed `profile`, a car on track moves by it between the line and the pit lane, lap 1
  * by its standing start; without one, or with `CONSTANT_SPEED`, it moves at constant speed. The
@@ -452,16 +475,33 @@ export function carLapsAt(
     const at = laps.findIndex((item) => elapsedMs >= item.start && elapsedMs < item.end);
     const lap = laps[at];
     if (!lap) continue;
-    const placed = placeCar(laps, at, elapsedMs, pit, profile, redFlags);
+    const placed = placeCar(
+      laps,
+      at,
+      elapsedMs,
+      carPitLane(race, driver.id, pit),
+      profile,
+      redFlags,
+    );
     cars.set(driver.id, {
       lap: lap.lap,
       row: lap.row,
       progress: placed.progress,
       distance: lap.lap - 1 + placed.fraction,
       inPit: placed.inPit,
+      stationary: placed.stationary,
     });
   }
   return cars;
+}
+
+/** The circuit's pit lane with `driverId`'s box on it; none without a lane. */
+function carPitLane(
+  race: ReplayRace,
+  driverId: string,
+  pit: PitLaneShape | undefined,
+): CarPitLane | undefined {
+  return pit && { ...pit, box: boxShare(race, driverId) };
 }
 
 /** Where a car is on the lap at `index` of its laps at `elapsedMs`, with or without the pit lane. */
@@ -469,7 +509,7 @@ function placeCar(
   laps: readonly DriverLap[],
   index: number,
   elapsedMs: number,
-  pit: PitLaneShape | undefined,
+  pit: CarPitLane | undefined,
   profile: SpeedProfile | undefined,
   redFlags: readonly NeutralisationPeriod[],
 ): Placed {
@@ -485,7 +525,7 @@ function placeCar(
 function placeOnLap(lap: DriverLap, elapsedMs: number, speed: SpeedProfile | undefined): Placed {
   const profile = speed && profileForLap(speed, lap.lap);
   const fraction = onTrack(profile, WHOLE_LAP, elapsedMs - lap.start, lap.end - lap.start);
-  return { progress: fraction, fraction, inPit: lap.row.inPit };
+  return { progress: fraction, fraction, inPit: lap.row.inPit, stationary: false };
 }
 
 /** The running order at a moment: cars furthest along the race first. Stable for ties. */
@@ -568,7 +608,8 @@ export function replayPitStops(race: ReplayRace, pit: PitLaneShape): ReplayPitSt
     const median = medianLapMs(laps);
     let shown = 0;
     for (const [index, lap] of laps.entries()) {
-      const window = pitWindow(laps, index, pit);
+      // The box only moves the car inside the window, not when it enters or leaves the lane.
+      const window = pitWindow(laps, index, { ...pit, box: boxShare(race, driverId) });
       if (window && !isRedFlagWait(window, lap.start, redFlags, median)) {
         stops.push({
           driverId,
@@ -630,7 +671,10 @@ export function replayLiveRows(
   /** How long ago `aheadId` passed the point `car` is at, in ms; `null` when it cannot be timed. */
   const timeBehind = (car: CarLap | undefined, aheadId: string | undefined): number | null => {
     const laps = aheadId === undefined ? undefined : index.get(aheadId);
-    const passed = car && laps ? timeAtDistance(laps, car.distance, pit, profile, redFlags) : null;
+    const passed =
+      car && laps && aheadId !== undefined
+        ? timeAtDistance(laps, car.distance, carPitLane(race, aheadId, pit), profile, redFlags)
+        : null;
     return passed === null ? null : gapAtMs - passed;
   };
 

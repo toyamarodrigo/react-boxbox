@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FinishStatus } from '@/registry/boxbox/lib/types';
 import { circuitById } from './circuits';
 import { circuitForRace } from './circuit-for-race';
+import { boxShare } from './pit-garages';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
 import { type ReplayRace, type ReplayRaceControl, replayRaceSchema } from './replay-schema';
 import {
@@ -419,7 +420,8 @@ describe('stationary time through the position function', () => {
       expect(inLane).toBe(true);
       expect(Math.abs(still - 3_400)).toBeLessThanOrEqual(STEP_MS);
 
-      // It stands at the box, halfway along the lane, and the stop is no longer than without it.
+      // It stands at Alpine's box, which is the middle one at Spa (sixth of eleven teams), and the
+      // stop is no longer than without it.
       const atBox = stop.atMs + (stop.durationMs - 3_400) / 2;
       const at = (ms: number) => carLapsAt(race, ms, shape).get('gasly')!;
       expect(at(atBox - 1).progress).toBeLessThan(0.5);
@@ -433,6 +435,43 @@ describe('stationary time through the position function', () => {
       expect(at(stop.atMs + stop.durationMs + 1_000).distance).toBeGreaterThan(
         at(stop.atMs + stop.durationMs + 900).distance,
       );
+    },
+  );
+
+  const melbourne = load('2026-1.json');
+  it.skipIf(melbourne === null)(
+    'stands each car at its team’s box for exactly its stationary time',
+    () => {
+      const race = melbourne!;
+      const shape = shapeOf(race);
+      const stops = replayPitStops(race, shape);
+      const rowOf = (stop: (typeof stops)[number]) =>
+        race.laps
+          .find((lap) => lap.lap === stop.lap)!
+          .rows.find((r) => r.driverId === stop.driverId)!;
+      const timed = stops.filter((stop) => (rowOf(stop).stationaryMs ?? 0) > 0);
+      expect(timed.length).toBeGreaterThan(5);
+      const boxes = new Set<number>();
+      for (const stop of timed) {
+        const stationary = rowOf(stop).stationaryMs!;
+        const box = boxShare(race, stop.driverId);
+        boxes.add(box);
+        let still = 0;
+        for (let ms = stop.atMs + 1; ms < stop.atMs + stop.durationMs; ms += STEP_MS) {
+          const car = carLapsAt(race, ms, shape).get(stop.driverId)!;
+          expect(car.inPit).toBe(true);
+          if (car.stationary) {
+            still += STEP_MS;
+            expect(car.progress, stop.driverId).toBe(box);
+          } else {
+            expect(car.progress, stop.driverId).not.toBe(box);
+          }
+        }
+        expect(Math.abs(still - stationary), stop.driverId).toBeLessThanOrEqual(STEP_MS);
+        expect(Math.abs(standing(race, stop).still - still)).toBeLessThanOrEqual(STEP_MS);
+      }
+      // The teams stop at different places along the lane, not all in the middle.
+      expect(boxes.size).toBeGreaterThan(3);
     },
   );
 
@@ -462,6 +501,19 @@ describe('stationary time through the position function', () => {
     for (const stop of stops)
       expect(standing(race, stop), stop.driverId).toEqual({ still: 0, inLane: true });
   });
+
+  it.skipIf(lasVegas === null)(
+    'never has a car stationary in a race before stationary times',
+    () => {
+      const race = lasVegas!;
+      const shape = shapeOf(race);
+      for (const stop of replayPitStops(race, shape)) {
+        for (let ms = stop.atMs + 1; ms < stop.atMs + stop.durationMs; ms += 100) {
+          expect(carLapsAt(race, ms, shape).get(stop.driverId)?.stationary).toBe(false);
+        }
+      }
+    },
+  );
 
   it.each([
     ['Monaco 2026', '2026-6.json', 68],
