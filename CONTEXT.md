@@ -37,8 +37,12 @@ The circuit drawn in 3D as seen from the followed driver's car, at race time. It
 _Avoid_: Street view, 3D map, cockpit view, POV
 
 **Speed profile**:
-How fast a car is taken to be at each point of a lap: slower in tight corners, faster on straights, stretched so the lap still takes its real time. It decides where a car is between two line crossings, for the Track Map, the Timing Tower and the Onboard view alike. It is an approximation, never telemetry.
-_Avoid_: Telemetry, speed trace, racing line
+How fast a car is taken to be at each point of a lap: slower in tight corners, faster on straights, stretched so the lap still takes its real time. It is worked out along the racing line. It decides where a car is between two line crossings, for the Track Map, the Timing Tower and the Onboard view alike. It is an approximation, never telemetry.
+_Avoid_: Telemetry, speed trace
+
+**Racing line**:
+The path a car is taken to follow across the width of the track: wide into a corner, tight at its apex, wide out of it, kept a little inside the track edges. It is generated from the shape and width of the track, never measured, and every car follows the same one. It only moves a car sideways: how far along the lap a car is stays measured on the outline.
+_Avoid_: Trajectory, line, driving line
 
 **Compared driver**:
 A driver the viewer puts next to the followed driver, up to three at a time. Every comparison is measured against the followed driver, never between compared drivers. There is no compared driver without a followed driver.

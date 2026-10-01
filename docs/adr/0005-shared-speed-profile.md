@@ -16,3 +16,7 @@ The Replay only knows when each car crossed the line, so until now a car moved a
 ## Consequences
 
 Interpolated positions between line crossings change on the Track Map and in the tower, so an overtake between two lines can show at a different point of the lap than before. Gaps and intervals at the line do not change. The profile is an approximation and is never shown as a speed value.
+
+## Amendment 2026-10-01
+
+The profile is now worked out along the generated racing line instead of the outline, so corner speeds follow the wider radius a car really takes. Distance along the lap is still measured on the outline, so nothing at the line changes and every view still reads the same positions.
