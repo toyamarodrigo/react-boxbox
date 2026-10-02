@@ -1,355 +1,355 @@
 /**
- * The Onboard view's car: a generic modern formula car built from simple shapes in code, so it
- * ships no asset and copies no real car, livery, logo or number. Its bodywork takes the team
- * colour; the floor, wings' main planes, halo, tyres and other carbon parts are dark.
+ * The Onboard view's car: its parts (`car-parts`) merged into a near and a far level of detail,
+ * its materials for a quality level, and the rig that stands one car on the track, spins its
+ * wheels, bobs and rolls its body and fades it to a ghost.
  *
- * Two levels of detail share the same two materials: the near one with rounded bodywork, the
- * halo, the driver's helmet and the suspension, and a far one of plain boxes and coarse wheels
- * for cars more than `CAR_LOD_SWITCH_M` from the camera.
+ * The body is one mesh per level, its triangles grouped by material (`CAR_MATERIAL`); the four
+ * wheels of the near level are one instanced mesh, so they can spin. The geometries are made once
+ * and shared by every car; the materials are each car's own, as its colour and its ghost fade.
  */
 import {
-  BoxGeometry,
   BufferAttribute,
-  BufferGeometry,
-  CatmullRomCurve3,
-  CylinderGeometry,
-  ExtrudeGeometry,
+  type BufferGeometry,
+  Group,
+  InstancedMesh,
   LOD,
+  Matrix4,
   Mesh,
+  MeshBasicMaterial,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
-  Shape,
-  SphereGeometry,
-  TubeGeometry,
-  Vector2,
+  PlaneGeometry,
+  Quaternion,
   Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CAR_LENGTH_M } from '@/data/onboard-frame';
+import { cornerRoll, rearLightLevel, suspensionBob, wheelSpin } from './car-motion';
+import {
+  AXLE,
+  CAR_MATERIAL,
+  type CarMaterialName,
+  type Parts,
+  TYRE_WIDTH,
+  WHEEL_CENTRES,
+  WHEEL_RADIUS,
+  farParts,
+  nearParts,
+  wheelParts,
+} from './car-parts';
+import { CONTACT_SHADOW, carbonWeaveTexture, contactShadowTexture } from './textures';
 
-/** The car's overall width, across the tyres, and its height, at the top of the airbox, in metres. */
-export const CAR_WIDTH_M = 1.9;
-export const CAR_HEIGHT_M = 0.95;
+export { CAR_HEIGHT_M, CAR_MATERIAL, CAR_WIDTH_M } from './car-parts';
 
 /** How far from the camera, in metres, a car switches to its far level of detail. */
 export const CAR_LOD_SWITCH_M = 70;
 
-/** The group of each part's material in the car's geometries: bodywork, then carbon. */
-export const CAR_MATERIAL = { body: 0, carbon: 1 } as const;
+/**
+ * How the car is drawn at a quality level: `rich` paints it with a clearcoat and weaves its
+ * carbon; `plain` keeps the cheaper standard materials, for the low level.
+ */
+export type CarLook = 'plain' | 'rich';
 
-const CARBON_COLOUR = '#17181b';
+/** The paint's second tone: the bodywork below `below` metres is darker, blended over `blend`. */
+const LOWER_TONE = { below: 0.24, blend: 0.05, shade: 0.42 } as const;
+/** How much lighter the tyres' sidewalls are than their tread. */
+const SIDEWALL_SHADE = 1.6;
 
-/** A cross-section of a loft: at `x` along the car, centred `z` across it, `y` from `bottom` to `top`. */
-export type LoftStation = { x: number; z?: number; halfWidth: number; bottom: number; top: number };
+const COLOURS = {
+  carbon: '#34373c',
+  metal: '#b9bdc4',
+  rubber: '#151515',
+  light: '#ff2a1e',
+} as const;
+
+/** The rear light's glow at full and the shadow's darkness when the car is solid. */
+const LIGHT_INTENSITY = 6;
+const SHADOW_OPACITY = 0.6;
+
+const MATERIAL_ORDER = Object.keys(CAR_MATERIAL) as CarMaterialName[];
+
+const smoothstep = (edge0: number, edge1: number, t: number) => {
+  const u = Math.min(1, Math.max(0, (t - edge0) / (edge1 - edge0)));
+  return u * u * (3 - 2 * u);
+};
 
 /**
- * A ring of points round a station: a rounded box (a superellipse) with `sides` points, or a
- * plain box with four.
+ * Every part of a material as one plain geometry of positions, normals and a colour per vertex:
+ * the paint's lower tone and the tyres' lighter sidewalls are vertex colours, so one material
+ * draws each.
  */
-function ring({ x, z = 0, halfWidth, bottom, top }: LoftStation, sides: number): Vector3[] {
-  const middle = (top + bottom) / 2;
-  const halfHeight = (top - bottom) / 2;
-  const box = sides === 4;
-  const points: Vector3[] = [];
-  for (let side = 0; side < sides; side++) {
-    const angle = (side / sides) * Math.PI * 2 + (box ? Math.PI / 4 : 0);
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    // A superellipse of exponent 3: a box with well-rounded corners.
-    const bend = box ? 0 : 2 / 3;
-    points.push(
-      new Vector3(
-        x,
-        middle + Math.sign(sin) * Math.abs(sin) ** bend * halfHeight,
-        z + Math.sign(cos) * Math.abs(cos) ** bend * halfWidth,
-      ),
-    );
-  }
-  return points;
-}
-
-/** A flat cap closing `points`, facing `+x` when `front`, `-x` otherwise. */
-function cap(points: Vector3[], front: boolean): BufferGeometry {
-  const centre = points
-    .reduce((sum, point) => sum.add(point), new Vector3())
-    .divideScalar(points.length);
-  const positions: number[] = [];
-  for (const [index, point] of points.entries()) {
-    const next = points[(index + 1) % points.length]!;
-    // Round the ring the fan faces -x; the front cap turns it round.
-    const [b, c] = front ? [next, point] : [point, next];
-    positions.push(...centre.toArray(), ...b.toArray(), ...c.toArray());
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-/**
- * A smooth tube through `stations`, front (greatest `x`) to back, with its front and back caps
- * apart so they can take another material. Its normals are smooth round and along the tube.
- */
-export function loft(
-  stations: readonly LoftStation[],
-  sides: number,
-): { tube: BufferGeometry; front: BufferGeometry; back: BufferGeometry } {
-  const rings = stations.map((station) => ring(station, sides));
-  const positions = rings.flatMap((points) => points.flatMap((point) => point.toArray()));
-  const indices: number[] = [];
-  for (let station = 0; station + 1 < rings.length; station++) {
-    for (let side = 0; side < sides; side++) {
-      const a = station * sides + side;
-      const b = station * sides + ((side + 1) % sides);
-      const c = b + sides;
-      const d = a + sides;
-      // With the stations running to -x, a b c faces out of the tube.
-      indices.push(a, b, c, a, c, d);
-    }
-  }
-  const tube = new BufferGeometry();
-  tube.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-  tube.setIndex(indices);
-  tube.computeVertexNormals();
-  return { tube, front: cap(rings[0]!, true), back: cap(rings.at(-1)!, false) };
-}
-
-/** A box of `size` (length, height, width) at `centre`, pitched `pitch` radians nose up. */
-function box(size: [number, number, number], centre: [number, number, number], pitch = 0) {
-  const geometry = new BoxGeometry(...size);
-  if (pitch) geometry.rotateZ(pitch);
-  return geometry.translate(...centre);
-}
-
-/** A wheel of `radius` and `width` at `centre`, its axle across the car. */
-function wheel(radius: number, width: number, centre: [number, number, number], segments: number) {
-  return new CylinderGeometry(radius, radius, width, segments)
-    .rotateX(Math.PI / 2)
-    .translate(...centre);
-}
-
-/** A part at `z` and its mirror image at `-z`. */
-const bothSides = (make: (side: 1 | -1) => BufferGeometry) => [make(1), make(-1)];
-
-const HALF_LENGTH = CAR_LENGTH_M / 2;
-const HALF_WIDTH = CAR_WIDTH_M / 2;
-const WHEEL_RADIUS = 0.36;
-const AXLE = { front: 1.75, rear: -1.85 } as const;
-const TYRE_WIDTH = { front: 0.3, rear: 0.4 } as const;
-
-/** The nose and the monocoque, tip to the back of the cockpit. */
-const CHASSIS: LoftStation[] = [
-  { x: 2.76, halfWidth: 0.06, bottom: 0.13, top: 0.24 },
-  { x: 2.4, halfWidth: 0.11, bottom: 0.15, top: 0.36 },
-  { x: 1.9, halfWidth: 0.16, bottom: 0.19, top: 0.48 },
-  { x: 1.4, halfWidth: 0.22, bottom: 0.2, top: 0.58 },
-  { x: 0.9, halfWidth: 0.3, bottom: 0.12, top: 0.64 },
-  { x: 0.5, halfWidth: 0.36, bottom: 0.08, top: 0.66 },
-  { x: -0.4, halfWidth: 0.4, bottom: 0.08, top: 0.66 },
-];
-
-/** The airbox and engine cover, from behind the driver's head to the gearbox. */
-const ENGINE_COVER: LoftStation[] = [
-  { x: -0.22, halfWidth: 0.28, bottom: 0.12, top: CAR_HEIGHT_M },
-  { x: -0.7, halfWidth: 0.34, bottom: 0.12, top: 0.88 },
-  { x: -1.3, halfWidth: 0.3, bottom: 0.12, top: 0.7 },
-  { x: -1.9, halfWidth: 0.18, bottom: 0.15, top: 0.52 },
-  { x: -2.35, halfWidth: 0.08, bottom: 0.2, top: 0.42 },
-];
-
-/** A sidepod on the `side` of the car, from its intake, narrowing and dropping to the rear. */
-const sidepod = (side: 1 | -1): LoftStation[] => [
-  { x: 0.75, z: side * 0.6, halfWidth: 0.17, bottom: 0.12, top: 0.5 },
-  { x: 0.4, z: side * 0.6, halfWidth: 0.19, bottom: 0.1, top: 0.52 },
-  { x: -0.4, z: side * 0.55, halfWidth: 0.18, bottom: 0.1, top: 0.45 },
-  { x: -1.1, z: side * 0.42, halfWidth: 0.12, bottom: 0.1, top: 0.3 },
-  { x: -1.5, z: side * 0.3, halfWidth: 0.06, bottom: 0.12, top: 0.22 },
-];
-
-/** The floor's plan, half of it, from the front, as (x, z): it necks in before the rear tyres. */
-const FLOOR_PLAN: [number, number][] = [
-  [1.3, 0.3],
-  [0.9, 0.8],
-  [-1.3, 0.8],
-  [-1.55, 0.55],
-  [-2.3, 0.5],
-];
-
-/** The floor, a thin plate just off the ground. */
-function floor(): BufferGeometry {
-  const outline = [
-    ...FLOOR_PLAN.map(([x, z]) => new Vector2(x, z)),
-    ...[...FLOOR_PLAN].reverse().map(([x, z]) => new Vector2(x, -z)),
-  ];
-  // The shape's y is the car's z; the extrusion, turned down, is the floor's thickness.
-  return new ExtrudeGeometry(new Shape(outline), { depth: 0.03, bevelEnabled: false })
-    .rotateX(Math.PI / 2)
-    .translate(0, 0.06, 0);
-}
-
-/** The halo: its centre pillar from the chassis and its hoop round the cockpit. */
-function halo(): BufferGeometry[] {
-  const hoop = new CatmullRomCurve3(
-    [
-      [-0.45, 0.68, 0.3],
-      [-0.3, 0.85, 0.3],
-      [0.08, 0.89, 0.24],
-      [0.32, 0.89, 0],
-      [0.08, 0.89, -0.24],
-      [-0.3, 0.85, -0.3],
-      [-0.45, 0.68, -0.3],
-    ].map(([x, y, z]) => new Vector3(x, y, z)),
-  );
-  const pillar = new CatmullRomCurve3(
-    [
-      [0.62, 0.64, 0],
-      [0.46, 0.82, 0],
-      [0.3, 0.89, 0],
-    ].map(([x, y, z]) => new Vector3(x, y, z)),
-  );
-  return [new TubeGeometry(hoop, 24, 0.028, 6), new TubeGeometry(pillar, 8, 0.03, 6)];
-}
-
-/** The parts of one level of detail, by material. */
-type Parts = { body: BufferGeometry[]; carbon: BufferGeometry[] };
-
-/** Bodywork, wings and wheels, at `sides` points round the lofts and `segments` round the wheels. */
-function commonParts(sides: number, segments: number): Parts {
-  const chassis = loft(CHASSIS, sides);
-  const cover = loft(ENGINE_COVER, sides);
-  const pods = [loft(sidepod(1), sides), loft(sidepod(-1), sides)];
-  const wheels = [
-    ...bothSides((side) =>
-      wheel(
-        WHEEL_RADIUS,
-        TYRE_WIDTH.front,
-        [AXLE.front, WHEEL_RADIUS, side * (HALF_WIDTH - TYRE_WIDTH.front / 2)],
-        segments,
-      ),
-    ),
-    ...bothSides((side) =>
-      wheel(
-        WHEEL_RADIUS,
-        TYRE_WIDTH.rear,
-        [AXLE.rear, WHEEL_RADIUS, side * (HALF_WIDTH - TYRE_WIDTH.rear / 2)],
-        segments,
-      ),
-    ),
-  ];
-  return {
-    body: [
-      chassis.tube,
-      chassis.front,
-      chassis.back,
-      cover.tube,
-      cover.back,
-      ...pods.flatMap((pod) => [pod.tube, pod.back]),
-      // The front wing's endplates, at the very front, and the rear wing's, at the very back.
-      ...bothSides((side) => box([0.5, 0.25, 0.02], [HALF_LENGTH - 0.25, 0.16, side * 0.9])),
-      ...bothSides((side) => box([0.55, 0.62, 0.02], [-HALF_LENGTH + 0.275, 0.62, side * 0.5])),
-    ],
-    carbon: [
-      // The airbox intake behind the driver's head, and the sidepods' intakes.
-      cover.front,
-      ...pods.map((pod) => pod.front),
-      // The cockpit opening.
-      box([0.85, 0.02, 0.5], [-0.05, 0.665, 0]),
-      floor(),
-      // The front wing's main plane and the rear wing's.
-      box([0.42, 0.025, 1.8], [2.58, 0.09, 0], -0.06),
-      box([0.36, 0.03, 0.98], [-2.47, 0.78, 0], -0.15),
-      ...wheels,
-    ],
-  };
-}
-
-/** The near level of detail's extra parts: flaps, halo, helmet, suspension, mirrors, diffuser. */
-function detailParts(): Parts {
-  // A wishbone or track rod: a thin bar from the chassis at `inner` across to the wheel.
-  const arm = (x: number, y: number, inner: number, outer: number, side: 1 | -1) =>
-    box([0.05, 0.02, outer - inner], [x, y, side * ((inner + outer) / 2)]);
-  return {
-    body: [
-      // The front wing's flaps and the rear wing's top flap.
-      box([0.22, 0.02, 1.6], [2.47, 0.16, 0], -0.35),
-      box([0.18, 0.018, 1.5], [2.39, 0.23, 0], -0.6),
-      box([0.2, 0.025, 0.98], [-2.66, 0.88, 0], -0.45),
-      // Mirrors on short stalks.
-      ...bothSides((side) => box([0.05, 0.06, 0.14], [0.55, 0.74, side * 0.52])),
-    ],
-    carbon: [
-      ...halo(),
-      new SphereGeometry(0.12, 12, 8).translate(-0.02, 0.74, 0),
-      ...bothSides((side) => box([0.03, 0.2, 0.02], [0.55, 0.62, side * 0.44])),
-      ...bothSides((side) => arm(AXLE.front, 0.5, 0.18, HALF_WIDTH - TYRE_WIDTH.front, side)),
-      ...bothSides((side) => arm(AXLE.front, 0.26, 0.15, HALF_WIDTH - TYRE_WIDTH.front, side)),
-      ...bothSides((side) => arm(AXLE.rear, 0.48, 0.18, HALF_WIDTH - TYRE_WIDTH.rear, side)),
-      ...bothSides((side) => arm(AXLE.rear, 0.24, 0.2, HALF_WIDTH - TYRE_WIDTH.rear, side)),
-      // The diffuser, rising to the back, the beam wing and the rear wing's pylon.
-      box([0.6, 0.02, 1.0], [-2.1, 0.13, 0], -0.35),
-      box([0.2, 0.02, 0.9], [-2.55, 0.38, 0], -0.1),
-      box([0.08, 0.42, 0.03], [-2.45, 0.56, 0]),
-    ],
-  };
-}
-
-/** Parts merged into one geometry of positions and normals only. */
-function mergeParts(parts: BufferGeometry[]): BufferGeometry {
+function mergeMaterial(name: CarMaterialName, parts: BufferGeometry[]): BufferGeometry {
   const plain = parts.map((part) => {
     const flat = part.index ? part.toNonIndexed() : part;
     flat.deleteAttribute('uv');
     return flat;
   });
   const merged = mergeGeometries(plain);
-  if (!merged) throw new Error('The car parts did not merge.');
+  if (!merged) throw new Error(`The car's ${name} parts did not merge.`);
+  const position = merged.getAttribute('position');
+  const colours = new Float32Array(position.count * 3).fill(1);
+  for (let index = 0; index < position.count; index++) {
+    const y = position.getY(index);
+    let shade = 1;
+    if (name === 'paint') {
+      shade =
+        LOWER_TONE.shade +
+        (1 - LOWER_TONE.shade) *
+          smoothstep(LOWER_TONE.below - LOWER_TONE.blend, LOWER_TONE.below + LOWER_TONE.blend, y);
+    } else if (name === 'rubber') {
+      // Off the tread (the wheel's own x and y round its axle on z) is sidewall.
+      const radius = Math.hypot(position.getX(index), y);
+      if (radius < WHEEL_RADIUS - 0.01) shade = SIDEWALL_SHADE;
+    }
+    colours[index * 3] = shade;
+    colours[index * 3 + 1] = shade;
+    colours[index * 3 + 2] = shade;
+  }
+  merged.setAttribute('color', new BufferAttribute(colours, 3));
   return merged;
 }
 
-/** One level of detail: its parts in two groups, the bodywork and the carbon (`CAR_MATERIAL`). */
+/**
+ * One geometry of `parts`, its triangles grouped by material in `CAR_MATERIAL`'s order (a
+ * material without parts has no group), with texture coordinates in metres projected across the
+ * car for the carbon's weave, which is too fine for the projection's stretch to show.
+ */
 function level(parts: Parts): BufferGeometry {
-  const merged = mergeGeometries([mergeParts(parts.body), mergeParts(parts.carbon)], true);
+  const present = MATERIAL_ORDER.filter((name) => parts[name]?.length);
+  const merged = mergeGeometries(
+    present.map((name) => mergeMaterial(name, parts[name]!)),
+    true,
+  );
   if (!merged) throw new Error('The car levels did not merge.');
+  for (const [index, group] of merged.groups.entries()) {
+    group.materialIndex = CAR_MATERIAL[present[index]!];
+  }
+  const position = merged.getAttribute('position');
+  const uvs = new Float32Array(position.count * 2);
+  for (let index = 0; index < position.count; index++) {
+    const z = position.getZ(index);
+    uvs[index * 2] = position.getX(index) + 0.37 * z;
+    uvs[index * 2 + 1] = position.getY(index) + 0.61 * z;
+  }
+  merged.setAttribute('uv', new BufferAttribute(uvs, 2));
   merged.computeBoundingSphere();
   return merged;
 }
 
-let geometries: { near: BufferGeometry; far: BufferGeometry } | undefined;
+type Geometries = { near: BufferGeometry; far: BufferGeometry; wheel: BufferGeometry };
+let geometries: Geometries | undefined;
 
-/** The car's two levels of detail, made once and shared by every car. */
-export function carGeometries(): { near: BufferGeometry; far: BufferGeometry } {
-  if (!geometries) {
-    const near = commonParts(16, 24);
-    const detail = detailParts();
-    geometries = {
-      near: level({
-        body: [...near.body, ...detail.body],
-        carbon: [...near.carbon, ...detail.carbon],
-      }),
-      far: level(commonParts(4, 8)),
-    };
-  }
+/** The car's levels of detail and its wheel, made once and shared by every car. */
+export function carGeometries(): Geometries {
+  geometries ??= {
+    near: level(nearParts()),
+    far: level(farParts()),
+    wheel: level(wheelParts(36)),
+  };
   return geometries;
 }
 
+/** A material of the car: fades to a ghost by its opacity. */
+export type CarMaterial = MeshStandardMaterial | MeshPhysicalMaterial;
+
+/** The car's materials in `CAR_MATERIAL`'s order, for `look`, all transparent so they can fade. */
+export function carMaterials(colour: string, look: CarLook): CarMaterial[] {
+  const rich = look === 'rich';
+  const paint = rich
+    ? new MeshPhysicalMaterial({
+        color: colour,
+        roughness: 0.32,
+        metalness: 0.08,
+        clearcoat: 1,
+        clearcoatRoughness: 0.1,
+        vertexColors: true,
+        transparent: true,
+      })
+    : new MeshStandardMaterial({
+        color: colour,
+        roughness: 0.38,
+        metalness: 0.12,
+        vertexColors: true,
+        transparent: true,
+      });
+  const carbon = new MeshStandardMaterial({
+    color: COLOURS.carbon,
+    roughness: rich ? 0.4 : 0.5,
+    metalness: 0.3,
+    map: rich ? carbonWeaveTexture() : null,
+    transparent: true,
+  });
+  const metal = new MeshStandardMaterial({
+    color: COLOURS.metal,
+    roughness: 0.32,
+    metalness: 0.95,
+    transparent: true,
+  });
+  const rubber = new MeshStandardMaterial({
+    color: COLOURS.rubber,
+    roughness: 0.92,
+    metalness: 0,
+    vertexColors: true,
+    transparent: true,
+  });
+  const light = new MeshStandardMaterial({
+    color: '#2a0000',
+    emissive: COLOURS.light,
+    emissiveIntensity: LIGHT_INTENSITY * rearLightLevel('green'),
+    roughness: 0.3,
+    transparent: true,
+  });
+  return [paint, carbon, metal, rubber, light];
+}
+
+/** Where a car stands: on the ground at a track point, pitched nose up by `pitch` radians uphill. */
+export type CarPlace = { x: number; y: number; z: number; heading: number; pitch: number };
+
+/** One car on the track: what the scene places, fades and lights each frame. */
+export type CarRig = {
+  /** Stood on the track: position, heading and pitch. Hidden when the car is off screen. */
+  object: Group;
+  /** The body and the wheels, bobbed and rolled on the suspension. */
+  body: LOD;
+  wheels: InstancedMesh;
+  /** The soft shadow on the ground under the car. */
+  shadow: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  /** In `CAR_MATERIAL`'s order. */
+  materials: CarMaterial[];
+  /** Where the car was last frame, and how its wheels and body have moved. */
+  motion: {
+    x: number;
+    z: number;
+    heading: number;
+    spin: number;
+    travelled: number;
+    roll: number;
+    placed: boolean;
+  };
+};
+
+/** How fast the roll settles, per second. */
+const ROLL_RATE = 6;
+
+const matrix = new Matrix4();
+const quaternion = new Quaternion();
+const position = new Vector3();
+const scale = new Vector3();
+const AXLE_AXIS = new Vector3(0, 0, 1);
+
+/** Sets the four wheels at their axles, turned `spin` radians, the rear pair stretched to their width. */
+function setWheels(wheels: InstancedMesh, spin: number) {
+  quaternion.setFromAxisAngle(AXLE_AXIS, -spin);
+  for (const [index, [x, z]] of WHEEL_CENTRES.entries()) {
+    position.set(x, WHEEL_RADIUS, z);
+    scale.set(1, 1, x === AXLE.rear ? TYRE_WIDTH.rear / TYRE_WIDTH.front : 1);
+    matrix.compose(position, quaternion, scale);
+    wheels.setMatrixAt(index, matrix);
+  }
+  wheels.instanceMatrix.needsUpdate = true;
+}
+
 /**
- * One car in `colour`, as a `LOD` that switches to its far level `lodM` metres from the camera,
- * and its two materials, transparent so it can be a ghost.
+ * One car in `colour` drawn for `look`, as a rig: a `LOD` that switches to its far level `lodM`
+ * metres from the camera, under a group that stands on the track, with a contact shadow.
  */
-export function carObject(
-  colour: string,
-  lodM = CAR_LOD_SWITCH_M,
-): { object: LOD; materials: MeshStandardMaterial[] } {
-  const { near, far } = carGeometries();
-  const materials = [
-    new MeshStandardMaterial({ color: colour, roughness: 0.4, metalness: 0.15, transparent: true }),
-    new MeshStandardMaterial({
-      color: CARBON_COLOUR,
-      roughness: 0.65,
-      metalness: 0.05,
+export function carObject(colour: string, look: CarLook = 'rich', lodM = CAR_LOD_SWITCH_M): CarRig {
+  const { near, far, wheel } = carGeometries();
+  const materials = carMaterials(colour, look);
+  const nearMesh = new Mesh(near, materials);
+  const wheels = new InstancedMesh(wheel, materials, WHEEL_CENTRES.length);
+  setWheels(wheels, 0);
+  const nearLevel = new Group();
+  nearLevel.add(nearMesh, wheels);
+  const body = new LOD();
+  body.addLevel(nearLevel, 0);
+  body.addLevel(new Mesh(far, materials), lodM, 0.1);
+  for (const mesh of [nearMesh, wheels, body.levels[1]!.object]) mesh.castShadow = true;
+  const shadow = new Mesh(
+    new PlaneGeometry(...CONTACT_SHADOW.metres).rotateX(-Math.PI / 2).translate(0, 0.012, 0),
+    new MeshBasicMaterial({
+      color: '#000000',
+      alphaMap: contactShadowTexture(WHEEL_CENTRES),
       transparent: true,
+      opacity: SHADOW_OPACITY,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
     }),
-  ];
-  const object = new LOD();
-  object.addLevel(new Mesh(near, materials), 0);
-  object.addLevel(new Mesh(far, materials), lodM, 0.1);
-  return { object, materials };
+  );
+  shadow.renderOrder = -1;
+  const object = new Group();
+  object.add(body, shadow);
+  object.visible = false;
+  return {
+    object,
+    body,
+    wheels,
+    shadow,
+    materials,
+    motion: { x: 0, z: 0, heading: 0, spin: 0, travelled: 0, roll: 0, placed: false },
+  };
+}
+
+/**
+ * Stands the car at `place` (or hides it), its body moved on from last frame: the wheels turn by
+ * the distance driven, the body bobs along it and rolls into the corner the heading turned
+ * through. A `snapped` frame (a seek) only moves the car, nothing turns.
+ */
+export function moveCar(
+  rig: CarRig,
+  place: CarPlace | undefined,
+  seconds: number,
+  snapped: boolean,
+) {
+  const { object, body, wheels, motion } = rig;
+  object.visible = place !== undefined;
+  if (!place) {
+    motion.placed = false;
+    return;
+  }
+  object.position.set(place.x, place.y, place.z);
+  // Turned first, then pitched about its own width: the car's length is along its local `x`.
+  object.rotation.set(0, -place.heading, place.pitch, 'YXZ');
+  const moved = motion.placed && !snapped;
+  const distance = moved ? Math.hypot(place.x - motion.x, place.z - motion.z) : 0;
+  let turned = moved ? place.heading - motion.heading : 0;
+  if (turned > Math.PI) turned -= Math.PI * 2;
+  if (turned < -Math.PI) turned += Math.PI * 2;
+  motion.x = place.x;
+  motion.z = place.z;
+  motion.heading = place.heading;
+  motion.placed = true;
+  motion.spin = (motion.spin + wheelSpin(distance, WHEEL_RADIUS)) % (Math.PI * 2);
+  motion.travelled += distance;
+  const roll = cornerRoll(turned, distance, seconds);
+  motion.roll += (roll - motion.roll) * (snapped ? 1 : 1 - Math.exp(-ROLL_RATE * seconds));
+  body.rotation.x = motion.roll;
+  body.position.y = suspensionBob(motion.travelled);
+  if (wheels.visible) setWheels(wheels, motion.spin);
+}
+
+/**
+ * Moves every material's opacity `fade` of the way to `target` (1 solid, less a ghost); only an
+ * opaque one writes depth, so a ghost never hides the track behind it. The shadow fades along.
+ */
+export function fadeCar(rig: CarRig, target: number, fade: number) {
+  for (const material of rig.materials) {
+    material.opacity += (target - material.opacity) * fade;
+    if (Math.abs(target - material.opacity) < 0.005) material.opacity = target;
+    material.depthWrite = material.opacity === 1;
+  }
+  rig.shadow.material.opacity = SHADOW_OPACITY * rig.materials[CAR_MATERIAL.paint]!.opacity;
+}
+
+/** Burns the rear light as the track status asks (`rearLightLevel`). */
+export function lightCar(rig: CarRig, trackStatus: string) {
+  rig.materials[CAR_MATERIAL.light]!.emissiveIntensity =
+    LIGHT_INTENSITY * rearLightLevel(trackStatus);
+}
+
+/** Frees what is the rig's own: its materials and its shadow; the geometries are shared. */
+export function disposeCar(rig: CarRig) {
+  for (const material of rig.materials) material.dispose();
+  rig.shadow.geometry.dispose();
+  rig.shadow.material.dispose();
 }

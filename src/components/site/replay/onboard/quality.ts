@@ -27,6 +27,8 @@ export type QualitySettings = {
   carLodM: number;
   /** The marshal panels' housings lit the cheap way; every panel still stands. */
   litePanels: boolean;
+  /** How the cars are drawn: `rich` with clearcoat paint and woven carbon, `plain` without. */
+  carLook: 'plain' | 'rich';
 };
 
 export const QUALITY: Record<QualityLevel, QualitySettings> = {
@@ -41,6 +43,7 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
     fog: { near: 150, far: 1100 },
     carLodM: 40,
     litePanels: true,
+    carLook: 'plain',
   },
   medium: {
     pixelRatio: 1.5,
@@ -53,6 +56,7 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
     fog: { near: 200, far: 1450 },
     carLodM: 55,
     litePanels: false,
+    carLook: 'rich',
   },
   high: {
     pixelRatio: 2,
@@ -65,6 +69,7 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
     fog: { near: 250, far: 1800 },
     carLodM: 70,
     litePanels: false,
+    carLook: 'rich',
   },
 };
 

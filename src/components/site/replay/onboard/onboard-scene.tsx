@@ -18,18 +18,19 @@ import {
 } from 'react';
 import { Canvas, type RootState, useFrame, useThree } from '@react-three/fiber';
 import {
+  ACESFilmicToneMapping,
   Color,
   type DirectionalLight,
   type Group,
   type HemisphereLight,
   type Material,
   Mesh,
-  type MeshStandardMaterial,
-  type Object3D,
+  MeshBasicMaterial,
   PCFShadowMap,
   type PerspectiveCamera,
   Scene as ThreeScene,
   setConsoleFunction,
+  SphereGeometry,
   Vector3,
 } from 'three';
 import { PMREMGenerator, type Renderer } from 'three/webgpu';
@@ -46,7 +47,15 @@ import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import { graphicsSupport } from '../graphics-support';
 import type { OnboardCamera } from '../onboard-view';
 import { sidesOf } from './barriers';
-import { carObject } from './car-model';
+import {
+  type CarPlace,
+  type CarRig,
+  carObject,
+  disposeCar,
+  fadeCar,
+  lightCar,
+  moveCar,
+} from './car-model';
 import { buildMarshalPanels, setMarshalLights } from './marshal-panels';
 import {
   QUALITY,
@@ -61,20 +70,22 @@ import { buildGarages, buildScenery, disposeScenery } from './scenery';
 import { SKY, skyDome } from './sky';
 import { WORKING_LANE_MIDDLE, boxSwing } from './surfaces';
 import { MAX_ANISOTROPY } from './textures';
-import {
-  type TrackModel,
-  type TrackPoint,
-  angleDelta,
-  pitchAt,
-  pointAt,
-  sideways,
-  trackModel,
-} from './track';
+import { type TrackModel, angleDelta, pitchAt, pointAt, sideways, trackModel } from './track';
 
 /** What the sky dome fades to under the horizon, and the hemisphere light's ground: the grass or the pavement. */
 const GROUND_BELOW = { permanent: '#47663a', street: '#77756f' } as const;
-/** How much the sky's environment lights and reflects in the materials. */
-const ENVIRONMENT_INTENSITY = 0.8;
+/**
+ * How much the sky's environment lights and reflects in the materials, and the sun's disc in
+ * it: `radius` metres on a dome of 50, far brighter than the sky (`glow`, in linear units), so
+ * the paint's clearcoat catches a sun highlight.
+ */
+const ENVIRONMENT = { intensity: 0.8, sun: { distance: 40, radius: 1.2, glow: 12 } } as const;
+
+/**
+ * The output's tone mapping: ACES filmic, as broadcast cameras roll off the highlights, at an
+ * exposure a little over one so the paint and the asphalt do not sit in the curve's dull middle.
+ */
+const TONE_MAPPING = { type: ACESFilmicToneMapping, exposure: 1.1 } as const;
 const UNKNOWN_TEAM_COLOUR = '#888888';
 
 /** The sky light and the sun, and the red they lean towards under a red flag, by `amount`. */
@@ -186,25 +197,6 @@ function useRaceTime({ elapsedMs, isPlaying, speed, endMs, jumped }: ReplayClock
   };
 }
 
-/** Moves a car material's opacity `fade` of the way to `target`; only an opaque one writes depth. */
-function fadeTo(material: MeshStandardMaterial, target: number, fade: number) {
-  material.opacity += (target - material.opacity) * fade;
-  if (Math.abs(target - material.opacity) < 0.005) material.opacity = target;
-  material.depthWrite = material.opacity === 1;
-}
-
-/** Where a car stands: on the ground at a track point, pitched nose up by `pitch` radians uphill. */
-type CarPlace = TrackPoint & { pitch: number };
-
-/** Stands a car on the ground at `place`, turned along it and pitched with the slope, or hides it. */
-function standCar(car: Object3D, place: CarPlace | undefined) {
-  car.visible = place !== undefined;
-  if (!place) return;
-  car.position.set(place.x, place.y, place.z);
-  // Turned first, then pitched about its own width: the car's length is along its local `x`.
-  car.rotation.set(0, -place.heading, place.pitch, 'YXZ');
-}
-
 /** Frees a mesh's geometry and material. */
 function disposeMesh(mesh: Mesh) {
   mesh.geometry.dispose();
@@ -222,11 +214,18 @@ function useSkyEnvironment(below: Color) {
     const { gl, scene } = get();
     const pmrem = new PMREMGenerator(gl as unknown as Renderer);
     const sky = new ThreeScene();
-    const dome = skyDome(below, ENVIRONMENT_INTENSITY);
+    const dome = skyDome(below, ENVIRONMENT.intensity);
     dome.scale.setScalar(50);
-    sky.add(dome);
+    // The sun itself, which the dome's soft glow has no room for between its vertices.
+    const sun = new Mesh(
+      new SphereGeometry(ENVIRONMENT.sun.radius, 12, 8),
+      new MeshBasicMaterial({ color: new Color(SKY.sun).multiplyScalar(ENVIRONMENT.sun.glow) }),
+    );
+    sun.position.copy(SKY.sunDirection).multiplyScalar(ENVIRONMENT.sun.distance);
+    sky.add(dome, sun);
     const target = pmrem.fromScene(sky, 0.02, 0.1, 100);
     disposeMesh(dome);
+    disposeMesh(sun);
     scene.environment = target.texture;
     return () => {
       scene.environment = null;
@@ -377,8 +376,8 @@ function Scene({
   // Every driver's car in the team colour, hidden until it is on screen. The geometries are
   // shared by every car and kept; only the materials are each car's own.
   const carGroup = useRef<Group>(null);
-  const cars = useRef(new Map<string, ReturnType<typeof carObject>>());
-  const { carLodM } = quality;
+  const cars = useRef(new Map<string, CarRig>());
+  const { carLodM, carLook } = quality;
   useEffect(() => {
     const group = carGroup.current;
     const byDriver = cars.current;
@@ -386,22 +385,18 @@ function Scene({
     for (const driver of race.drivers) {
       const colour =
         race.teams.find((team) => team.id === driver.teamId)?.color ?? UNKNOWN_TEAM_COLOUR;
-      const car = carObject(colour, carLodM);
-      car.object.visible = false;
-      car.object.traverse((object) => {
-        object.castShadow = true;
-      });
+      const car = carObject(colour, carLook, carLodM);
       group.add(car.object);
       byDriver.set(driver.id, car);
     }
     return () => {
       for (const car of byDriver.values()) {
         group.remove(car.object);
-        for (const material of car.materials) material.dispose();
+        disposeCar(car);
       }
       byDriver.clear();
     };
-  }, [race, carLodM]);
+  }, [race, carLodM, carLook]);
   const raceTime = useRaceTime(replay);
   const [probe] = useState(frameProbe);
   const drawn = useRef(false);
@@ -445,14 +440,14 @@ function Scene({
     }
     const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
     const ride = frame.riding?.driverId;
-    for (const [driverId, { object, materials }] of cars.current) {
+    for (const [driverId, rig] of cars.current) {
       const point = places.get(driverId);
       // Every car's materials are transparent, so a ghost needs no shader change: a solid car is
       // at opacity 1 and writes depth, a ghost does not, so it never hides the track behind it.
-      const target = ghostIds.has(driverId) ? GHOST.opacity : 1;
-      for (const material of materials) fadeTo(material, target, fade);
+      fadeCar(rig, ghostIds.has(driverId) ? GHOST.opacity : 1, fade);
+      lightCar(rig, frame.trackStatus);
       // In T-cam the camera is on the riding car, so its own body would fill the view.
-      standCar(object, mode === 'tcam' && driverId === ride ? undefined : point);
+      moveCar(rig, mode === 'tcam' && driverId === ride ? undefined : point, delta, snapped);
     }
 
     const car = ride === undefined ? undefined : places.get(ride);
@@ -631,7 +626,12 @@ function SceneCanvas({
         camera={camera}
         gl={gl}
         shadows={quality.shadows ? SHADOWS : NO_SHADOWS}
-        onCreated={(state) => setBackend(backendLabel(state))}
+        onCreated={(state) => {
+          // After R3F's own default (ACES at exposure 1), before the first frame compiles.
+          state.gl.toneMapping = TONE_MAPPING.type;
+          state.gl.toneMappingExposure = TONE_MAPPING.exposure;
+          setBackend(backendLabel(state));
+        }}
       >
         {children}
       </Canvas>
