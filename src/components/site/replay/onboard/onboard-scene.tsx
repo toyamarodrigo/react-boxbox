@@ -8,15 +8,19 @@
  * live in the page, outside this chunk.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, type RootState, useFrame } from '@react-three/fiber';
+import { Canvas, type RootState, useFrame, useThree } from '@react-three/fiber';
 import {
   BoxGeometry,
+  Color,
+  type Material,
   type Mesh,
   type MeshStandardMaterial,
   PCFShadowMap,
   type PerspectiveCamera,
+  Scene as ThreeScene,
   setConsoleFunction,
 } from 'three';
+import { PMREMGenerator, type Renderer } from 'three/webgpu';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { CAR_LENGTH_M, onboardFrame } from '@/data/onboard-frame';
 import { garageShares } from '@/data/pit-garages';
@@ -24,9 +28,13 @@ import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import type { OnboardCamera } from '../onboard-view';
 import { buildGarages, buildScenery, disposeScenery } from './scenery';
+import { SKY, skyDome } from './sky';
 import { type TrackModel, angleDelta, pointAt, trackModel } from './track';
 
-const SKY = '#bcd4e6';
+/** What the sky dome fades to under the horizon, and the hemisphere light's ground: the grass or the pavement. */
+const GROUND_BELOW = { permanent: '#47663a', street: '#77756f' } as const;
+/** How much the sky's environment lights and reflects in the materials. */
+const ENVIRONMENT_INTENSITY = 0.8;
 /** A generic formula car's footprint as a box: length, height, width, in metres. */
 const CAR_GEOMETRY = new BoxGeometry(CAR_LENGTH_M, 1, 1.9);
 const UNKNOWN_TEAM_COLOUR = '#888888';
@@ -129,6 +137,37 @@ function useRaceTime({ elapsedMs, isPlaying, speed, endMs, jumped }: ReplayClock
   };
 }
 
+/** Frees a mesh's geometry and material. */
+function disposeMesh(mesh: Mesh) {
+  mesh.geometry.dispose();
+  (mesh.material as Material).dispose();
+}
+
+/**
+ * The scene's environment, for its reflections and soft fill light: the sky dome, dimmed to
+ * `ENVIRONMENT_INTENSITY`, rendered once into a small prefiltered cube map. Works on WebGPU and
+ * on its WebGL2 backend alike. Made and freed in one effect, so a remount makes it again.
+ */
+function useSkyEnvironment(below: Color) {
+  const get = useThree((state) => state.get);
+  useEffect(() => {
+    const { gl, scene } = get();
+    const pmrem = new PMREMGenerator(gl as unknown as Renderer);
+    const sky = new ThreeScene();
+    const dome = skyDome(below, ENVIRONMENT_INTENSITY);
+    dome.scale.setScalar(50);
+    sky.add(dome);
+    const target = pmrem.fromScene(sky, 0.02, 0.1, 100);
+    disposeMesh(dome);
+    scene.environment = target.texture;
+    return () => {
+      scene.environment = null;
+      target.dispose();
+      pmrem.dispose();
+    };
+  }, [get, below]);
+}
+
 type SceneProps = {
   race: ReplayRace;
   circuit: ReplayCircuit;
@@ -149,6 +188,18 @@ function Scene({
 }: SceneProps & { track: TrackModel }) {
   const scenery = useMemo(() => buildScenery(track), [track]);
   useEffect(() => () => disposeScenery(scenery), [scenery]);
+  const below = useMemo(
+    () => new Color(track.street ? GROUND_BELOW.street : GROUND_BELOW.permanent),
+    [track],
+  );
+  const sky = useMemo(() => {
+    const dome = skyDome(below);
+    // Inside the camera's far plane, and moved with the camera so it never comes nearer.
+    dome.scale.setScalar(2000);
+    return dome;
+  }, [below]);
+  useEffect(() => () => disposeMesh(sky), [sky]);
+  useSkyEnvironment(below);
   // Each team's garage at its box, where `carLapsAt` stops its cars.
   const garages = useMemo(
     () =>
@@ -183,6 +234,7 @@ function Scene({
 
   useFrame((state, delta) => {
     const camera = state.camera as PerspectiveCamera;
+    sky.position.copy(camera.position);
     const { ms, snapped } = raceTime(delta);
     const frame = onboardFrame(race, circuit, ms, followedId, comparedIds);
     const placed = new Map(
@@ -249,13 +301,19 @@ function Scene({
 
   return (
     <>
-      <color attach="background" args={[SKY]} />
-      <fog attach="fog" args={[SKY, 250, 1800]} />
-      <hemisphereLight args={['#dceaff', '#3d5c2e', 1.6]} />
+      <color attach="background" args={[SKY.horizon]} />
+      <fog attach="fog" args={[SKY.horizon, 250, 1800]} />
+      <hemisphereLight args={['#dceaff', below, 0.7]} />
       <directionalLight
-        position={[track.centre.x + 400, 600, track.centre.z + 250]}
-        intensity={2}
+        position={[
+          track.centre.x + SKY.sunDirection.x * 800,
+          SKY.sunDirection.y * 800,
+          track.centre.z + SKY.sunDirection.z * 800,
+        ]}
+        color="#fff4e2"
+        intensity={2.4}
       />
+      <primitive object={sky} />
       <primitive object={scenery} />
       <primitive object={garages} />
       {race.drivers.map((driver) => (

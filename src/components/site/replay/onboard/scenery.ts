@@ -1,201 +1,33 @@
 /**
- * The static scene of the Onboard view, built once per circuit: ground, a flat ribbon of the
- * circuit's width along the centreline, white edge lines, kerbs where the track bends, the pit
- * lane, a start line, trackside boards and trees for a sense of speed. Generic and generated:
- * nothing here is a real landmark. The teams' garages along the pit lane change with the race, so
- * `buildGarages` makes them on their own.
- *
- * Everything flat lies on the ground and is drawn first, in order, without writing depth, so the
- * layers never flicker against each other however far away they are.
+ * The static scene of the Onboard view, built once per circuit: the surfaces (`surfaces.ts`),
+ * the barriers (`barriers.ts`) and what stands around them (`dressing.ts`). A permanent circuit
+ * gets grass and gravel run-off, Armco and tyre walls, and trees; a street circuit gets concrete
+ * walls with catch fencing at the track edge and generic buildings behind. Generic and
+ * generated: nothing here is a real landmark. The teams' garages along the pit lane change with
+ * the race, so `buildGarages` makes them on their own.
  */
 import {
   BoxGeometry,
-  BufferAttribute,
-  BufferGeometry,
   Color,
-  ConeGeometry,
-  DoubleSide,
   Group,
   InstancedMesh,
-  Matrix4,
+  type Material,
   Mesh,
-  MeshLambertMaterial,
+  MeshStandardMaterial,
   Object3D,
-  PlaneGeometry,
+  type Texture,
 } from 'three';
-import { type Centreline, type TrackModel, type TrackPoint, angleDelta, pointAt } from './track';
-
-const GROUND = '#4f7d3c';
-const ASPHALT = '#3b3e44';
-const KERB_RED = new Color('#c8272d');
-const KERB_WHITE = new Color('#f1f1f1');
-const GRASS = new Color(GROUND);
-
-/**
- * A strip `inner..outer` metres to the left of a line (negative is right), one quad per segment
- * with its own vertices, so a colour per segment stays crisp.
- */
-function band(
-  line: Centreline,
-  inner: number,
-  outer: number,
-  colour?: (segment: number) => Color,
-): BufferGeometry {
-  const n = line.x.length;
-  const segments = line.closed ? n : n - 1;
-  const positions = new Float32Array(segments * 4 * 3);
-  const normals = new Float32Array(segments * 4 * 3);
-  const colours = colour ? new Float32Array(segments * 4 * 3) : undefined;
-  const indices = new Uint32Array(segments * 6);
-  const corner = (sample: number, offset: number, into: number) => {
-    const heading = line.heading[sample]!;
-    positions[into] = line.x[sample]! - Math.sin(heading) * offset;
-    positions[into + 1] = 0;
-    positions[into + 2] = line.z[sample]! + Math.cos(heading) * offset;
-    normals[into + 1] = 1;
-  };
-  for (let segment = 0; segment < segments; segment++) {
-    const a = segment;
-    const b = (segment + 1) % n;
-    const base = segment * 4;
-    corner(a, inner, base * 3);
-    corner(a, outer, (base + 1) * 3);
-    corner(b, inner, (base + 2) * 3);
-    corner(b, outer, (base + 3) * 3);
-    indices.set([base, base + 1, base + 2, base + 1, base + 3, base + 2], segment * 6);
-    if (colours && colour) {
-      const { r, g, b: blue } = colour(segment);
-      for (let vertex = 0; vertex < 4; vertex++) colours.set([r, g, blue], (base + vertex) * 3);
-    }
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
-  if (colours) geometry.setAttribute('color', new BufferAttribute(colours, 3));
-  geometry.setIndex(new BufferAttribute(indices, 1));
-  return geometry;
-}
-
-function flat(geometry: BufferGeometry, material: MeshLambertMaterial, order: number): Mesh {
-  const mesh = new Mesh(geometry, material);
-  mesh.renderOrder = order;
-  return mesh;
-}
-
-const flatMaterial = (colour: string, vertexColors = false) =>
-  new MeshLambertMaterial({ color: colour, vertexColors, depthWrite: false, side: DoubleSide });
-
-/** A small seeded generator, so the trees stand in the same place on every visit. */
-function random(seed: number) {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** True when the track bends sharper than a 250 m radius around a segment. */
-function bends(line: Centreline, segment: number): boolean {
-  const n = line.heading.length;
-  const turn = Math.abs(
-    angleDelta(line.heading[(segment - 3 + n) % n]!, line.heading[(segment + 3) % n]!),
-  );
-  return turn / ((6 * line.length) / n) > 1 / 250;
-}
-
-function nearTrack(track: TrackModel, x: number, z: number, clearance: number): boolean {
-  for (const line of [track.lap, track.pit]) {
-    for (let index = 0; index < line.x.length; index += 2) {
-      if (Math.hypot(line.x[index]! - x, line.z[index]! - z) < clearance) return true;
-    }
-  }
-  return false;
-}
+import { addBarriers, planTrackside, sidesOf } from './barriers';
+import { addDressing } from './dressing';
+import { PIT_LANE, addSurfaces } from './surfaces';
+import { type TrackModel, type TrackPoint, pointAt, sideways } from './track';
 
 export function buildScenery(track: TrackModel): Group {
   const group = new Group();
-  const { lap, pit, centre, radius } = track;
-  const half = track.width / 2;
-
-  const ground = new Mesh(new PlaneGeometry(1, 1), flatMaterial(GROUND));
-  ground.rotation.x = -Math.PI / 2;
-  ground.scale.set((radius + 2000) * 2, (radius + 2000) * 2, 1);
-  ground.position.set(centre.x, 0, centre.z);
-  ground.renderOrder = -5;
-  group.add(ground);
-
-  group.add(flat(band(pit, -4, 4), flatMaterial('#53565c'), -4));
-  group.add(flat(band(lap, -half, half), flatMaterial(ASPHALT), -3));
-  const kerb = (segment: number) =>
-    bends(lap, segment) ? (segment % 2 === 0 ? KERB_RED : KERB_WHITE) : GRASS;
-  const kerbs = flatMaterial('#ffffff', true);
-  group.add(flat(band(lap, half, half + 1.2, kerb), kerbs, -2));
-  group.add(flat(band(lap, -half - 1.2, -half, kerb), kerbs, -2));
-  const line = flatMaterial('#e8e8e8');
-  group.add(flat(band(lap, half - 0.5, half - 0.2), line, -1));
-  group.add(flat(band(lap, -half + 0.2, -half + 0.5), line, -1));
-
-  const start = new Mesh(new PlaneGeometry(1.2, half * 2), flatMaterial('#ffffff'));
-  start.rotation.x = -Math.PI / 2;
-  const startHolder = new Object3D();
-  startHolder.position.set(lap.x[0]!, 0, lap.z[0]!);
-  startHolder.rotation.y = -lap.heading[0]!;
-  startHolder.add(start);
-  start.renderOrder = -1;
-  group.add(startHolder);
-
-  // Boards about every 40 m on both sides, the cue that sells speed from the T-cam.
-  const matrix = new Matrix4();
-  const holder = new Object3D();
-  const boardEvery = 10;
-  const boardSamples = Math.floor(lap.x.length / boardEvery);
-  const boards = new InstancedMesh(
-    new BoxGeometry(3, 1.1, 0.25),
-    new MeshLambertMaterial({ color: '#d9dde3' }),
-    boardSamples * 2,
-  );
-  for (let board = 0; board < boardSamples; board++) {
-    const sample = board * boardEvery;
-    const heading = lap.heading[sample]!;
-    for (const side of [1, -1]) {
-      const offset = side * (half + 9);
-      holder.position.set(
-        lap.x[sample]! - Math.sin(heading) * offset,
-        0.55,
-        lap.z[sample]! + Math.cos(heading) * offset,
-      );
-      holder.rotation.set(0, -heading, 0);
-      holder.updateMatrix();
-      boards.setMatrixAt(board * 2 + (side === 1 ? 0 : 1), holder.matrix);
-    }
-  }
-  group.add(boards);
-
-  // Seeded by the lap's length, so each circuit has its own trees and keeps them.
-  const next = random(Math.round(lap.length));
-  const wanted = 1400;
-  const trees = new InstancedMesh(
-    new ConeGeometry(2.6, 9, 7),
-    new MeshLambertMaterial({ color: '#2f5a2a' }),
-    wanted,
-  );
-  let placed = 0;
-  for (let attempt = 0; attempt < wanted * 6 && placed < wanted; attempt++) {
-    const angle = next() * Math.PI * 2;
-    const distance = Math.sqrt(next()) * (radius + 500);
-    const x = centre.x + Math.cos(angle) * distance;
-    const z = centre.z + Math.sin(angle) * distance;
-    if (nearTrack(track, x, z, 24)) continue;
-    const size = 0.7 + next() * 0.8;
-    matrix.makeScale(size, size, size).setPosition(x, 4.5 * size, z);
-    trees.setMatrixAt(placed++, matrix);
-  }
-  trees.count = placed;
-  group.add(trees);
-
+  const plan = planTrackside(track);
+  addSurfaces(group, track, plan);
+  addBarriers(group, track, plan);
+  addDressing(group, track, plan);
   return group;
 }
 
@@ -203,61 +35,44 @@ export function buildScenery(track: TrackModel): Group {
 export type Garage = { share: number; colour: string };
 
 /**
- * A garage's size in metres, its widest front along the lane, and how far its front stands from
- * the lane's centreline, where the car stops.
+ * A garage's size in metres: how deep, how tall and, at most, how wide along the lane; and how
+ * far its front stands from the line the cars drive, just behind the working lane.
  */
-const GARAGE = { depth: 12, height: 5, width: 11, front: 6 } as const;
+const GARAGE = {
+  depth: 8,
+  height: 4.5,
+  width: 10.5,
+  front: PIT_LANE.fast + PIT_LANE.working + 0.6,
+} as const;
 const GARAGE_OPENING = '#1d1f23';
-
-/**
- * Which side of the pit lane faces away from the lap, as the sign of a `band` offset: the
- * garage side. Read once at the middle of the lane, so every garage stands in one row.
- */
-function garageSide({ lap, pit }: TrackModel): 1 | -1 {
-  const sample = Math.floor(pit.x.length / 2);
-  const px = pit.x[sample]!;
-  const pz = pit.z[sample]!;
-  let nearest = 0;
-  let best = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < lap.x.length; index++) {
-    const distance = Math.hypot(lap.x[index]! - px, lap.z[index]! - pz);
-    if (distance < best) {
-      best = distance;
-      nearest = index;
-    }
-  }
-  const heading = pit.heading[sample]!;
-  const away =
-    (px - lap.x[nearest]!) * -Math.sin(heading) + (pz - lap.z[nearest]!) * Math.cos(heading);
-  return away >= 0 ? 1 : -1;
-}
 
 /**
  * Generic garages along the pit lane, one per team in its colour, each centred on its team's box
  * so a car stops in front of it: a plain block with a dark opening facing the lane. No logos and
- * no names.
+ * no names. They stand on the side of the pit lane away from the lap.
  */
 export function buildGarages(track: TrackModel, garages: readonly Garage[]): Group {
   const group = new Group();
   if (garages.length === 0) return group;
   const { pit } = track;
-  const side = garageSide(track);
+  const side = sidesOf(track).garageSide;
   const shares = garages.map((garage) => garage.share).sort((a, b) => a - b);
   const closest = shares.reduce(
     (gap, share, index) => (index === 0 ? gap : Math.min(gap, share - shares[index - 1]!)),
     1,
   );
-  const width = Math.min(GARAGE.width, closest * pit.nominal * 0.9);
+  // A little apart, so each reads as one garage.
+  const width = Math.min(GARAGE.width, closest * pit.nominal * 0.85);
 
   const box = new BoxGeometry(1, 1, 1);
   const blocks = new InstancedMesh(
     box,
-    new MeshLambertMaterial({ color: '#ffffff' }),
+    new MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }),
     garages.length,
   );
   const openings = new InstancedMesh(
     box.clone(),
-    new MeshLambertMaterial({ color: GARAGE_OPENING }),
+    new MeshStandardMaterial({ color: GARAGE_OPENING, roughness: 0.9 }),
     garages.length,
   );
   const holder = new Object3D();
@@ -268,11 +83,8 @@ export function buildGarages(track: TrackModel, garages: readonly Garage[]): Gro
     out: number,
     size: [number, number, number],
   ) => {
-    holder.position.set(
-      point.x - Math.sin(point.heading) * side * out,
-      size[1] / 2,
-      point.z + Math.cos(point.heading) * side * out,
-    );
+    const [x, z] = sideways(point.x, point.z, point.heading, side * out);
+    holder.position.set(x, size[1] / 2, z);
     holder.rotation.set(0, -point.heading, 0);
     holder.scale.set(...size);
     holder.updateMatrix();
@@ -288,17 +100,25 @@ export function buildGarages(track: TrackModel, garages: readonly Garage[]): Gro
     blocks.setColorAt(index, new Color(garage.colour));
     place(openings, index, point, GARAGE.front - 0.05, [width * 0.8, GARAGE.height * 0.75, 0.2]);
   }
+  for (const mesh of [blocks, openings]) {
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
   group.add(blocks, openings);
   return group;
 }
 
-/** Frees what `buildScenery` or `buildGarages` put on the GPU. */
+/** Frees what `buildScenery` or `buildGarages` put on the GPU: geometries, materials, textures. */
 export function disposeScenery(group: Group) {
   group.traverse((object) => {
-    if (object instanceof Mesh) {
-      object.geometry.dispose();
-      const material = object.material as MeshLambertMaterial | MeshLambertMaterial[];
-      for (const item of Array.isArray(material) ? material : [material]) item.dispose();
+    if (!(object instanceof Mesh)) return;
+    object.geometry.dispose();
+    const material = object.material as Material | Material[];
+    for (const item of Array.isArray(material) ? material : [material]) {
+      for (const value of Object.values(item)) {
+        if ((value as Texture | null)?.isTexture) (value as Texture).dispose();
+      }
+      item.dispose();
     }
   });
 }
