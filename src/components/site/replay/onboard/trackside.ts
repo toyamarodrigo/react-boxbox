@@ -165,6 +165,44 @@ export type TrackIndex = {
   near(x: number, z: number, radius: number, skip?: (line: number, s: number) => boolean): boolean;
 };
 
+/** The most a `footprintClear` probe is from the next, in metres. */
+const FOOTPRINT_STEP_M = 3;
+
+/**
+ * How far from the track's middle a footprint must keep, beyond half its width, in metres: half a
+ * metre to spare past the edge, plus what a probe between two of `footprintClear`'s and a place
+ * between two samples of the line can miss.
+ */
+export const FOOTPRINT_CLEARANCE_M = 5;
+
+/**
+ * True when no part of a `width` × `depth` rectangle centred on `x`, `z` and turned to `heading`
+ * (`width` along it) comes within `radius` of the lines in `index`: probed on a grid over it, so a
+ * track cannot slip between the probes of a large one.
+ */
+export function footprintClear(
+  index: TrackIndex,
+  footprint: { x: number; z: number; heading: number; width: number; depth: number },
+  radius: number,
+): boolean {
+  const { x, z, heading, width, depth } = footprint;
+  const along = Math.max(1, Math.ceil(width / FOOTPRINT_STEP_M));
+  const across = Math.max(1, Math.ceil(depth / FOOTPRINT_STEP_M));
+  const cos = Math.cos(heading);
+  const sin = Math.sin(heading);
+  for (let u = 0; u <= along; u++) {
+    for (let w = 0; w <= across; w++) {
+      const forward = (u / along - 0.5) * width;
+      const left = (w / across - 0.5) * depth;
+      // Forward is `(cos h, sin h)`, left of travel `(sin h, −cos h)`, as `sideways` reads it.
+      const px = x + cos * forward + sin * left;
+      const pz = z + sin * forward - cos * left;
+      if (index.near(px, pz, radius)) return false;
+    }
+  }
+  return true;
+}
+
 /** A grid of the lines' samples, so a scenery item can ask quickly whether it is off the track. */
 export function trackIndex(lines: readonly Centreline[], cell = 25): TrackIndex {
   const grid = new Map<string, Entry[]>();

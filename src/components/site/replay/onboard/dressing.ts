@@ -21,7 +21,7 @@ import { MeshBuilder } from './mesh-builder';
 import { KERB, lapPoint } from './surfaces';
 import { random } from './textures';
 import { type TrackModel, angleDelta, sideways } from './track';
-import { type Side, lapGap, trackIndex } from './trackside';
+import { FOOTPRINT_CLEARANCE_M, type Side, footprintClear, lapGap, trackIndex } from './trackside';
 
 const GANTRY_COLOUR = new Color('#2b2d31');
 const STAND = { length: 32, depth: 14, every: 36, from: -320, to: 180 } as const;
@@ -146,7 +146,9 @@ function addGrandstands(group: Group, track: TrackModel, plan: Plan): Footprint[
       Math.max(radius, Math.abs(out) - 1),
       (_, at) => lapGap(at, s, lap.length) < 60,
     );
+    const footprint = { x, z, heading: point.heading, width: STAND.length, depth: STAND.depth };
     if (onLap || pitIndex.near(x, z, radius + 6)) continue;
+    if (!footprintClear(lapIndex, footprint, track.width / 2 + FOOTPRINT_CLEARANCE_M)) continue;
     // On the lower end's ground, so neither end floats on a sloping straight.
     holder.position.set(x, Math.min(before.y, after.y), z);
     holder.rotation.set(0, -point.heading + (side === 1 ? 0 : Math.PI), 0);
@@ -229,6 +231,11 @@ function addBuildings(group: Group, track: TrackModel, plan: Plan, stands: reado
             (_, at) => lapGap(at, metres, lap.length) < radius * 2 + 20,
           ) &&
           !pitIndex.near(x, z, radius + 8) &&
+          footprintClear(
+            lapIndex,
+            { x, z, heading: point.heading, width, depth },
+            track.width / 2 + FOOTPRINT_CLEARANCE_M,
+          ) &&
           stands.every((stand) => Math.hypot(stand.x - x, stand.z - z) > stand.radius + radius);
         if (!clear) continue;
         const base = footing(x, z, BUILDING_FOOTING_M);

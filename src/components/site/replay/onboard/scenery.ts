@@ -21,6 +21,7 @@ import { addBarriers, planTrackside, sidesOf } from './barriers';
 import { addDressing } from './dressing';
 import { PIT_LANE, addSurfaces } from './surfaces';
 import { type TrackModel, type TrackPoint, pointAt, sideways } from './track';
+import { FOOTPRINT_CLEARANCE_M, footprintClear, trackIndex } from './trackside';
 
 /** The static scene; its textures filter with `anisotropy`, the renderer's maximum. */
 export function buildScenery(track: TrackModel, anisotropy = 1): Group {
@@ -50,7 +51,9 @@ const GARAGE_OPENING = '#1d1f23';
 /**
  * Generic garages along the pit lane, one per team in its colour, each centred on its team's box
  * so a car stops in front of it: a plain block with a dark opening facing the lane. No logos and
- * no names. They stand on the side of the pit lane away from the lap.
+ * no names. They stand on the side of the pit lane away from the lap, and none stands where it
+ * would reach onto another part of the lap (`build-circuits.ts` picks the pit lane's side so that
+ * none should).
  */
 export function buildGarages(track: TrackModel, garages: readonly Garage[]): Group {
   const group = new Group();
@@ -91,8 +94,19 @@ export function buildGarages(track: TrackModel, garages: readonly Garage[]): Gro
     holder.updateMatrix();
     mesh.setMatrixAt(index, holder.matrix);
   };
-  for (const [index, garage] of garages.entries()) {
+  const lapIndex = trackIndex([track.lap]);
+  const clearance = track.width / 2 + FOOTPRINT_CLEARANCE_M;
+  let index = 0;
+  for (const garage of garages) {
     const point = pointAt(pit, garage.share * pit.nominal);
+    const [x, z] = sideways(
+      point.x,
+      point.z,
+      point.heading,
+      side * (GARAGE.front + GARAGE.depth / 2),
+    );
+    const footprint = { x, z, heading: point.heading, width, depth: GARAGE.depth };
+    if (!footprintClear(lapIndex, footprint, clearance)) continue;
     place(blocks, index, point, GARAGE.front + GARAGE.depth / 2, [
       width,
       GARAGE.height,
@@ -100,8 +114,10 @@ export function buildGarages(track: TrackModel, garages: readonly Garage[]): Gro
     ]);
     blocks.setColorAt(index, new Color(garage.colour));
     place(openings, index, point, GARAGE.front - 0.05, [width * 0.8, GARAGE.height * 0.75, 0.2]);
+    index++;
   }
   for (const mesh of [blocks, openings]) {
+    mesh.count = index;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }

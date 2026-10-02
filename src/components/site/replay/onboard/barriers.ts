@@ -122,13 +122,19 @@ export function planTrackside(track: TrackModel): Plan {
       wanted[index] = edge + beyond;
     }
     const smoothed = street ? wanted : smoothRound(wanted, 3);
+    const clear = new Uint8Array(n);
     for (let index = 0; index < n; index++) {
       const offset = side * smoothed[index]!;
       barrier[side][index] = offset;
       const [x, z] = sideways(lap.x[index]!, lap.z[index]!, lap.heading[index]!, offset);
       // A gap where the pit lane leaves or rejoins, and alongside it the pit wall does the work.
       const nearPit = pitIndex.near(x, z, side === pitSide ? 30 : PIT_LANE.fast + 4);
-      keep[side][index] = !nearPit && !blocked(index, offset) ? 1 : 0;
+      clear[index] = !nearPit && !blocked(index, offset) ? 1 : 0;
+    }
+    // A segment runs to the next sample, so both its ends must be clear: where the lap crosses
+    // itself, one end may stand on the other road.
+    for (let index = 0; index < n; index++) {
+      keep[side][index] = clear[index]! & clear[(index + 1) % n]!;
     }
   }
   return { barrier, gravel, keep, kerbs: kerbRanges(found), garageSide, pitSide };
