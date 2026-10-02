@@ -5,7 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 import { trackWidthFor } from '../src/data/track-widths.ts';
 import { lapModelFromOutline } from '../src/lib/outline-speed-profile.ts';
-import { type PitLaneOptions, pitLaneOffsetFor, pitLanePoints } from '../src/lib/pit-lane.ts';
+import {
+  type PitLaneOptions,
+  pitLaneConflicts,
+  pitLaneOffsetFor,
+  pitLanePoints,
+} from '../src/lib/pit-lane.ts';
+import { polylineLength } from '../src/lib/svg-outline.ts';
 import {
   CALENDAR_2026,
   type CircuitId,
@@ -30,7 +36,8 @@ import {
  * aspect ratio. The first point of each LineString is taken as start/finish.
  *
  * The source has no pit lanes, so each one is approximated: the stretch of the lap
- * around the line, shifted to the inside of the loop and eased back onto the track
+ * around the line, shifted to the inside of the loop (the outside where the inside would
+ * come too close to another part of the lap) and eased back onto the track
  * (see `src/lib/pit-lane.ts`). `PIT_LANES` overrides the defaults per venue.
  *
  * Each circuit also carries its racing line, a minimum-curvature path inside the track's width
@@ -41,8 +48,18 @@ import {
 /** Where the pit lane leaves and rejoins the lap, as fractions of it, unless overridden. */
 const PIT_LANE_DEFAULTS = { entry: 0.94, exit: 0.03 } as const;
 
-/** Per-venue pit lane adjustments: `side` for the odd circuit with the pits outside the loop. */
+/**
+ * Per-venue pit lane adjustments, only where the automatic side (see `pitLane`) cannot decide:
+ * `side`, `entry` or `exit`. None is needed yet.
+ */
 const PIT_LANES: Partial<Record<CircuitId, Partial<PitLaneOptions>>> = {};
+
+/**
+ * How far a pit lane's centre line keeps from any other part of the lap, in metres beyond half
+ * the track: the Onboard view's pit wall on one side, its working lane and garages (15.1 m) on the
+ * other, and a little to spare.
+ */
+const PIT_LANE_CLEARANCE_M = 16;
 
 const WIDTH = 1000;
 const MIN_HEIGHT = 450;
@@ -64,12 +81,31 @@ function fit(points: [number, number][]) {
   return fitPoints(points, { width: WIDTH, height, padding: 40 });
 }
 
-function pitLane(outline: [number, number][], id: CircuitId) {
-  const options = { ...PIT_LANE_DEFAULTS, ...PIT_LANES[id] };
-  const points = pitLanePoints(outline, {
-    ...options,
+/**
+ * The venue's pit lane. Its side is the inside of the loop, as almost everywhere, unless the lane
+ * and its garages would come too close to another part of the lap there, where the lap folds back
+ * near the pits; then the outside. A `side` in `PIT_LANES` wins.
+ */
+function pitLane(outline: [number, number][], id: CircuitId, lengthM: number) {
+  const options = {
+    ...PIT_LANE_DEFAULTS,
     offset: pitLaneOffsetFor(TRACK_MAP_STROKE_WIDTH),
-  });
+    ...PIT_LANES[id],
+  };
+  const clearance = {
+    metres: lengthM / polylineLength(outline, true),
+    clearance: trackWidthFor(id) / 2 + PIT_LANE_CLEARANCE_M,
+  };
+  const side =
+    options.side ??
+    (['inside', 'outside'] as const).find(
+      (candidate) =>
+        pitLaneConflicts(outline, { ...options, side: candidate }, clearance).length === 0,
+    );
+  if (side === undefined) {
+    throw new Error(`${id}: the pit lane crosses the lap on either side; set it in PIT_LANES`);
+  }
+  const points = pitLanePoints(outline, { ...options, side });
   return { d: pointsToPath(points, false), entry: options.entry, exit: options.exit };
 }
 
@@ -92,7 +128,7 @@ async function main() {
       lengthM: feature.properties.length,
       d,
       viewBox: fitted.viewBox,
-      pit: pitLane(fitted.points, id),
+      pit: pitLane(fitted.points, id, feature.properties.length),
       profile,
       racingLine,
     });
