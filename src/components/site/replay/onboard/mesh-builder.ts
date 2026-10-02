@@ -45,8 +45,8 @@ export class MeshBuilder {
 
   /**
    * A strip between `inner` and `outer` metres to the left of travel (negative is right) along
-   * `points`, a quad per segment so a colour per segment stays crisp. `y` lifts the inner and
-   * outer edges. The texture coordinates are the ground's own metres (world x and z) over
+   * `points`, a quad per segment so a colour per segment stays crisp, at each point's height. `y`
+   * lifts the inner and outer edges above it. The texture coordinates are the ground's own metres (world x and z) over
    * `tile`: a strip's edges round a corner are longer or shorter than its line, so coordinates
    * along the line would stretch the texture there, and these never do, at any width.
    */
@@ -70,7 +70,7 @@ export class MeshBuilder {
       const b = points[(segment + 1) % n]!;
       const corner = (point: TrackPoint, left: number, height: number): Vec3 => {
         const [x, z] = sideways(point.x, point.z, point.heading, left);
-        return [x, height, z];
+        return [x, point.y + height, z];
       };
       const bi = (segment + 1) % n;
       const corners: [Vec3, Vec3, Vec3, Vec3] = [
@@ -81,7 +81,7 @@ export class MeshBuilder {
       ];
       this.quad(
         corners,
-        [0, 1, 0],
+        upward(corners),
         shade,
         corners.map(([x, , z]) => [x / tile, z / tile]),
       );
@@ -90,7 +90,8 @@ export class MeshBuilder {
 
   /**
    * A wall standing `offset` metres to the left of travel along `points`, from `base` up to
-   * `height`, `thickness` thick: both faces and its top, on every segment `keep` allows.
+   * `height` above each point's height, `thickness` thick: both faces and its top, on every
+   * segment `keep` allows.
    */
   wall(
     points: readonly TrackPoint[],
@@ -113,7 +114,7 @@ export class MeshBuilder {
       const b = points[bi]!;
       const at = (point: TrackPoint, left: number, height: number): Vec3 => {
         const [x, z] = sideways(point.x, point.z, point.heading, left);
-        return [x, height, z];
+        return [x, point.y + height, z];
       };
       const half = thickness / 2;
       const [ox, oz] = sideways(0, 0, (a.heading + b.heading) / 2, 1);
@@ -170,7 +171,7 @@ export class MeshBuilder {
 
   /**
    * A thin vertical sheet `offset` metres to the left of travel along `points`, from `base` to
-   * `top`, facing both ways, its texture coordinates in metres over `tile` (for a wire fence).
+   * `top` above each point's height, facing both ways, its texture coordinates in metres over `tile` (for a wire fence).
    */
   curtain(
     points: readonly TrackPoint[],
@@ -198,10 +199,10 @@ export class MeshBuilder {
       const u0 = along[segment]! / tile;
       const u1 = along[segment + 1]! / tile;
       const corners: [Vec3, Vec3, Vec3, Vec3] = [
-        [ax, base, az],
-        [bx, base, bz],
-        [bx, top, bz],
-        [ax, top, az],
+        [ax, a.y + base, az],
+        [bx, b.y + base, bz],
+        [bx, b.y + top, bz],
+        [ax, a.y + top, az],
       ];
       const uv: [number, number][] = [
         [u0, base / tile],
@@ -224,6 +225,26 @@ export class MeshBuilder {
     geometry.computeBoundingSphere();
     return geometry;
   }
+}
+
+/** The upward unit normal of a quad's first three corners, so a sloping strip is lit as one. */
+function upward([a, b, c]: [Vec3, Vec3, Vec3, Vec3]): Vec3 {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const length = Math.hypot(nx, ny, nz);
+  if (length === 0) return [0, 1, 0];
+  const sign = ny < 0 ? -1 : 1;
+  nx *= sign / length;
+  ny *= sign / length;
+  nz *= sign / length;
+  return [nx, ny, nz];
 }
 
 /** Distance along `points` at each one, plus the closing length for a closed line. */

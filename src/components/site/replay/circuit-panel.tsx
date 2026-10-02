@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
+import { ELEVATION_CREDIT } from '@/data/elevation-sources';
 import { battleCardAt } from '@/data/replay-battle';
 import { pitStopCardAt } from '@/data/replay-pit-stop';
 import type { ReplayRace } from '@/data/replay-schema';
@@ -252,6 +253,9 @@ export function CircuitPanel({
         track is drawn in the right place only roughly: race control counts marshalling posts, and
         that count need not begin at the start line or run the way the cars do, so a zone can sit
         turned from where the flags really were.
+        {view === 'onboard' && circuit.elevationSource && (
+          <> {ELEVATION_CREDIT[circuit.elevationSource]}</>
+        )}
       </figcaption>
     </figure>
   );

@@ -135,7 +135,7 @@ export function planTrackside(track: TrackModel): Plan {
 }
 
 /** A post every so often along a barrier, for the fence and the Armco to hang on. */
-type Post = { x: number; z: number; height: number };
+type Post = { x: number; z: number; y: number; height: number };
 
 /** Adds every barrier of the circuit, one merged mesh, plus the fences and their posts. */
 export function addBarriers(group: Group, track: TrackModel, plan: Plan, anisotropy = 1) {
@@ -156,7 +156,7 @@ export function addBarriers(group: Group, track: TrackModel, plan: Plan, anisotr
       if (!keep(index)) continue;
       const point = line[index]!;
       const [x, z] = sideways(point.x, point.z, point.heading, offset(index));
-      posts.push({ x, z, height });
+      posts.push({ x, z, y: point.y, height });
     }
   };
 
@@ -263,7 +263,7 @@ export function addBarriers(group: Group, track: TrackModel, plan: Plan, anisotr
     );
     const matrix = new Matrix4();
     for (const [index, post] of posts.entries()) {
-      matrix.makeScale(1, post.height, 1).setPosition(post.x, post.height / 2, post.z);
+      matrix.makeScale(1, post.height, 1).setPosition(post.x, post.y + post.height / 2, post.z);
       mesh.setMatrixAt(index, matrix);
     }
     group.add(mesh);

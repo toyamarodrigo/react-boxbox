@@ -38,6 +38,7 @@ import {
   type TrackModel,
   type TrackPoint,
   angleDelta,
+  pitchAt,
   pointAt,
   sideways,
   trackModel,
@@ -154,12 +155,16 @@ function fadeTo(material: MeshStandardMaterial, target: number, fade: number) {
   material.depthWrite = material.opacity === 1;
 }
 
-/** Stands a car on the ground at `point`, turned along it, or hides it with no point. */
-function standCar(car: Object3D, point: TrackPoint | undefined) {
-  car.visible = point !== undefined;
-  if (!point) return;
-  car.position.set(point.x, 0, point.z);
-  car.rotation.y = -point.heading;
+/** Where a car stands: on the ground at a track point, pitched nose up by `pitch` radians uphill. */
+type CarPlace = TrackPoint & { pitch: number };
+
+/** Stands a car on the ground at `place`, turned along it and pitched with the slope, or hides it. */
+function standCar(car: Object3D, place: CarPlace | undefined) {
+  car.visible = place !== undefined;
+  if (!place) return;
+  car.position.set(place.x, place.y, place.z);
+  // Turned first, then pitched about its own width: the car's length is along its local `x`.
+  car.rotation.set(0, -place.heading, place.pitch, 'YXZ');
 }
 
 /** Frees a mesh's geometry and material. */
@@ -248,22 +253,24 @@ function Scene({
   /**
    * Where a car stands in the world: on the racing line, or on the pit lane's line, which runs
    * in the fast lane. On a stop with a stationary time it moves across into the working lane in
-   * front of its garage and back (`boxSwing`), turned along the way it moves.
+   * front of its garage and back (`boxSwing`), turned along the way it moves. It pitches with
+   * the slope of the line it is on.
    */
-  const placeCar = (car: OnboardCar): TrackPoint => {
-    if (!car.inPit) return pointAt(track.line, car.metres);
-    if (!car.boxStop) return pointAt(track.pitLine, car.metres);
+  const placeCar = (car: OnboardCar): CarPlace => {
+    const line = car.inPit ? track.pitLine : track.line;
+    const pitch = pitchAt(line, car.metres);
+    if (!car.boxStop || !car.inPit) return { ...pointAt(line, car.metres), pitch };
     const box = boxShare(race, car.driverId) * circuit.pitLengthM;
     const at = (metres: number) => {
       const point = pointAt(track.pitLine, metres);
       const across = garageSide * WORKING_LANE_MIDDLE * boxSwing(metres, box);
       const [x, z] = sideways(point.x, point.z, point.heading, across);
-      return { x, z };
+      return { x, z, y: point.y };
     };
     const here = at(car.metres);
     const behind = at(car.metres - 0.5);
     const ahead = at(car.metres + 0.5);
-    return { ...here, heading: Math.atan2(ahead.z - behind.z, ahead.x - behind.x) };
+    return { ...here, heading: Math.atan2(ahead.z - behind.z, ahead.x - behind.x), pitch };
   };
 
   // Every driver's car in the team colour, hidden until it is on screen. The geometries are
@@ -334,22 +341,24 @@ function Scene({
     }
     const dx = Math.cos(last.heading);
     const dz = Math.sin(last.heading);
+    // The slope the car is on, so the camera climbs and dips along with it.
+    const slope = Math.tan(car.pitch);
     if (mode === 'tcam') {
       // Rigid on the car just behind its front axle, looking ahead along the track.
       camera.position.set(
         car.x + Math.cos(car.heading) * TCAM.ahead,
-        TCAM.height,
+        car.y + TCAM.height + slope * TCAM.ahead,
         car.z + Math.sin(car.heading) * TCAM.ahead,
       );
       const ahead = 50;
       camera.lookAt(
         camera.position.x + dx * ahead,
-        TCAM.height - Math.tan(TCAM.pitch) * ahead,
+        camera.position.y + Math.tan(car.pitch - TCAM.pitch) * ahead,
         camera.position.z + dz * ahead,
       );
     } else {
-      camera.position.set(car.x - dx * 9.5, 3.2, car.z - dz * 9.5);
-      camera.lookAt(car.x + dx * 12, 1, car.z + dz * 12);
+      camera.position.set(car.x - dx * 9.5, car.y + 3.2 - slope * 9.5, car.z - dz * 9.5);
+      camera.lookAt(car.x + dx * 12, car.y + 1 + slope * 12, car.z + dz * 12);
     }
   });
 

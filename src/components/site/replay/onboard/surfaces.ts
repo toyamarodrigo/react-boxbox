@@ -6,7 +6,16 @@
  * layers never flicker against each other however far away they are. Within one merged geometry
  * the triangles draw in the order they were added, so a later layer covers an earlier one.
  */
-import { Color, DoubleSide, type Group, Mesh, MeshStandardMaterial, PlaneGeometry } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  type Group,
+  Mesh,
+  MeshStandardMaterial,
+  PlaneGeometry,
+} from 'three';
 import { GARAGE_STRETCH } from '@/data/pit-garages';
 import { MeshBuilder, samplesAlong } from './mesh-builder';
 import { grainTexture, roughnessTexture } from './textures';
@@ -36,7 +45,12 @@ export const PIT_LANE = { fast: 2.5, working: 4 } as const;
 
 /** The samples of a line as points. */
 export const pointsOf = (line: Centreline): TrackPoint[] =>
-  Array.from(line.x, (x, index) => ({ x, z: line.z[index]!, heading: line.heading[index]! }));
+  Array.from(line.x, (x, index) => ({
+    x,
+    z: line.z[index]!,
+    y: line.y?.[index] ?? 0,
+    heading: line.heading[index]!,
+  }));
 
 /** A point `metres` along the lap in its own (smoothed) metres, as `corners` measures it. */
 export const lapPoint = (lap: Centreline, metres: number): TrackPoint =>
@@ -83,6 +97,89 @@ function flat(builder: MeshBuilder, material: MeshStandardMaterial, order: numbe
   return mesh;
 }
 
+/**
+ * The ground: how far beyond the circuit it reaches, in metres, and on rising ground the grid of
+ * its heightfield: the spacing over the circuit, how much wider each step grows beyond it, and how
+ * far below the lap's heights it lies, so the surfaces on it always draw over it.
+ */
+export const GROUND = { reach: 2000, step: 15, margin: 150, growth: 1.3, drop: 0.15 } as const;
+
+/**
+ * Grid lines from `low - reach` to `high + reach`: `GROUND.step` apart from `low` to `high`, wider
+ * by `GROUND.growth` each step beyond.
+ */
+export function groundAxis(low: number, high: number, reach: number): number[] {
+  const count = Math.max(1, Math.ceil((high - low) / GROUND.step));
+  const inner = Array.from(
+    { length: count + 1 },
+    (_, index) => low + ((high - low) * index) / count,
+  );
+  const before: number[] = [];
+  const after: number[] = [];
+  let step = GROUND.step;
+  let out = 0;
+  while (out < reach) {
+    step *= GROUND.growth;
+    out = Math.min(reach, out + step);
+    before.unshift(low - out);
+    after.push(high + out);
+  }
+  return [...before, ...inner, ...after];
+}
+
+/**
+ * The ground of a circuit with elevation: a heightfield at `groundAt`, a little below it, fine
+ * over the circuit and coarser out to the horizon. It writes depth, pushed back a little, so a
+ * hill hides the track behind it while the surfaces on it, which do not, still draw over it.
+ */
+function groundField(track: TrackModel, colour: Color): Mesh {
+  const { centre, radius } = track;
+  const span = radius + GROUND.margin;
+  const reach = radius + GROUND.reach - span;
+  const xs = groundAxis(centre.x - span, centre.x + span, reach);
+  const zs = groundAxis(centre.z - span, centre.z + span, reach);
+  const columns = xs.length;
+  const positions = new Float32Array(columns * zs.length * 3);
+  for (const [row, z] of zs.entries()) {
+    for (const [column, x] of xs.entries()) {
+      const at = (row * columns + column) * 3;
+      positions[at] = x;
+      positions[at + 1] = track.groundAt(x, z) - GROUND.drop;
+      positions[at + 2] = z;
+    }
+  }
+  const indices = new Uint32Array((columns - 1) * (zs.length - 1) * 6);
+  let next = 0;
+  for (let row = 0; row < zs.length - 1; row++) {
+    for (let column = 0; column < columns - 1; column++) {
+      const a = row * columns + column;
+      const b = a + 1;
+      const c = a + columns;
+      const d = c + 1;
+      // Counter-clockwise seen from above (+y), so the top is the front face.
+      indices.set([a, c, b, b, c, d], next);
+      next += 6;
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setIndex(new BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  const mesh = new Mesh(
+    geometry,
+    new MeshStandardMaterial({
+      color: colour,
+      roughness: 1,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 4,
+    }),
+  );
+  mesh.renderOrder = -9;
+  return mesh;
+}
+
 /** What the surfaces need beyond the track: the run-off's reach and which sides are kerbed. */
 export type SurfacePlan = {
   /** Metres to the left (side 1) or right (side −1) of the lap where the barrier stands. */
@@ -103,15 +200,17 @@ export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan, 
   const half = track.width / 2;
   const lapPoints = pointsOf(lap);
 
-  const ground = new Mesh(
-    new PlaneGeometry(1, 1),
-    flatMaterial({ color: street ? COLOURS.pavement : COLOURS.grass, roughness: 1 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.scale.set((radius + 2000) * 2, (radius + 2000) * 2, 1);
-  ground.position.set(centre.x, 0, centre.z);
-  ground.renderOrder = -9;
-  group.add(ground);
+  const colour = street ? COLOURS.pavement : COLOURS.grass;
+  if (track.elevated) {
+    group.add(groundField(track, colour));
+  } else {
+    const ground = new Mesh(new PlaneGeometry(1, 1), flatMaterial({ color: colour, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.scale.set((radius + GROUND.reach) * 2, (radius + GROUND.reach) * 2, 1);
+    ground.position.set(centre.x, 0, centre.z);
+    ground.renderOrder = -9;
+    group.add(ground);
+  }
 
   // Grass verges out to the barriers and gravel traps on the outside of the corners.
   if (!street) {

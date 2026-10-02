@@ -85,7 +85,7 @@ export function buildGarages(track: TrackModel, garages: readonly Garage[]): Gro
     size: [number, number, number],
   ) => {
     const [x, z] = sideways(point.x, point.z, point.heading, side * out);
-    holder.position.set(x, size[1] / 2, z);
+    holder.position.set(x, point.y + size[1] / 2, z);
     holder.rotation.set(0, -point.heading, 0);
     holder.scale.set(...size);
     holder.updateMatrix();

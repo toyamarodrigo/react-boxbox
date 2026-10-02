@@ -5,9 +5,11 @@
  *
  * World axes: `x` is the SVG x and `z` the SVG y, both scaled to metres by the lap's official
  * length over its drawn length; `y` is up. Seen from above, that keeps the outline the way round
- * the Track Map draws it, so corners turn the same way.
+ * the Track Map draws it, so corners turn the same way. The lap's height is the circuit's
+ * elevation (`circuit-elevation.ts`), flat across the track; a circuit without one is flat.
  */
 import type { ReplayCircuit } from '@/data/circuit-for-race';
+import { elevationAt } from '@/lib/elevation';
 import { type OutlinePoint, outlinePoints, polylineLength } from '@/lib/svg-outline';
 
 /** Uniform samples along a line, in metres. */
@@ -18,6 +20,8 @@ export type Centreline = {
   s: Float64Array;
   /** Direction of travel, `atan2(dz, dx)`, in radians. */
   heading: Float64Array;
+  /** The ground's height at each sample, in metres; none is flat (0). */
+  y?: Float64Array;
   length: number;
   /**
    * The length the onboard frame measures this line by. Smoothing shortens a line a little, so
@@ -53,6 +57,10 @@ export type TrackModel = {
   /** The middle of the outline and how far it reaches, for the ground and the scenery. */
   centre: { x: number; z: number };
   radius: number;
+  /** True when the circuit has elevation; false when it is flat. */
+  elevated: boolean;
+  /** The ground's height anywhere, from the lap's heights nearby (`groundHeight`); 0 when flat. */
+  groundAt: (x: number, z: number) => number;
 };
 
 /** About 4 m between samples: enough for the tightest chicane, cheap to search per frame. */
@@ -141,7 +149,8 @@ export function angleDelta(a: number, b: number): number {
   return delta;
 }
 
-export type TrackPoint = { x: number; z: number; heading: number };
+/** A place on a line: where, its ground's height `y`, and the direction of travel. */
+export type TrackPoint = { x: number; z: number; y: number; heading: number };
 
 /**
  * The point `left` metres to the left of travel from `x`, `z` at `heading` (negative is right).
@@ -157,7 +166,7 @@ export function sideways(x: number, z: number, heading: number, left: number): [
  * wraps, an open one clamps.
  */
 export function pointAt(line: Centreline, metres: number): TrackPoint {
-  const { s, x, z, heading, length, closed } = line;
+  const { s, x, y, z, heading, length, closed } = line;
   const n = x.length;
   const scaled = line.nominal > 0 ? (metres * length) / line.nominal : 0;
   const at = closed ? ((scaled % length) + length) % length : Math.min(Math.max(scaled, 0), length);
@@ -175,8 +184,24 @@ export function pointAt(line: Centreline, metres: number): TrackPoint {
   return {
     x: x[a]! + (x[b]! - x[a]!) * t,
     z: z[a]! + (z[b]! - z[a]!) * t,
+    y: y ? y[a]! + (y[b]! - y[a]!) * t : 0,
     heading: heading[a]! + angleDelta(heading[a]!, heading[b]!) * t,
   };
+}
+
+/** How far either side of a place its slope is measured across, in metres. */
+const PITCH_REACH_M = 2.5;
+
+/**
+ * How steeply a line climbs `metres` along it (in the onboard frame's metres), in radians: positive
+ * uphill in the direction of travel.
+ */
+export function pitchAt(line: Centreline, metres: number): number {
+  if (!line.y) return 0;
+  const behind = pointAt(line, metres - PITCH_REACH_M);
+  const ahead = pointAt(line, metres + PITCH_REACH_M);
+  const run = Math.hypot(ahead.x - behind.x, ahead.z - behind.z);
+  return run === 0 ? 0 : Math.atan2(ahead.y - behind.y, run);
 }
 
 /** Samples either side the racing line's heading is taken across, so it turns smoothly. */
@@ -231,6 +256,7 @@ type Shift = { dx: number; dz: number };
  * `PIT_LINE_BLEND_M` into the line; the headings follow the moved samples.
  */
 function blendEnds(line: Centreline, start: Shift, end: Shift): Centreline {
+  // Only moved sideways: each sample keeps its height.
   const n = line.x.length;
   const x = new Float64Array(n);
   const z = new Float64Array(n);
@@ -240,11 +266,80 @@ function blendEnds(line: Centreline, start: Shift, end: Shift): Centreline {
     x[index] = line.x[index]! + start.dx * a + end.dx * b;
     z[index] = line.z[index]! + start.dz * a + end.dz * b;
   }
-  return centreline(
+  const moved = centreline(
     Array.from(x, (value, index) => [value, z[index]!] as OutlinePoint),
     false,
     line.nominal,
   );
+  return line.y ? { ...moved, y: line.y } : moved;
+}
+
+/** The lap's heights from the circuit's elevation, by each sample's share of the lap. */
+function lapHeights(lap: Centreline, elevation: readonly number[]): Float64Array {
+  return Float64Array.from(lap.x, (_, index) => elevationAt(elevation, lap.s[index]! / lap.length));
+}
+
+/** Samples either side the pit lane's heights are averaged over, so the nearest lap sample can change smoothly. */
+const PIT_HEIGHT_REACH = 4;
+
+/** Each sample of `line` at the height of the lap's nearest sample, smoothed a little along it. */
+function nearestLapHeights(line: Centreline, lap: Centreline, heights: Float64Array): Float64Array {
+  const nearest = Float64Array.from(line.x, (px, index) => {
+    const pz = line.z[index]!;
+    let best = Number.POSITIVE_INFINITY;
+    let height = 0;
+    for (let at = 0; at < lap.x.length; at++) {
+      const distance = (lap.x[at]! - px) ** 2 + (lap.z[at]! - pz) ** 2;
+      if (distance < best) {
+        best = distance;
+        height = heights[at]!;
+      }
+    }
+    return height;
+  });
+  const n = nearest.length;
+  return Float64Array.from(nearest, (_, index) => {
+    const from = Math.max(0, index - PIT_HEIGHT_REACH);
+    const to = Math.min(n - 1, index + PIT_HEIGHT_REACH);
+    let sum = 0;
+    for (let at = from; at <= to; at++) sum += nearest[at]!;
+    return sum / (to - from + 1);
+  });
+}
+
+/** Every how many lap samples `groundHeight` takes one: about 12 m apart. */
+const GROUND_STRIDE = 3;
+
+/**
+ * The ground's height anywhere round a lap with heights: a weighted mean of the lap's heights,
+ * each weighted by the inverse fourth power of its distance, so the nearest stretch of track
+ * decides it and a stretch further off barely counts. On the lap it is the lap's height; far
+ * from it, a blend of the stretches round about. 0 everywhere for a flat lap.
+ */
+export function groundHeight(lap: Centreline): (x: number, z: number) => number {
+  const { y } = lap;
+  if (!y) return () => 0;
+  const count = Math.ceil(lap.x.length / GROUND_STRIDE);
+  const xs = new Float64Array(count);
+  const zs = new Float64Array(count);
+  const ys = new Float64Array(count);
+  for (let index = 0; index < count; index++) {
+    const at = index * GROUND_STRIDE;
+    xs[index] = lap.x[at]!;
+    zs[index] = lap.z[at]!;
+    ys[index] = y[at]!;
+  }
+  return (x, z) => {
+    let sum = 0;
+    let weights = 0;
+    for (let index = 0; index < count; index++) {
+      const d2 = (xs[index]! - x) ** 2 + (zs[index]! - z) ** 2 + 1;
+      const weight = 1 / (d2 * d2);
+      sum += ys[index]! * weight;
+      weights += weight;
+    }
+    return sum / weights;
+  };
 }
 
 const shift = (from: TrackPoint, to: TrackPoint): Shift => ({
@@ -270,6 +365,9 @@ export function trackModel(circuit: ReplayCircuit): TrackModel {
     false,
     circuit.pitLengthM,
   );
+  const elevated = circuit.elevation.length > 0;
+  if (elevated) lap.y = lapHeights(lap, circuit.elevation);
+  if (lap.y) outlinePit.y = nearestLapHeights(outlinePit, lap, lap.y);
   const line = racingLine(lap, circuit.racingLine);
   const entry = circuit.pit.entry * circuit.lengthM;
   const exit = circuit.pit.exit * circuit.lengthM;
@@ -304,5 +402,7 @@ export function trackModel(circuit: ReplayCircuit): TrackModel {
     street: circuit.street,
     centre: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 },
     radius: Math.hypot(maxX - minX, maxZ - minZ) / 2,
+    elevated,
+    groundAt: groundHeight(lap),
   };
 }

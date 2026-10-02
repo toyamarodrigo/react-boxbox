@@ -25,6 +25,8 @@ import { type Side, lapGap, trackIndex } from './trackside';
 
 const GANTRY_COLOUR = new Color('#2b2d31');
 const STAND = { length: 32, depth: 14, every: 36, from: -320, to: 180 } as const;
+/** How far a building is sunk into the ground, in metres. */
+const BUILDING_FOOTING_M = 2;
 const FACADES = ['#c9c1b2', '#a9b0b6', '#d8d3c8', '#8e8a83', '#b7a99a', '#9fa7a0'].map(
   (hex) => new Color(hex),
 );
@@ -35,6 +37,16 @@ export function addDressing(group: Group, track: TrackModel, plan: Plan) {
   if (track.street) addBuildings(group, track, plan, stands);
   else addTrees(group, track);
 }
+
+/**
+ * Where something standing at `x`, `z` starts: on rising ground, `sunk` metres into it, so it
+ * never floats at its lower side (the ground hides the rest); on a flat circuit, at 0, since its
+ * ground hides nothing.
+ */
+const footingOf =
+  (track: TrackModel) =>
+  (x: number, z: number, sunk: number): number =>
+    track.elevated ? track.groundAt(x, z) - sunk : 0;
 
 /** The lap's sample nearest `metres` along it, in its own metres. */
 const sampleAt = (track: TrackModel, metres: number) => {
@@ -54,14 +66,14 @@ function addGantry(group: Group, track: TrackModel) {
   const frame = new MeshBuilder();
   for (const side of [1, -1] as const) {
     const [x, z] = sideways(point.x, point.z, heading, side * span);
-    frame.box(x, 0, z, heading, [0.7, 7.6, 0.7], GANTRY_COLOUR);
+    frame.box(x, point.y, z, heading, [0.7, 7.6, 0.7], GANTRY_COLOUR);
   }
-  frame.box(point.x, 6.4, point.z, heading, [1.1, 1.3, span * 2 + 0.7], GANTRY_COLOUR);
+  frame.box(point.x, point.y + 6.4, point.z, heading, [1.1, 1.3, span * 2 + 0.7], GANTRY_COLOUR);
   // The light panel hangs in front of the beam, towards the oncoming cars.
   const back = (along: number) =>
     [point.x - Math.cos(heading) * along, point.z - Math.sin(heading) * along] as const;
   const [px, pz] = back(0.7);
-  frame.box(px, 5.6, pz, heading, [0.3, 1.2, 6], new Color('#151618'));
+  frame.box(px, point.y + 5.6, pz, heading, [0.3, 1.2, 6], new Color('#151618'));
   group.add(
     new Mesh(frame.geometry(), new MeshStandardMaterial({ vertexColors: true, roughness: 0.5 })),
   );
@@ -77,7 +89,7 @@ function addGantry(group: Group, track: TrackModel) {
   for (let column = 0; column < 5; column++) {
     for (let row = 0; row < 2; row++) {
       const [x, z] = sideways(lx, lz, heading, (column - 2) * 1.1);
-      holder.position.set(x, 5.95 + row * 0.5, z);
+      holder.position.set(x, point.y + 5.95 + row * 0.5, z);
       holder.rotation.set(0, -heading, 0);
       holder.updateMatrix();
       lights.setMatrixAt(column * 2 + row, holder.matrix);
@@ -135,7 +147,8 @@ function addGrandstands(group: Group, track: TrackModel, plan: Plan): Footprint[
       (_, at) => lapGap(at, s, lap.length) < 60,
     );
     if (onLap || pitIndex.near(x, z, radius + 6)) continue;
-    holder.position.set(x, 0, z);
+    // On the lower end's ground, so neither end floats on a sloping straight.
+    holder.position.set(x, Math.min(before.y, after.y), z);
     holder.rotation.set(0, -point.heading + (side === 1 ? 0 : Math.PI), 0);
     holder.updateMatrix();
     matrices.push(holder.matrix.clone());
@@ -155,6 +168,7 @@ function addGrandstands(group: Group, track: TrackModel, plan: Plan): Footprint[
 /** Trees well away from the track, seeded by the lap's length so each circuit keeps its own. */
 function addTrees(group: Group, track: TrackModel) {
   const { lap, pit, centre, radius } = track;
+  const footing = footingOf(track);
   const index = trackIndex([lap, pit]);
   const next = random(Math.round(lap.length));
   const wanted = 1600;
@@ -173,7 +187,7 @@ function addTrees(group: Group, track: TrackModel) {
     const z = centre.z + Math.sin(angle) * distance;
     if (index.near(x, z, 55 + track.width / 2)) continue;
     const size = 0.7 + next() * 0.8;
-    matrix.makeScale(size, size, size).setPosition(x, 4.5 * size, z);
+    matrix.makeScale(size, size, size).setPosition(x, footing(x, z, 0.3) + 4.5 * size, z);
     trees.setMatrixAt(placed, matrix);
     trees.setColorAt(placed, shade.setHSL(0.27 + next() * 0.06, 0.45, 0.17 + next() * 0.08));
     placed++;
@@ -190,6 +204,7 @@ function addBuildings(group: Group, track: TrackModel, plan: Plan, stands: reado
   const { lap, pit } = track;
   const lapIndex = trackIndex([lap]);
   const pitIndex = trackIndex([pit]);
+  const footing = footingOf(track);
   const next = random(Math.round(lap.length) + 7);
   const matrices: Matrix4[] = [];
   const colours: Color[] = [];
@@ -216,9 +231,10 @@ function addBuildings(group: Group, track: TrackModel, plan: Plan, stands: reado
           !pitIndex.near(x, z, radius + 8) &&
           stands.every((stand) => Math.hypot(stand.x - x, stand.z - z) > stand.radius + radius);
         if (!clear) continue;
-        holder.position.set(x, 0, z);
+        const base = footing(x, z, BUILDING_FOOTING_M);
+        holder.position.set(x, base, z);
         holder.rotation.set(0, -point.heading, 0);
-        holder.scale.set(width, height, depth);
+        holder.scale.set(width, height - base + track.groundAt(x, z), depth);
         holder.updateMatrix();
         matrices.push(holder.matrix.clone());
         colours.push(FACADES[Math.floor(next() * FACADES.length)]!);
