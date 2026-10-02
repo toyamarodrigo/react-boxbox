@@ -6,12 +6,58 @@ import { clearReplayCache } from '../data/use-replay-data';
 import { stubElementSize } from '../test/chart-size';
 import { getRouter } from '../router';
 
-// The Onboard view's 3D scene never loads in jsdom: a stand-in reports the camera it was given.
-vi.mock('../components/site/replay/onboard/onboard-scene', () => ({
-  default: ({ camera }: { camera: string }) => (
-    <div data-slot="onboard-scene-stand-in" data-camera={camera} />
-  ),
+/**
+ * What the browser offers for 3D, and what the stand-in scene does once mounted: draws its first
+ * frame, keeps loading, or fails on every backend. Reset before each test.
+ */
+const onboard = vi.hoisted(() => ({
+  graphics: { webgpu: false, webgl2: true },
+  scene: 'ready' as 'ready' | 'loading' | 'failed',
 }));
+
+// jsdom has no WebGL2: the support check says what each test needs.
+vi.mock('../components/site/replay/graphics-support', () => ({
+  graphicsSupport: () => onboard.graphics,
+}));
+
+// The Onboard view's 3D scene never loads in jsdom: a stand-in reports the camera it was given.
+vi.mock('../components/site/replay/onboard/onboard-scene', async () => {
+  const { useEffect } = await import('react');
+  return {
+    default: function OnboardSceneStandIn({
+      camera,
+      onReady,
+      onFailure,
+    }: {
+      camera: string;
+      onReady: (ready: boolean) => void;
+      onFailure: () => void;
+    }) {
+      useEffect(() => {
+        if (onboard.scene === 'ready') onReady(true);
+        if (onboard.scene === 'failed') onFailure();
+      }, [onReady, onFailure]);
+      return <div data-slot="onboard-scene-stand-in" data-camera={camera} />;
+    },
+  };
+});
+
+/** `matchMedia` answering yes to `prefers-reduced-motion: reduce` only. */
+function stubReducedMotion() {
+  vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
+  );
+}
 
 const index = testReplayIndex();
 const race = testReplayRace();
@@ -103,6 +149,8 @@ async function pickRace(label: string) {
 
 beforeEach(() => {
   clearReplayCache();
+  onboard.graphics = { webgpu: false, webgl2: true };
+  onboard.scene = 'ready';
   // jsdom has no `scrollIntoView`, and the race picker's list scrolls its selected option into
   // view as soon as it opens.
   Element.prototype.scrollIntoView = vi.fn();
@@ -1959,7 +2007,7 @@ describe('replay page, onboard view', () => {
     expect(hud()).toHaveTextContent(/CHA\s*P3\s*Lap 1\/3\s*vs DEL/);
     expect(notice()).toBeNull();
     const view = document.querySelector('[data-slot="onboard-view"]');
-    expect(view).toHaveAccessibleName('Onboard view, riding with CHA, DEL on track too');
+    expect(view).toHaveAccessibleName('Onboard view, riding with CHA, P3, lap 1, DEL on track too');
     expect(view?.textContent).not.toMatch(/km\/h|kph|mph|gear/i);
   });
 
@@ -1972,5 +2020,84 @@ describe('replay page, onboard view', () => {
     expect(scene()).toHaveAttribute('data-camera', 'chase');
     expect(cameraButton('Chase')).toHaveAttribute('aria-pressed', 'true');
     expect(cameraButton('T-cam')).toHaveAttribute('aria-pressed', 'false');
+  });
+  const mapView = () => screen.getByRole('group', { name: 'Track map, 4 cars' });
+  const loading = () => document.querySelector('[data-slot="onboard-loading"]');
+
+  it('keeps the Track Map without WebGL2, and says why the Onboard view is off', async () => {
+    onboard.graphics = { webgpu: false, webgl2: false };
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    renderReplay('/replay?view=onboard');
+    await screen.findByRole('group', { name: 'Track view' });
+
+    expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull();
+    expect(mapView()).toBeInTheDocument();
+    expect(viewButton('Map')).toHaveAttribute('aria-pressed', 'true');
+    expect(viewButton('Onboard')).toHaveAttribute('aria-pressed', 'false');
+    expect(viewButton('Onboard')).toHaveAttribute('aria-disabled', 'true');
+    expect(viewButton('Onboard')).toHaveAccessibleDescription('3D needs WebGL2');
+
+    fireEvent.click(viewButton('Onboard'));
+    expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull();
+
+    // The moment link carries the view the viewer has.
+    fireEvent.click(screen.getByRole('button', { name: /copy link/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    expect(new URL(writeText.mock.calls[0]![0]).searchParams.has('view')).toBe(false);
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('offers the Onboard view on WebGPU alone', async () => {
+    onboard.graphics = { webgpu: true, webgl2: false };
+    await openOnboard();
+    expect(viewButton('Onboard')).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('keeps the Track Map under reduced motion, a link to the Onboard view included', async () => {
+    stubReducedMotion();
+    renderReplay('/replay?view=onboard');
+    await screen.findByRole('group', { name: 'Track view' });
+
+    expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull();
+    expect(mapView()).toBeInTheDocument();
+    expect(viewButton('Onboard')).toHaveAttribute('aria-disabled', 'true');
+    expect(viewButton('Onboard')).toHaveAccessibleDescription('3D is off with reduced motion');
+  });
+
+  it('shows a loading message until the scene draws its first frame', async () => {
+    onboard.scene = 'loading';
+    await openOnboard();
+    expect(within(loading() as HTMLElement).getByRole('status')).toHaveTextContent(
+      'Building the circuit in 3D…',
+    );
+    cleanup();
+
+    onboard.scene = 'ready';
+    await openOnboard();
+    await waitFor(() => expect(loading()).toBeNull());
+  });
+
+  it('goes back to the Track Map when no renderer can draw the scene', async () => {
+    onboard.scene = 'failed';
+    const router = renderReplay('/replay');
+    await screen.findByRole('group', { name: 'Track view' });
+    fireEvent.click(viewButton('Onboard'));
+
+    await waitFor(() => expect(document.querySelector('[data-slot="onboard-view"]')).toBeNull());
+    expect(mapView()).toBeInTheDocument();
+    expect(viewButton('Onboard')).toHaveAccessibleDescription('3D could not start');
+    await waitFor(() => expect(Object.keys(router.state.location.search)).not.toContain('view'));
+  });
+
+  it('labels the toggles, the camera switch and whose car the scene rides with', async () => {
+    await openOnboard('/replay?driver=CHA&t=30');
+    expect(screen.getByRole('group', { name: 'Track view' })).toBeInTheDocument();
+    for (const name of ['T-cam', 'Chase']) {
+      expect(cameraButton(name)).toHaveAttribute('aria-pressed');
+    }
+    expect(document.querySelector('[data-slot="onboard-view"]')).toHaveAccessibleName(
+      'Onboard view, riding with CHA, P3, lap 1',
+    );
   });
 });

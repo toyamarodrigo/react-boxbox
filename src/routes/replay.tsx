@@ -85,6 +85,7 @@ import {
   formatLapTime,
 } from '@/registry/boxbox/ui/timing-tower';
 import { CircuitPanel, type TrackView } from '../components/site/replay/circuit-panel';
+import { useOnboardBlocker } from '../components/site/replay/onboard-support';
 import type { OnboardCamera } from '../components/site/replay/onboard-view';
 import { Compare } from '../components/site/replay/compare';
 import { LapGrid } from '../components/site/replay/lap-grid';
@@ -1381,6 +1382,9 @@ function ReplayPage() {
   );
   const [view, setView] = useSearchChoice<TrackView>(search.view ?? 'map', writeView);
   const [camera, setCamera] = useSearchChoice<OnboardCamera>(search.camera ?? 'tcam', writeCamera);
+  // Without WebGPU or WebGL2, or under reduced motion, a link to the Onboard view opens the map.
+  // The URL keeps the choice; the moment link carries the view the viewer has.
+  const onboardBlocked = useOnboardBlocker();
 
   /**
    * The link to the race time on the clock, whole seconds, with the view the viewer has: the
@@ -1398,7 +1402,7 @@ function ReplayPage() {
         driver: code,
         vs: race.data ? comparedSearch(race.data, comparedIds) : undefined,
         value: valueMode === 'leader' ? undefined : valueMode,
-        view: view === 'map' ? undefined : view,
+        view: view === 'map' || onboardBlocked ? undefined : view,
         camera: camera === 'tcam' ? undefined : camera,
         t: Math.floor(replay.elapsedMs / 1000),
       },
@@ -1575,6 +1579,7 @@ function ReplayPage() {
               onView={setView}
               camera={camera}
               onCamera={setCamera}
+              onboardBlocked={onboardBlocked}
             />
             <StrategyPanel
               race={race.data}

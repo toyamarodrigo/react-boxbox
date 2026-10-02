@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { ELEVATION_CREDIT } from '@/data/elevation-sources';
@@ -77,6 +77,50 @@ function CardSlot({
 }
 
 /**
+ * The Map/Onboard toggle. With the Onboard view blocked its button stays focusable, described by
+ * the reason, so the reason is read out with it rather than the button vanishing.
+ */
+function TrackViewToggle({
+  view,
+  onView,
+  blocked,
+}: {
+  view: TrackView;
+  onView: (view: TrackView) => void;
+  blocked: string | undefined;
+}) {
+  const reasonId = useId();
+  return (
+    <div className="flex items-center gap-2 self-end">
+      {blocked && (
+        <p id={reasonId} data-slot="onboard-blocked" className="text-xs text-muted-foreground">
+          {blocked}
+        </p>
+      )}
+      <fieldset aria-label="Track view" className="flex gap-1">
+        {TRACK_VIEWS.map(({ value, label }) => {
+          const off = value === 'onboard' && blocked !== undefined;
+          return (
+            <Button
+              key={value}
+              size="xs"
+              variant={view === value ? 'default' : 'outline'}
+              aria-pressed={view === value}
+              aria-disabled={off || undefined}
+              aria-describedby={off ? reasonId : undefined}
+              className={off ? 'cursor-not-allowed opacity-50' : undefined}
+              onClick={off ? undefined : () => onView(value)}
+            >
+              {label}
+            </Button>
+          );
+        })}
+      </fieldset>
+    </div>
+  );
+}
+
+/**
  * The Track Map panel of the Replay page: the flag flying over the track, the map with every car
  * at race time, and the battle and pit stop cards under it.
  */
@@ -91,6 +135,7 @@ export function CircuitPanel({
   onView,
   camera,
   onCamera,
+  onboardBlocked,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -103,7 +148,19 @@ export function CircuitPanel({
   onView: (view: TrackView) => void;
   camera: OnboardCamera;
   onCamera: (camera: OnboardCamera) => void;
+  /** Why this browser gets the Track Map only (see `onboardBlocker`), if it does. */
+  onboardBlocked: string | undefined;
 }) {
+  // Neither WebGPU nor WebGL2 drew the scene: the map comes back, and the URL with it, so a
+  // moment link copied now opens the view the viewer has.
+  const [failure, setFailure] = useState<string>();
+  const handleFailure = useCallback(() => {
+    setFailure('3D could not start');
+    onView('map');
+  }, [onView]);
+  const blocked = onboardBlocked ?? failure;
+  const shown: TrackView = blocked ? 'map' : view;
+
   // Following a driver overrides the emphasis the timing gives the car furthest along; the
   // compared drivers take the lesser one, so they stay in view while the rest of the field fades.
   const markers = useMemo(
@@ -182,20 +239,8 @@ export function CircuitPanel({
        * a change of flag rather than ten times a second.
        */}
       <FlagBanner status={status} visible={status !== 'green'} />
-      <fieldset aria-label="Track view" className="flex gap-1 self-end">
-        {TRACK_VIEWS.map(({ value, label }) => (
-          <Button
-            key={value}
-            size="xs"
-            variant={view === value ? 'default' : 'outline'}
-            aria-pressed={view === value}
-            onClick={() => onView(value)}
-          >
-            {label}
-          </Button>
-        ))}
-      </fieldset>
-      {view === 'onboard' ? (
+      <TrackViewToggle view={shown} onView={onView} blocked={blocked} />
+      {shown === 'onboard' ? (
         <OnboardView
           race={race}
           replay={replay}
@@ -205,6 +250,7 @@ export function CircuitPanel({
           minimap={trackMap('sm')}
           camera={camera}
           onCamera={onCamera}
+          onFailure={handleFailure}
         />
       ) : (
         trackMap('md')
@@ -253,7 +299,7 @@ export function CircuitPanel({
         track is drawn in the right place only roughly: race control counts marshalling posts, and
         that count need not begin at the start line or run the way the cars do, so a zone can sit
         turned from where the flags really were.
-        {view === 'onboard' && circuit.elevationSource && (
+        {shown === 'onboard' && circuit.elevationSource && (
           <> {ELEVATION_CREDIT[circuit.elevationSource]}</>
         )}
       </figcaption>

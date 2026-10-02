@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
 import { onboardFrame } from '@/data/onboard-frame';
@@ -20,6 +20,35 @@ const OnboardScene = lazy(() => import('./onboard/onboard-scene'));
 /** A line of text on the scene, dark behind it so it reads over sky and asphalt alike. */
 const LABEL = 'bg-black/60 px-1.5 py-0.5 text-white';
 
+/** Over the scene until it draws its first frame: the chunk loads, the circuit is built. */
+function OnboardLoading() {
+  return (
+    <div
+      data-slot="onboard-loading"
+      className="absolute inset-0 grid place-items-center bg-[#bcd4e6]"
+    >
+      <output className={`font-mono text-xs motion-safe:animate-pulse ${LABEL}`}>
+        Building the circuit in 3D…
+      </output>
+    </div>
+  );
+}
+
+/**
+ * The scene's accessible label: whose car it rides with, the position and the lap. Kept until
+ * the lap or the car changes, so a screen reader is not handed a new name on every tick.
+ */
+function useRideLabel(code: string | undefined, position: number, lap: number, versus?: string) {
+  const key = code === undefined ? '' : `${code}|${lap}|${versus ?? ''}`;
+  const text =
+    code === undefined
+      ? 'Onboard view, no car on track'
+      : `Onboard view, riding with ${code}, P${position}, lap ${lap}${versus === undefined ? '' : `, ${versus} on track too`}`;
+  const [shown, setShown] = useState({ key, text });
+  if (shown.key !== key) setShown({ key, text });
+  return shown.key === key ? shown.text : text;
+}
+
 /**
  * The Onboard view in the Track Map panel: the 3D scene, and over it the HUD, the notices, the
  * camera switch and the Track Map as a minimap with every car. The HUD reads the onboard frame
@@ -35,6 +64,7 @@ export function OnboardView({
   minimap,
   camera,
   onCamera,
+  onFailure,
 }: {
   race: ReplayRace;
   replay: RaceReplay;
@@ -44,7 +74,10 @@ export function OnboardView({
   minimap: React.ReactNode;
   camera: OnboardCamera;
   onCamera: (camera: OnboardCamera) => void;
+  /** Neither WebGPU nor WebGL2 could draw the scene: the page goes back to the Track Map. */
+  onFailure: () => void;
 }) {
+  const [ready, setReady] = useState(false);
   const frame = useMemo(
     () => onboardFrame(race, circuit, replay.elapsedMs, followedId, comparedIds),
     [race, circuit, replay.elapsedMs, followedId, comparedIds],
@@ -68,10 +101,7 @@ export function OnboardView({
       ? 'Add a compared driver to see them on track'
       : `${firstCompared} is not on track`;
   })();
-  const label =
-    ridingCode === undefined
-      ? 'Onboard view, no car on track'
-      : `Onboard view, riding with ${ridingCode}${versus === undefined ? '' : `, ${versus} on track too`}`;
+  const label = useRideLabel(ridingCode, riding?.position ?? 0, riding?.lap ?? 0, versus);
 
   return (
     <section
@@ -79,13 +109,7 @@ export function OnboardView({
       aria-label={label}
       className="relative h-[min(70vh,34rem)] w-full overflow-hidden bg-[#bcd4e6]"
     >
-      <Suspense
-        fallback={
-          <p className="absolute inset-0 grid place-items-center text-sm text-slate-700">
-            Loading the Onboard view…
-          </p>
-        }
-      >
+      <Suspense fallback={null}>
         <OnboardScene
           race={race}
           circuit={circuit}
@@ -93,8 +117,11 @@ export function OnboardView({
           followedId={followedId}
           comparedIds={comparedIds}
           camera={camera}
+          onReady={setReady}
+          onFailure={onFailure}
         />
       </Suspense>
+      {!ready && <OnboardLoading />}
 
       <div className="pointer-events-none absolute top-2 left-2 flex flex-col items-start gap-1 font-mono text-xs">
         {riding && ridingCode && (
@@ -122,6 +149,8 @@ export function OnboardView({
             key={value}
             size="xs"
             variant={camera === value ? 'default' : 'secondary'}
+            // The page's ring is faint over the sky; a white one reads over any of the scene.
+            className="focus-visible:ring-white"
             aria-pressed={camera === value}
             onClick={() => onCamera(value)}
           >

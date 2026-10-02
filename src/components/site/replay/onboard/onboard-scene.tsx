@@ -7,7 +7,15 @@
  * and maps those metres to the circuit in the world; the HUD, the notices and the camera switch
  * live in the page, outside this chunk.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Component,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Canvas, type RootState, useFrame, useThree } from '@react-three/fiber';
 import {
   Color,
@@ -15,24 +23,40 @@ import {
   type Group,
   type HemisphereLight,
   type Material,
-  type Mesh,
+  Mesh,
   type MeshStandardMaterial,
   type Object3D,
   PCFShadowMap,
   type PerspectiveCamera,
   Scene as ThreeScene,
   setConsoleFunction,
+  Vector3,
 } from 'three';
 import { PMREMGenerator, type Renderer } from 'three/webgpu';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
-import { type OnboardCar, marshalLightAt, onboardFrame } from '@/data/onboard-frame';
+import {
+  type MarshalLight,
+  type OnboardCar,
+  marshalLightAt,
+  onboardFrame,
+} from '@/data/onboard-frame';
 import { boxShare, garageShares } from '@/data/pit-garages';
 import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
+import { graphicsSupport } from '../graphics-support';
 import type { OnboardCamera } from '../onboard-view';
 import { sidesOf } from './barriers';
 import { carObject } from './car-model';
 import { buildMarshalPanels, setMarshalLights } from './marshal-panels';
+import {
+  QUALITY,
+  type QualityLevel,
+  type QualitySettings,
+  chooseQuality,
+  deviceProfile,
+  frameProbe,
+  stepDown,
+} from './quality';
 import { buildGarages, buildScenery, disposeScenery } from './scenery';
 import { SKY, skyDome } from './sky';
 import { WORKING_LANE_MIDDLE, boxSwing } from './surfaces';
@@ -71,10 +95,17 @@ const GHOST = { opacity: 0.35, fadeRate: 12 } as const;
 const TCAM = { height: 1.1, ahead: 1.4, pitch: 0.03 } as const;
 
 /**
- * No shadows. Named so R3F does not fall back on PCFSoftShadowMap, which WebGPURenderer has
- * removed and warns about; PCFShadowMap works on WebGPU and on its WebGL2 backend.
+ * Shadows on or off. The type is named so R3F does not fall back on PCFSoftShadowMap, which
+ * WebGPURenderer has removed and warns about; PCFShadowMap works on WebGPU and on WebGL2.
  */
+const SHADOWS = { enabled: true, type: PCFShadowMap } as const;
 const NO_SHADOWS = { enabled: false, type: PCFShadowMap } as const;
+
+/**
+ * The sun's shadow, where the quality level casts one: a square `half` metres either side of
+ * the riding car, the light `distance` metres from it along the sun's direction.
+ */
+const SUN_SHADOW = { half: 30, distance: 150, mapSize: 1024, bias: -0.0005 } as const;
 
 /**
  * R3F 9 makes a `THREE.Clock` for every canvas, which three r183+ warns is deprecated. The
@@ -214,6 +245,22 @@ type SceneProps = {
   camera: OnboardCamera;
 };
 
+/** What the page hears from the scene: its first frame is drawn, or it cannot draw at all. */
+type SceneEvents = {
+  /** `true` once the first frame is drawn; `false` again while a new renderer starts. */
+  onReady: (ready: boolean) => void;
+  /** Neither WebGPU nor WebGL2 could draw the scene. */
+  onFailure: () => void;
+};
+
+type InnerSceneProps = SceneProps & {
+  track: TrackModel;
+  quality: QualitySettings;
+  onFirstFrame: () => void;
+  /** The frame-time probe found the frames slow, once. */
+  onSlow: () => void;
+};
+
 function Scene({
   race,
   circuit,
@@ -222,25 +269,36 @@ function Scene({
   followedId,
   comparedIds,
   camera: mode,
-}: SceneProps & { track: TrackModel }) {
+  quality,
+  onFirstFrame,
+  onSlow,
+}: InnerSceneProps) {
   const gl = useThree((state) => state.gl);
+  const { trees, standEvery, buildingEvery } = quality;
   const scenery = useMemo(
     () =>
-      buildScenery(track, Math.min((gl as unknown as Renderer).getMaxAnisotropy(), MAX_ANISOTROPY)),
-    [track, gl],
+      buildScenery(
+        track,
+        Math.min((gl as unknown as Renderer).getMaxAnisotropy(), MAX_ANISOTROPY),
+        { trees, standEvery, buildingEvery },
+      ),
+    [track, gl, trees, standEvery, buildingEvery],
   );
   useEffect(() => () => disposeScenery(scenery), [scenery]);
   const below = useMemo(
     () => new Color(track.street ? GROUND_BELOW.street : GROUND_BELOW.permanent),
     [track],
   );
-  const sky = useMemo(() => {
-    const dome = skyDome(below);
-    // Inside the camera's far plane, and moved with the camera so it never comes nearer.
-    dome.scale.setScalar(2000);
-    return dome;
-  }, [below]);
+  const sky = useMemo(() => skyDome(below), [below]);
   useEffect(() => () => disposeMesh(sky), [sky]);
+  // Inside the camera's far plane, and moved with the camera so it never comes nearer.
+  const get = useThree((state) => state.get);
+  useEffect(() => {
+    sky.scale.setScalar(quality.far * 0.77);
+    const camera = get().camera as PerspectiveCamera;
+    camera.far = quality.far;
+    camera.updateProjectionMatrix();
+  }, [sky, get, quality.far]);
   useSkyEnvironment(below);
   // Each team's garage at its box, where `carLapsAt` stops its cars.
   const garages = useMemo(
@@ -255,9 +313,32 @@ function Scene({
     [track, race],
   );
   useEffect(() => () => disposeScenery(garages), [garages]);
+  // Only the ground and what stands on it take the cars' shadows; the cars cast them.
+  useEffect(() => {
+    for (const group of [scenery, garages]) {
+      group.traverse((object) => {
+        if (object instanceof Mesh) object.receiveShadow = quality.shadows;
+      });
+    }
+  }, [scenery, garages, quality.shadows]);
   const garageSide = useMemo(() => sidesOf(track).garageSide, [track]);
   const panels = useMemo(() => buildMarshalPanels(track), [track]);
   useEffect(() => () => disposeScenery(panels.group), [panels]);
+  // Filled in place every frame, as are the cars' places and the ghosts: nothing is made per frame.
+  const lights = useRef<MarshalLight[]>([]);
+  const placed = useRef(new Map<string, CarPlace>());
+  const ghosts = useRef(new Set<string>());
+  // Where the sun shines from, kept when the shadow's light follows the riding car.
+  const sunFrom = useMemo(
+    () =>
+      new Vector3(
+        track.centre.x + SKY.sunDirection.x * 800,
+        SKY.sunDirection.y * 800,
+        track.centre.z + SKY.sunDirection.z * 800,
+      ),
+    [track],
+  );
+  const sunDirection = useMemo(() => sunFrom.clone().normalize(), [sunFrom]);
   const skyLight = useRef<HemisphereLight>(null);
   const sunLight = useRef<DirectionalLight>(null);
   const tint = useRef(0);
@@ -293,6 +374,7 @@ function Scene({
   // shared by every car and kept; only the materials are each car's own.
   const carGroup = useRef<Group>(null);
   const cars = useRef(new Map<string, ReturnType<typeof carObject>>());
+  const { carLodM } = quality;
   useEffect(() => {
     const group = carGroup.current;
     const byDriver = cars.current;
@@ -300,8 +382,11 @@ function Scene({
     for (const driver of race.drivers) {
       const colour =
         race.teams.find((team) => team.id === driver.teamId)?.color ?? UNKNOWN_TEAM_COLOUR;
-      const car = carObject(colour);
+      const car = carObject(colour, carLodM);
       car.object.visible = false;
+      car.object.traverse((object) => {
+        object.castShadow = true;
+      });
       group.add(car.object);
       byDriver.set(driver.id, car);
     }
@@ -312,8 +397,10 @@ function Scene({
       }
       byDriver.clear();
     };
-  }, [race]);
+  }, [race, carLodM]);
   const raceTime = useRaceTime(replay);
+  const [probe] = useState(frameProbe);
+  const drawn = useRef(false);
   const view = useRef<{ heading: number; ride: string; mode: OnboardCamera | undefined }>({
     heading: 0,
     ride: '',
@@ -321,14 +408,21 @@ function Scene({
   });
 
   useFrame((state, delta) => {
+    if (!drawn.current) {
+      drawn.current = true;
+      onFirstFrame();
+    }
+    if (probe(delta) === 'slow') onSlow();
     const camera = state.camera as PerspectiveCamera;
     sky.position.copy(camera.position);
     const { ms, snapped } = raceTime(delta);
     const frame = onboardFrame(race, circuit, ms, followedId, comparedIds);
-    setMarshalLights(
-      panels,
-      panels.shares.map((share) => marshalLightAt(race, share, ms)),
-    );
+    const shown = lights.current;
+    shown.length = panels.shares.length;
+    for (let index = 0; index < shown.length; index++) {
+      shown[index] = marshalLightAt(race, panels.shares[index]!, ms);
+    }
+    setMarshalLights(panels, shown);
     // Under a red flag the light leans a little red, eased in and out; not a filter on the canvas.
     const red = frame.trackStatus === 'red' ? 1 : 0;
     tint.current = snapped
@@ -337,22 +431,35 @@ function Scene({
     const lean = tint.current * RED_FLAG_TINT.amount;
     skyLight.current?.color.lerpColors(lightColours.sky, RED_FLAG_TINT.colour, lean);
     sunLight.current?.color.lerpColors(lightColours.sun, RED_FLAG_TINT.colour, lean);
-    const placed = new Map(frame.cars.map((car) => [car.driverId, placeCar(car)]));
-    const ghosts = new Set(frame.cars.filter((car) => car.ghost).map((car) => car.driverId));
+    const places = placed.current;
+    const ghostIds = ghosts.current;
+    places.clear();
+    ghostIds.clear();
+    for (const car of frame.cars) {
+      places.set(car.driverId, placeCar(car));
+      if (car.ghost) ghostIds.add(car.driverId);
+    }
     const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
     const ride = frame.riding?.driverId;
     for (const [driverId, { object, materials }] of cars.current) {
-      const point = placed.get(driverId);
+      const point = places.get(driverId);
       // Every car's materials are transparent, so a ghost needs no shader change: a solid car is
       // at opacity 1 and writes depth, a ghost does not, so it never hides the track behind it.
-      const target = ghosts.has(driverId) ? GHOST.opacity : 1;
+      const target = ghostIds.has(driverId) ? GHOST.opacity : 1;
       for (const material of materials) fadeTo(material, target, fade);
       // In T-cam the camera is on the riding car, so its own body would fill the view.
       standCar(object, mode === 'tcam' && driverId === ride ? undefined : point);
     }
 
-    const car = ride === undefined ? undefined : placed.get(ride);
+    const car = ride === undefined ? undefined : places.get(ride);
     if (!car || ride === undefined) return;
+    // The shadow's light rides along, so its small square of shadow is always round the car.
+    const sun = sunLight.current;
+    if (sun && quality.shadows) {
+      sun.target.position.set(car.x, car.y, car.z);
+      sun.target.updateMatrixWorld();
+      sun.position.copy(sun.target.position).addScaledVector(sunDirection, SUN_SHADOW.distance);
+    }
     const last = view.current;
     if (snapped || last.mode !== mode || last.ride !== ride) {
       if (last.mode !== mode) {
@@ -393,17 +500,22 @@ function Scene({
   return (
     <>
       <color attach="background" args={[SKY.horizon]} />
-      <fog attach="fog" args={[SKY.horizon, 250, 1800]} />
+      <fog attach="fog" args={[SKY.horizon, quality.fog.near, quality.fog.far]} />
       <hemisphereLight ref={skyLight} args={[LIGHTS.sky, below, 0.7]} />
       <directionalLight
         ref={sunLight}
-        position={[
-          track.centre.x + SKY.sunDirection.x * 800,
-          SKY.sunDirection.y * 800,
-          track.centre.z + SKY.sunDirection.z * 800,
-        ]}
+        position={sunFrom}
         color={LIGHTS.sun}
         intensity={2.4}
+        castShadow={quality.shadows}
+        shadow-mapSize={[SUN_SHADOW.mapSize, SUN_SHADOW.mapSize]}
+        shadow-bias={SUN_SHADOW.bias}
+        shadow-camera-left={-SUN_SHADOW.half}
+        shadow-camera-right={SUN_SHADOW.half}
+        shadow-camera-top={SUN_SHADOW.half}
+        shadow-camera-bottom={-SUN_SHADOW.half}
+        shadow-camera-near={1}
+        shadow-camera-far={SUN_SHADOW.distance * 2}
       />
       <primitive object={sky} />
       <primitive object={scenery} />
@@ -419,18 +531,31 @@ type GlFactory = Extract<
   (...args: never[]) => unknown
 >;
 
-/** WebGPURenderer, which falls back to its own WebGL2 backend where WebGPU is missing. */
-const webgpuRenderer: GlFactory = async (defaults) => {
-  const { WebGPURenderer } = await import('three/webgpu');
-  const renderer = new WebGPURenderer({
-    // The DOM `<Canvas>` always hands over an HTMLCanvasElement; the types allow an offscreen one.
-    canvas: defaults.canvas as HTMLCanvasElement,
-    antialias: true,
-    powerPreference: 'high-performance',
-  });
-  await renderer.init();
-  return renderer;
-};
+/** Which backend a canvas asks for: WebGPU (WebGL2 where it is missing), or WebGL2 forced. */
+type Attempt = 'webgpu' | 'webgl2';
+
+/**
+ * WebGPURenderer, on WebGPU (which falls back to its own WebGL2 backend where WebGPU is missing)
+ * or on WebGL2 forced. `onLost` hears of a lost device or context, which three only logs.
+ */
+const rendererFor =
+  (attempt: Attempt, antialias: boolean, onLost: () => void): GlFactory =>
+  async (defaults) => {
+    const { WebGPURenderer } = await import('three/webgpu');
+    const renderer = new WebGPURenderer({
+      // The DOM `<Canvas>` always hands over an HTMLCanvasElement; the types allow an offscreen one.
+      canvas: defaults.canvas as HTMLCanvasElement,
+      antialias,
+      powerPreference: 'high-performance',
+      forceWebGL: attempt === 'webgl2',
+    });
+    renderer.onDeviceLost = (info) => {
+      console.warn(`Onboard view: ${info.api} device lost: ${info.message}`);
+      onLost();
+    };
+    await renderer.init();
+    return renderer;
+  };
 
 /** Which backend the renderer ended up on, for the small label in the corner. */
 function backendLabel(state: RootState): string {
@@ -438,29 +563,144 @@ function backendLabel(state: RootState): string {
   return backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
 }
 
-/** The canvas of the Onboard view, filling the box the page gives it. */
-export default function OnboardScene(props: SceneProps) {
-  const { circuit } = props;
-  const track = useMemo(() => trackModel(circuit), [circuit]);
-  const [backend, setBackend] = useState<string>();
+/** Catches a renderer that fails to start, or a scene that throws, and says so once. */
+class RendererBoundary extends Component<
+  { onError: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  override state = { failed: false };
 
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  override componentDidCatch(error: unknown) {
+    console.warn('Onboard view: the renderer failed', error);
+    this.props.onError();
+  }
+
+  override render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/**
+ * One canvas on one backend. A new attempt is a new canvas: one that has given a WebGPU context
+ * cannot give a WebGL2 one.
+ */
+function SceneCanvas({
+  attempt,
+  start,
+  quality,
+  level,
+  onFail,
+  children,
+}: {
+  attempt: Attempt;
+  /** The level the view started at: antialiasing and the first far plane cannot change after. */
+  start: QualitySettings;
+  quality: QualitySettings;
+  level: QualityLevel;
+  onFail: (attempt: Attempt) => void;
+  children: ReactNode;
+}) {
+  const gl = useMemo(
+    () => rendererFor(attempt, start.antialias, () => onFail(attempt)),
+    [attempt, start, onFail],
+  );
+
+  const camera = useMemo(
+    () => ({
+      fov: 75,
+      near: 0.25,
+      far: start.far,
+      position: [0, 2, 0] as [number, number, number],
+    }),
+    [start],
+  );
+  const [backend, setBackend] = useState<string>();
   return (
-    <div data-slot="onboard-scene" className="absolute inset-0">
+    <>
       <Canvas
         aria-hidden
-        dpr={[1, 2]}
-        camera={{ fov: 75, near: 0.25, far: 2600, position: [0, 2, 0] }}
-        gl={webgpuRenderer}
-        shadows={NO_SHADOWS}
+        dpr={[1, quality.pixelRatio]}
+        camera={camera}
+        gl={gl}
+        shadows={quality.shadows ? SHADOWS : NO_SHADOWS}
         onCreated={(state) => setBackend(backendLabel(state))}
       >
-        <Scene {...props} track={track} />
+        {children}
       </Canvas>
       {backend && (
         <span className="pointer-events-none absolute right-2 bottom-11 bg-black/50 px-1 font-mono text-[10px] text-white/80">
-          {backend}
+          {backend} · {level}
         </span>
       )}
+    </>
+  );
+}
+
+/**
+ * The canvas of the Onboard view, filling the box the page gives it. It starts on WebGPU where
+ * the browser has it; if that renderer fails to start or loses its device, it starts again once
+ * on WebGL2, without a page reload, and if that fails too the page is told. The quality level is
+ * chosen from the device, and steps down once if the first seconds' frames are slow.
+ */
+export default function OnboardScene({ onReady, onFailure, ...props }: SceneProps & SceneEvents) {
+  const { circuit } = props;
+  const track = useMemo(() => trackModel(circuit), [circuit]);
+  const [attempt, setAttempt] = useState<Attempt | 'failed'>(() =>
+    graphicsSupport().webgpu ? 'webgpu' : 'webgl2',
+  );
+  // Only the attempt still on screen can fail: a lost device from a canvas already given up on,
+  // or one lost as the view closes, changes nothing. A ref, as a lost renderer calls back late.
+  const current = useRef<Attempt | 'failed' | 'closed'>(attempt);
+  useEffect(() => {
+    current.current = attempt;
+    return () => {
+      current.current = 'closed';
+    };
+  }, [attempt]);
+  const fail = useCallback(
+    (from: Attempt) => {
+      if (current.current !== from) return;
+      const next = from === 'webgpu' ? 'webgl2' : 'failed';
+      current.current = next;
+      setAttempt(next);
+      if (next === 'failed') onFailure();
+      else onReady(false);
+    },
+    [onFailure, onReady],
+  );
+  // One step down at most, for the whole view: a WebGL2 restart does not step down again.
+  const [start] = useState(() => chooseQuality(deviceProfile()));
+  const [level, setLevel] = useState(start);
+  const slow = useCallback(
+    () => setLevel((now) => (now === start ? (stepDown(now) ?? now) : now)),
+    [start],
+  );
+  const ready = useCallback(() => onReady(true), [onReady]);
+
+  if (attempt === 'failed') return null;
+  return (
+    <div data-slot="onboard-scene" data-quality={level} className="absolute inset-0">
+      <RendererBoundary key={attempt} onError={() => fail(attempt)}>
+        <SceneCanvas
+          attempt={attempt}
+          start={QUALITY[start]}
+          quality={QUALITY[level]}
+          level={level}
+          onFail={fail}
+        >
+          <Scene
+            {...props}
+            track={track}
+            quality={QUALITY[level]}
+            onFirstFrame={ready}
+            onSlow={slow}
+          />
+        </SceneCanvas>
+      </RendererBoundary>
     </div>
   );
 }
