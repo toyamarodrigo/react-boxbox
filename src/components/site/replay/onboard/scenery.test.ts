@@ -32,7 +32,8 @@ describe('buildScenery', () => {
         }
       }
     }
-  });
+    // Every circuit's whole scenery, elevation included: seconds under a full parallel run.
+  }, 30_000);
 
   it('gives a street circuit buildings and no trees, a permanent one trees', () => {
     expect(hasTrees(buildScenery(trackModel(circuitForRace('Circuit de Monaco'))))).toBe(false);
