@@ -1,11 +1,23 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { circuitForRace } from './circuit-for-race';
-import { GHOST_OVERLAP_M, onboardFrame } from './onboard-frame';
+import {
+  GHOST_OVERLAP_M,
+  GREEN_ON_CLEAR_MS,
+  type MarshalLight,
+  marshalLightAt,
+  onboardFrame,
+} from './onboard-frame';
 import { boxShare } from './pit-garages';
 import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
 import { type ReplayRace, replayRaceSchema } from './replay-schema';
-import { carLapsAt, replayPitStops } from './replay-timing';
+import {
+  carLapsAt,
+  flaggedSectorsAt,
+  leaderCumulative,
+  replayPitStops,
+  trackStatusAt,
+} from './replay-timing';
 
 const race = testReplayRace();
 /** The invented circuit the fixture race runs on, with its pit lane and lengths. */
@@ -96,7 +108,7 @@ describe('onboardFrame', () => {
 
   it('has no car once every car has taken the flag', () => {
     const frame = onboardFrame(race, circuit, 500_000, 'alpha', ['bravo']);
-    expect(frame).toEqual({ riding: null, ridingLeader: false, cars: [] });
+    expect(frame).toMatchObject({ riding: null, ridingLeader: false, cars: [] });
   });
 
   it('places the cars where carLapsAt does, in metres along the lap or the pit lane', () => {
@@ -243,4 +255,128 @@ describe('onboardFrame in the pit lane', () => {
       }
     }
   });
+});
+
+describe('onboardFrame race control', () => {
+  it('carries the flag over the track and the flagged slices, as the readers have them', () => {
+    for (const ms of [0, 30_000, 35_000, 60_000, 120_000, 150_000, 250_000, 280_000, 500_000]) {
+      const frame = onboardFrame(race, circuit, ms, 'alpha', []);
+      expect(frame.trackStatus, `${ms}`).toBe(trackStatusAt(race, ms));
+      // The same array, so the Track Map and the Onboard view paint the same slices.
+      expect(frame.flagged, `${ms}`).toBe(flaggedSectorsAt(race, ms));
+    }
+    expect(onboardFrame(race, circuit, 70_000, undefined, []).trackStatus).toBe('vsc');
+    expect(onboardFrame(race, circuit, 40_000, undefined, []).flagged).toEqual([
+      { start: 0.25, end: 0.75, status: 'yellow' },
+    ]);
+  });
+
+  const monzaFile = generatedReplayFiles().find((name) => path.basename(name) === '2026-13.json');
+  it.skipIf(!monzaFile)('agrees with the readers through the Monza 2026 flags', () => {
+    const monza = replayRaceSchema.parse(readJson(monzaFile!));
+    const onMonza = circuitForRace(monza.circuit);
+    const statusAt = (ms: number) => onboardFrame(monza, onMonza, ms, undefined, []).trackStatus;
+    // Lap 3: yellows in sectors 14 to 16, then the safety car, then the red until the restart.
+    expect(statusAt(190_000)).toBe('green');
+    expect(onboardFrame(monza, onMonza, 190_000, undefined, []).flagged).not.toHaveLength(0);
+    expect(statusAt(200_000)).toBe('sc');
+    expect(statusAt(260_000)).toBe('red');
+    expect(statusAt(leaderCumulative(monza, 3) + 60_000)).toBe('red');
+    expect(statusAt(2_130_000)).toBe('green');
+    // Laps 28 and 29: a virtual safety car.
+    expect(statusAt(4_500_000)).toBe('vsc');
+    expect(statusAt(4_580_000)).toBe('green');
+    const moments = [
+      190_000, 200_000, 260_000, 400_000, 600_000, 2_130_000, 2_585_000, 4_445_000, 4_500_000,
+      4_580_000,
+    ];
+    for (const ms of moments) {
+      const frame = onboardFrame(monza, onMonza, ms, undefined, []);
+      expect(frame.trackStatus, `${ms}`).toBe(trackStatusAt(monza, ms));
+      expect(frame.flagged, `${ms}`).toBe(flaggedSectorsAt(monza, ms));
+    }
+  });
+});
+
+describe('marshalLightAt', () => {
+  // The fixture's messages mention sector 4 at most: sector 2 is 0.25–0.5, sector 3 0.5–0.75.
+  const light = (share: number, ms: number) => marshalLightAt(race, share, ms);
+
+  it('is dark while nothing covers the panel', () => {
+    expect(light(0.1, 0)).toBe('off');
+    expect(light(0.1, 30_000)).toBe('off');
+    expect(light(0.9, 40_000)).toBe('off');
+  });
+
+  it('is yellow in a flagged slice, and only there', () => {
+    expect(light(0.3, 30_000)).toBe('yellow');
+    expect(light(0.6, 30_000)).toBe('off');
+    expect(light(0.6, 35_000)).toBe('yellow');
+  });
+
+  it('turns every panel yellow under a virtual safety car or a track-wide yellow', () => {
+    for (const share of [0.1, 0.3, 0.6, 0.9]) {
+      expect(light(share, 60_000)).toBe('yellow');
+      expect(light(share, 260_000)).toBe('yellow');
+    }
+  });
+
+  it('shows green for a moment when its flag goes out, then goes dark', () => {
+    // Sector 2 clears at 150 s.
+    expect(light(0.3, 149_999)).toBe('yellow');
+    expect(light(0.3, 150_000)).toBe('green');
+    expect(light(0.3, 150_000 + GREEN_ON_CLEAR_MS - 1)).toBe('green');
+    expect(light(0.3, 150_000 + GREEN_ON_CLEAR_MS)).toBe('off');
+    // Sector 3 next to it is still flagged.
+    expect(light(0.6, 150_000)).toBe('yellow');
+  });
+
+  it('turns the whole lap green when the virtual safety car ends, but a flagged slice stays yellow', () => {
+    expect(light(0.1, 120_000)).toBe('green');
+    expect(light(0.9, 120_000 + GREEN_ON_CLEAR_MS - 1)).toBe('green');
+    expect(light(0.9, 120_000 + GREEN_ON_CLEAR_MS)).toBe('off');
+    expect(light(0.3, 120_000)).toBe('yellow');
+  });
+
+  it('turns green everywhere when the green flag puts everything out', () => {
+    for (const share of [0.1, 0.6]) {
+      expect(light(share, 280_000)).toBe('green');
+      expect(light(share, 290_000)).toBe('off');
+    }
+  });
+
+  it('reads a slice that wraps across the line', () => {
+    const across: ReplayRace = {
+      ...race,
+      raceControl: [4, 1].map((sector) => ({
+        atMs: 10_000,
+        lap: 1,
+        flag: 'YELLOW',
+        category: 'Flag',
+        scope: 'Sector',
+        sector,
+        driverId: null,
+        message: `YELLOW IN TRACK SECTOR ${sector}`,
+      })),
+    };
+    expect(marshalLightAt(across, 0.95, 20_000)).toBe('yellow');
+    expect(marshalLightAt(across, 0.05, 20_000)).toBe('yellow');
+    expect(marshalLightAt(across, 0.5, 20_000)).toBe('off');
+  });
+
+  const monzaFile = generatedReplayFiles().find((name) => path.basename(name) === '2026-13.json');
+  it.skipIf(!monzaFile)(
+    'lights the Monza 2026 lap red for the stoppage and green at the restart',
+    () => {
+      const monza = replayRaceSchema.parse(readJson(monzaFile!));
+      const lap = (ms: number) =>
+        [0.05, 0.3, 0.55, 0.9].map((share) => marshalLightAt(monza, share, ms)) as MarshalLight[];
+      expect(lap(200_000)).toEqual(['yellow', 'yellow', 'yellow', 'yellow']);
+      expect(lap(600_000)).toEqual(['red', 'red', 'red', 'red']);
+      // The session starts again at 2129.166 s.
+      expect(lap(2_130_000)).toEqual(['green', 'green', 'green', 'green']);
+      expect(lap(2_129_166 + GREEN_ON_CLEAR_MS)).toEqual(['off', 'off', 'off', 'off']);
+      expect(lap(4_500_000)).toEqual(['yellow', 'yellow', 'yellow', 'yellow']);
+    },
+  );
 });

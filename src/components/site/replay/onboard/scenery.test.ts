@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ConeGeometry, type Group, InstancedMesh, Mesh } from 'three';
 import { circuitForRace } from '@/data/circuit-for-race';
 import { CIRCUITS } from '@/data/circuits';
+import { buildMarshalPanels } from './marshal-panels';
 import { buildScenery } from './scenery';
 import { trackModel } from './track';
 
@@ -18,11 +19,11 @@ const hasTrees = (group: Group) =>
   );
 
 describe('buildScenery', () => {
-  it('builds every circuit in a handful of draw calls', () => {
+  it('builds every circuit in a handful of draw calls, its marshal panels included', () => {
     for (const circuit of [...CIRCUITS.map((item) => item.name), 'Nowhere Raceway']) {
       const replay = circuitForRace(circuit);
-      const group = buildScenery(trackModel(replay));
-      const all = meshes(group);
+      const track = trackModel(replay);
+      const all = [...meshes(buildScenery(track)), ...meshes(buildMarshalPanels(track).group)];
       expect(all.length, circuit).toBeLessThanOrEqual(14);
       for (const mesh of all) {
         const positions = mesh.geometry.getAttribute('position');

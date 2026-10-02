@@ -11,7 +11,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, type RootState, useFrame, useThree } from '@react-three/fiber';
 import {
   Color,
+  type DirectionalLight,
   type Group,
+  type HemisphereLight,
   type Material,
   type Mesh,
   type MeshStandardMaterial,
@@ -23,13 +25,14 @@ import {
 } from 'three';
 import { PMREMGenerator, type Renderer } from 'three/webgpu';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
-import { type OnboardCar, onboardFrame } from '@/data/onboard-frame';
+import { type OnboardCar, marshalLightAt, onboardFrame } from '@/data/onboard-frame';
 import { boxShare, garageShares } from '@/data/pit-garages';
 import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import type { OnboardCamera } from '../onboard-view';
 import { sidesOf } from './barriers';
 import { carObject } from './car-model';
+import { buildMarshalPanels, setMarshalLights } from './marshal-panels';
 import { buildGarages, buildScenery, disposeScenery } from './scenery';
 import { SKY, skyDome } from './sky';
 import { WORKING_LANE_MIDDLE, boxSwing } from './surfaces';
@@ -49,6 +52,10 @@ const GROUND_BELOW = { permanent: '#47663a', street: '#77756f' } as const;
 /** How much the sky's environment lights and reflects in the materials. */
 const ENVIRONMENT_INTENSITY = 0.8;
 const UNKNOWN_TEAM_COLOUR = '#888888';
+
+/** The sky light and the sun, and the red they lean towards under a red flag, by `amount`. */
+const LIGHTS = { sky: '#dceaff', sun: '#fff4e2' } as const;
+const RED_FLAG_TINT = { colour: new Color('#ff5a4a'), amount: 0.3, rate: 2 } as const;
 
 /**
  * A ghost car's opacity, and how fast a car fades to it and back, per second. The fade keeps a
@@ -249,6 +256,15 @@ function Scene({
   );
   useEffect(() => () => disposeScenery(garages), [garages]);
   const garageSide = useMemo(() => sidesOf(track).garageSide, [track]);
+  const panels = useMemo(() => buildMarshalPanels(track), [track]);
+  useEffect(() => () => disposeScenery(panels.group), [panels]);
+  const skyLight = useRef<HemisphereLight>(null);
+  const sunLight = useRef<DirectionalLight>(null);
+  const tint = useRef(0);
+  const lightColours = useMemo(
+    () => ({ sky: new Color(LIGHTS.sky), sun: new Color(LIGHTS.sun) }),
+    [],
+  );
 
   /**
    * Where a car stands in the world: on the racing line, or on the pit lane's line, which runs
@@ -309,6 +325,18 @@ function Scene({
     sky.position.copy(camera.position);
     const { ms, snapped } = raceTime(delta);
     const frame = onboardFrame(race, circuit, ms, followedId, comparedIds);
+    setMarshalLights(
+      panels,
+      panels.shares.map((share) => marshalLightAt(race, share, ms)),
+    );
+    // Under a red flag the light leans a little red, eased in and out; not a filter on the canvas.
+    const red = frame.trackStatus === 'red' ? 1 : 0;
+    tint.current = snapped
+      ? red
+      : tint.current + (red - tint.current) * (1 - Math.exp(-RED_FLAG_TINT.rate * delta));
+    const lean = tint.current * RED_FLAG_TINT.amount;
+    skyLight.current?.color.lerpColors(lightColours.sky, RED_FLAG_TINT.colour, lean);
+    sunLight.current?.color.lerpColors(lightColours.sun, RED_FLAG_TINT.colour, lean);
     const placed = new Map(frame.cars.map((car) => [car.driverId, placeCar(car)]));
     const ghosts = new Set(frame.cars.filter((car) => car.ghost).map((car) => car.driverId));
     const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
@@ -366,19 +394,21 @@ function Scene({
     <>
       <color attach="background" args={[SKY.horizon]} />
       <fog attach="fog" args={[SKY.horizon, 250, 1800]} />
-      <hemisphereLight args={['#dceaff', below, 0.7]} />
+      <hemisphereLight ref={skyLight} args={[LIGHTS.sky, below, 0.7]} />
       <directionalLight
+        ref={sunLight}
         position={[
           track.centre.x + SKY.sunDirection.x * 800,
           SKY.sunDirection.y * 800,
           track.centre.z + SKY.sunDirection.z * 800,
         ]}
-        color="#fff4e2"
+        color={LIGHTS.sun}
         intensity={2.4}
       />
       <primitive object={sky} />
       <primitive object={scenery} />
       <primitive object={garages} />
+      <primitive object={panels.group} />
       <group ref={carGroup} />
     </>
   );
