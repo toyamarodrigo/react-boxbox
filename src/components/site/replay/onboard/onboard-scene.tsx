@@ -10,11 +10,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, type RootState, useFrame, useThree } from '@react-three/fiber';
 import {
-  BoxGeometry,
   Color,
+  type Group,
   type Material,
   type Mesh,
   type MeshStandardMaterial,
+  type Object3D,
   PCFShadowMap,
   type PerspectiveCamera,
   Scene as ThreeScene,
@@ -22,12 +23,13 @@ import {
 } from 'three';
 import { PMREMGenerator, type Renderer } from 'three/webgpu';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
-import { CAR_LENGTH_M, type OnboardCar, onboardFrame } from '@/data/onboard-frame';
+import { type OnboardCar, onboardFrame } from '@/data/onboard-frame';
 import { boxShare, garageShares } from '@/data/pit-garages';
 import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import type { OnboardCamera } from '../onboard-view';
 import { sidesOf } from './barriers';
+import { carObject } from './car-model';
 import { buildGarages, buildScenery, disposeScenery } from './scenery';
 import { SKY, skyDome } from './sky';
 import { WORKING_LANE_MIDDLE, boxSwing } from './surfaces';
@@ -45,8 +47,6 @@ import {
 const GROUND_BELOW = { permanent: '#47663a', street: '#77756f' } as const;
 /** How much the sky's environment lights and reflects in the materials. */
 const ENVIRONMENT_INTENSITY = 0.8;
-/** A generic formula car's footprint as a box: length, height, width, in metres. */
-const CAR_GEOMETRY = new BoxGeometry(CAR_LENGTH_M, 1, 1.9);
 const UNKNOWN_TEAM_COLOUR = '#888888';
 
 /**
@@ -145,6 +145,21 @@ function useRaceTime({ elapsedMs, isPlaying, speed, endMs, jumped }: ReplayClock
     }
     return { ms: shown.current, snapped };
   };
+}
+
+/** Moves a car material's opacity `fade` of the way to `target`; only an opaque one writes depth. */
+function fadeTo(material: MeshStandardMaterial, target: number, fade: number) {
+  material.opacity += (target - material.opacity) * fade;
+  if (Math.abs(target - material.opacity) < 0.005) material.opacity = target;
+  material.depthWrite = material.opacity === 1;
+}
+
+/** Stands a car on the ground at `point`, turned along it, or hides it with no point. */
+function standCar(car: Object3D, point: TrackPoint | undefined) {
+  car.visible = point !== undefined;
+  if (!point) return;
+  car.position.set(point.x, 0, point.z);
+  car.rotation.y = -point.heading;
 }
 
 /** Frees a mesh's geometry and material. */
@@ -251,17 +266,30 @@ function Scene({
     return { ...here, heading: Math.atan2(ahead.z - behind.z, ahead.x - behind.x) };
   };
 
-  const colours = useMemo(
-    () =>
-      new Map(
-        race.drivers.map((driver) => [
-          driver.id,
-          race.teams.find((team) => team.id === driver.teamId)?.color ?? UNKNOWN_TEAM_COLOUR,
-        ]),
-      ),
-    [race],
-  );
-  const cars = useRef(new Map<string, Mesh>());
+  // Every driver's car in the team colour, hidden until it is on screen. The geometries are
+  // shared by every car and kept; only the materials are each car's own.
+  const carGroup = useRef<Group>(null);
+  const cars = useRef(new Map<string, ReturnType<typeof carObject>>());
+  useEffect(() => {
+    const group = carGroup.current;
+    const byDriver = cars.current;
+    if (!group) return;
+    for (const driver of race.drivers) {
+      const colour =
+        race.teams.find((team) => team.id === driver.teamId)?.color ?? UNKNOWN_TEAM_COLOUR;
+      const car = carObject(colour);
+      car.object.visible = false;
+      group.add(car.object);
+      byDriver.set(driver.id, car);
+    }
+    return () => {
+      for (const car of byDriver.values()) {
+        group.remove(car.object);
+        for (const material of car.materials) material.dispose();
+      }
+      byDriver.clear();
+    };
+  }, [race]);
   const raceTime = useRaceTime(replay);
   const view = useRef<{ heading: number; ride: string; mode: OnboardCamera | undefined }>({
     heading: 0,
@@ -278,20 +306,14 @@ function Scene({
     const ghosts = new Set(frame.cars.filter((car) => car.ghost).map((car) => car.driverId));
     const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
     const ride = frame.riding?.driverId;
-    for (const [driverId, mesh] of cars.current) {
+    for (const [driverId, { object, materials }] of cars.current) {
       const point = placed.get(driverId);
-      // Every car's material is transparent, so a ghost needs no shader change: a solid car is
+      // Every car's materials are transparent, so a ghost needs no shader change: a solid car is
       // at opacity 1 and writes depth, a ghost does not, so it never hides the track behind it.
-      const material = mesh.material as MeshStandardMaterial;
       const target = ghosts.has(driverId) ? GHOST.opacity : 1;
-      material.opacity += (target - material.opacity) * fade;
-      if (Math.abs(target - material.opacity) < 0.005) material.opacity = target;
-      material.depthWrite = material.opacity === 1;
+      for (const material of materials) fadeTo(material, target, fade);
       // In T-cam the camera is on the riding car, so its own body would fill the view.
-      mesh.visible = point !== undefined && !(mode === 'tcam' && driverId === ride);
-      if (!point) continue;
-      mesh.position.set(point.x, 0.5, point.z);
-      mesh.rotation.y = -point.heading;
+      standCar(object, mode === 'tcam' && driverId === ride ? undefined : point);
     }
 
     const car = ride === undefined ? undefined : placed.get(ride);
@@ -348,27 +370,7 @@ function Scene({
       <primitive object={sky} />
       <primitive object={scenery} />
       <primitive object={garages} />
-      {race.drivers.map((driver) => (
-        <mesh
-          key={driver.id}
-          geometry={CAR_GEOMETRY}
-          visible={false}
-          ref={(mesh) => {
-            if (!mesh) return;
-            cars.current.set(driver.id, mesh);
-            return () => {
-              cars.current.delete(driver.id);
-            };
-          }}
-        >
-          <meshStandardMaterial
-            color={colours.get(driver.id)}
-            roughness={0.45}
-            metalness={0.1}
-            transparent
-          />
-        </mesh>
-      ))}
+      <group ref={carGroup} />
     </>
   );
 }
