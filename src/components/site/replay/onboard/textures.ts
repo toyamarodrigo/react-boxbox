@@ -161,3 +161,80 @@ export function fenceTexture(anisotropy: number): Texture {
   }
   return texture(data, size, true, anisotropy);
 }
+
+/** Texels per side of the carbon weave, and the metres one repeat of it covers on a car. */
+const WEAVE_SIZE = 64;
+export const WEAVE_TILE_M = 0.02;
+
+let weave: Texture | undefined;
+
+/**
+ * Carbon fibre's twill weave: tows of fibres crossing over and under in diagonal steps, each
+ * tow shaded across its width as a round bundle catches the light. A small grey texture to
+ * multiply the carbon's colour by. Made once and shared by every car; never freed.
+ */
+export function carbonWeaveTexture(): Texture {
+  if (weave) return weave;
+  const tow = 8;
+  const data = new Uint8Array(WEAVE_SIZE * WEAVE_SIZE * 4);
+  for (let y = 0; y < WEAVE_SIZE; y++) {
+    for (let x = 0; x < WEAVE_SIZE; x++) {
+      const column = Math.floor(x / tow);
+      const row = Math.floor(y / tow);
+      // A 2×2 twill: the tow on top steps one cell diagonally each row.
+      const vertical = (column + row) % 2 === 0;
+      const across = ((vertical ? x : y) % tow) / tow;
+      const bundle = Math.sin(across * Math.PI);
+      const shade = 0.55 + 0.4 * bundle ** 0.7 + (vertical ? 0.05 : 0);
+      const value = Math.round(Math.min(1, shade) * 255);
+      data.set([value, value, value, 255], (y * WEAVE_SIZE + x) * 4);
+    }
+  }
+  weave = texture(data, WEAVE_SIZE, true, MAX_ANISOTROPY);
+  weave.repeat.setScalar(1 / WEAVE_TILE_M);
+  return weave;
+}
+
+/** The size of the contact shadow's texture, and the metres of ground it covers (along, across). */
+export const CONTACT_SHADOW = { width: 128, height: 64, metres: [6.4, 2.6] } as const;
+
+let contact: Texture | undefined;
+
+/**
+ * The soft dark patch under a car where the ground is shaded by it: a blurred blob the shape of
+ * the floor, darkest under the four tyres, as the sun's shadow map alone (sharp, and off at the
+ * lower quality levels) does not ground the car. In the texture's green channel, as an alpha map.
+ * `tyres` are the tyres' centres in metres from the car's centre (along, across).
+ */
+export function contactShadowTexture(tyres: readonly [number, number][]): Texture {
+  if (contact) return contact;
+  const { width, height, metres } = CONTACT_SHADOW;
+  const data = new Uint8Array(width * height * 4);
+  const smooth = (edge0: number, edge1: number, t: number) => {
+    const u = Math.min(1, Math.max(0, (t - edge0) / (edge1 - edge0)));
+    return u * u * (3 - 2 * u);
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const along = ((x + 0.5) / width - 0.5) * metres[0];
+      const across = ((y + 0.5) / height - 0.5) * metres[1];
+      // The floor's shade: a rounded box from the front axle to the diffuser, soft at its edge.
+      const floorAlong = Math.abs(along + 0.5) / 2.1;
+      const floorAcross = Math.abs(across) / 0.95;
+      const floorDistance = (floorAlong ** 4 + floorAcross ** 4) ** 0.25;
+      let shade = 0.65 * smooth(1.25, 0.6, floorDistance);
+      for (const [tx, tz] of tyres) {
+        const distance = Math.hypot((along - tx) / 0.5, (across - tz) / 0.32);
+        shade = Math.max(shade, smooth(1.1, 0.25, distance));
+      }
+      const value = Math.round(Math.min(1, shade) * 255);
+      data.set([value, value, value, 255], (y * width + x) * 4);
+    }
+  }
+  contact = new DataTexture(data, width, height);
+  contact.magFilter = LinearFilter;
+  contact.minFilter = LinearFilter;
+  contact.colorSpace = NoColorSpace;
+  contact.needsUpdate = true;
+  return contact;
+}
