@@ -22,11 +22,12 @@ import { addDressing } from './dressing';
 import { PIT_LANE, addSurfaces } from './surfaces';
 import { type TrackModel, type TrackPoint, pointAt, sideways } from './track';
 
-export function buildScenery(track: TrackModel): Group {
+/** The static scene; its textures filter with `anisotropy`, the renderer's maximum. */
+export function buildScenery(track: TrackModel, anisotropy = 1): Group {
   const group = new Group();
   const plan = planTrackside(track);
-  addSurfaces(group, track, plan);
-  addBarriers(group, track, plan);
+  addSurfaces(group, track, plan, anisotropy);
+  addBarriers(group, track, plan, anisotropy);
   addDressing(group, track, plan);
   return group;
 }

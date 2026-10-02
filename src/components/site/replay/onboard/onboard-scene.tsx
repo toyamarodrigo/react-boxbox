@@ -22,14 +22,24 @@ import {
 } from 'three';
 import { PMREMGenerator, type Renderer } from 'three/webgpu';
 import type { ReplayCircuit } from '@/data/circuit-for-race';
-import { CAR_LENGTH_M, onboardFrame } from '@/data/onboard-frame';
-import { garageShares } from '@/data/pit-garages';
+import { CAR_LENGTH_M, type OnboardCar, onboardFrame } from '@/data/onboard-frame';
+import { boxShare, garageShares } from '@/data/pit-garages';
 import type { ReplayRace } from '@/data/replay-schema';
 import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import type { OnboardCamera } from '../onboard-view';
+import { sidesOf } from './barriers';
 import { buildGarages, buildScenery, disposeScenery } from './scenery';
 import { SKY, skyDome } from './sky';
-import { type TrackModel, angleDelta, pointAt, trackModel } from './track';
+import { WORKING_LANE_MIDDLE, boxSwing } from './surfaces';
+import { MAX_ANISOTROPY } from './textures';
+import {
+  type TrackModel,
+  type TrackPoint,
+  angleDelta,
+  pointAt,
+  sideways,
+  trackModel,
+} from './track';
 
 /** What the sky dome fades to under the horizon, and the hemisphere light's ground: the grass or the pavement. */
 const GROUND_BELOW = { permanent: '#47663a', street: '#77756f' } as const;
@@ -186,7 +196,12 @@ function Scene({
   comparedIds,
   camera: mode,
 }: SceneProps & { track: TrackModel }) {
-  const scenery = useMemo(() => buildScenery(track), [track]);
+  const gl = useThree((state) => state.gl);
+  const scenery = useMemo(
+    () =>
+      buildScenery(track, Math.min((gl as unknown as Renderer).getMaxAnisotropy(), MAX_ANISOTROPY)),
+    [track, gl],
+  );
   useEffect(() => () => disposeScenery(scenery), [scenery]);
   const below = useMemo(
     () => new Color(track.street ? GROUND_BELOW.street : GROUND_BELOW.permanent),
@@ -213,6 +228,28 @@ function Scene({
     [track, race],
   );
   useEffect(() => () => disposeScenery(garages), [garages]);
+  const garageSide = useMemo(() => sidesOf(track).garageSide, [track]);
+
+  /**
+   * Where a car stands in the world: on the racing line, or on the pit lane's line, which runs
+   * in the fast lane. On a stop with a stationary time it moves across into the working lane in
+   * front of its garage and back (`boxSwing`), turned along the way it moves.
+   */
+  const placeCar = (car: OnboardCar): TrackPoint => {
+    if (!car.inPit) return pointAt(track.line, car.metres);
+    if (!car.boxStop) return pointAt(track.pitLine, car.metres);
+    const box = boxShare(race, car.driverId) * circuit.pitLengthM;
+    const at = (metres: number) => {
+      const point = pointAt(track.pitLine, metres);
+      const across = garageSide * WORKING_LANE_MIDDLE * boxSwing(metres, box);
+      const [x, z] = sideways(point.x, point.z, point.heading, across);
+      return { x, z };
+    };
+    const here = at(car.metres);
+    const behind = at(car.metres - 0.5);
+    const ahead = at(car.metres + 0.5);
+    return { ...here, heading: Math.atan2(ahead.z - behind.z, ahead.x - behind.x) };
+  };
 
   const colours = useMemo(
     () =>
@@ -237,12 +274,7 @@ function Scene({
     sky.position.copy(camera.position);
     const { ms, snapped } = raceTime(delta);
     const frame = onboardFrame(race, circuit, ms, followedId, comparedIds);
-    const placed = new Map(
-      frame.cars.map((car) => [
-        car.driverId,
-        pointAt(car.inPit ? track.pitLine : track.line, car.metres),
-      ]),
-    );
+    const placed = new Map(frame.cars.map((car) => [car.driverId, placeCar(car)]));
     const ghosts = new Set(frame.cars.filter((car) => car.ghost).map((car) => car.driverId));
     const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
     const ride = frame.riding?.driverId;

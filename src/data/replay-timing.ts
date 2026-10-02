@@ -258,6 +258,11 @@ export type CarLap = {
   inPit: boolean;
   /** The car stands still in its team's box, for the stop's stationary time (needs a `PitLaneShape`). */
   stationary: boolean;
+  /**
+   * In the pit lane on a stop with a stationary time, from the entry to the exit: the car will
+   * stand, stands or has stood in its box on this stop. False on the lap and on a drive-through.
+   */
+  boxStop: boolean;
 };
 
 /** Where a circuit's pit lane leaves and rejoins the lap, as fractions of it. */
@@ -362,7 +367,7 @@ function pitWindow(
 }
 
 /** Where a car is placed on its lap: `CarLap` without the lap itself. */
-type Placed = { progress: number; fraction: number; inPit: boolean; stationary: boolean };
+type Placed = Pick<CarLap, 'progress' | 'inPit' | 'stationary' | 'boxStop'> & { fraction: number };
 
 /** Whether `stop` has the car standing in its box at `ms`. */
 const standsAt = (stop: PitWindow, ms: number) =>
@@ -414,6 +419,7 @@ function placeWithPit(
       fraction: shape.entry + progress * stop.span,
       inPit: true,
       stationary: standsAt(stop, elapsedMs),
+      boxStop: stop.still !== null,
     };
   }
   if (earlier && elapsedMs < earlier.outAt && earlier.outAt < lap.end) {
@@ -423,6 +429,7 @@ function placeWithPit(
       fraction: shape.entry + progress * earlier.span - 1,
       inPit: true,
       stationary: standsAt(earlier, elapsedMs),
+      boxStop: earlier.still !== null,
     };
   }
   if (stop) {
@@ -431,12 +438,12 @@ function placeWithPit(
     const from = out ?? lap.start;
     const stretch = { from: out === null ? 0 : shape.exit, to: shape.entry };
     const fraction = onTrack(profile, stretch, elapsedMs - from, stop.inAt - from);
-    return { progress: fraction, fraction, inPit: false, stationary: false };
+    return { progress: fraction, fraction, inPit: false, stationary: false, boxStop: false };
   }
   if (earlier && earlier.outAt < lap.end) {
     const stretch = { from: shape.exit, to: 1 };
     const fraction = onTrack(profile, stretch, elapsedMs - earlier.outAt, lap.end - earlier.outAt);
-    return { progress: fraction, fraction, inPit: false, stationary: false };
+    return { progress: fraction, fraction, inPit: false, stationary: false, boxStop: false };
   }
   // No drawable stop touches this lap. A stop that could not be drawn still flags the lap.
   return placeOnLap(lap, elapsedMs, profile);
@@ -490,6 +497,7 @@ export function carLapsAt(
       distance: lap.lap - 1 + placed.fraction,
       inPit: placed.inPit,
       stationary: placed.stationary,
+      boxStop: placed.boxStop,
     });
   }
   return cars;
@@ -525,7 +533,7 @@ function placeCar(
 function placeOnLap(lap: DriverLap, elapsedMs: number, speed: SpeedProfile | undefined): Placed {
   const profile = speed && profileForLap(speed, lap.lap);
   const fraction = onTrack(profile, WHOLE_LAP, elapsedMs - lap.start, lap.end - lap.start);
-  return { progress: fraction, fraction, inPit: lap.row.inPit, stationary: false };
+  return { progress: fraction, fraction, inPit: lap.row.inPit, stationary: false, boxStop: false };
 }
 
 /** The running order at a moment: cars furthest along the race first. Stable for ties. */

@@ -4,6 +4,7 @@
  * boxes, coloured per vertex.
  */
 import { BufferAttribute, BufferGeometry, type Color } from 'three';
+import { GRAIN_TILE_M } from './textures';
 import { type TrackPoint, sideways } from './track';
 
 type Vec3 = [number, number, number];
@@ -45,7 +46,9 @@ export class MeshBuilder {
   /**
    * A strip between `inner` and `outer` metres to the left of travel (negative is right) along
    * `points`, a quad per segment so a colour per segment stays crisp. `y` lifts the inner and
-   * outer edges; the texture coordinates are in metres over `tile`, across and along.
+   * outer edges. The texture coordinates are the ground's own metres (world x and z) over
+   * `tile`: a strip's edges round a corner are longer or shorter than its line, so coordinates
+   * along the line would stretch the texture there, and these never do, at any width.
    */
   strip(
     points: readonly TrackPoint[],
@@ -58,9 +61,8 @@ export class MeshBuilder {
       tile?: number;
     },
   ) {
-    const { inner, outer, colour, closed = false, y = [0, 0], tile = 8 } = options;
+    const { inner, outer, colour, closed = false, y = [0, 0], tile = GRAIN_TILE_M } = options;
     const n = points.length;
-    const along = distances(points, closed);
     for (let segment = 0; segment < (closed ? n : n - 1); segment++) {
       const shade = colour(segment);
       if (!shade) continue;
@@ -71,23 +73,17 @@ export class MeshBuilder {
         return [x, height, z];
       };
       const bi = (segment + 1) % n;
-      const sa = along[segment]!;
-      const sb = along[segment + 1]!;
+      const corners: [Vec3, Vec3, Vec3, Vec3] = [
+        corner(a, inner(segment), y[0]),
+        corner(a, outer(segment), y[1]),
+        corner(b, outer(bi), y[1]),
+        corner(b, inner(bi), y[0]),
+      ];
       this.quad(
-        [
-          corner(a, inner(segment), y[0]),
-          corner(a, outer(segment), y[1]),
-          corner(b, outer(bi), y[1]),
-          corner(b, inner(bi), y[0]),
-        ],
+        corners,
         [0, 1, 0],
         shade,
-        [
-          [inner(segment) / tile, sa / tile],
-          [outer(segment) / tile, sa / tile],
-          [outer(bi) / tile, sb / tile],
-          [inner(bi) / tile, sb / tile],
-        ],
+        corners.map(([x, , z]) => [x / tile, z / tile]),
       );
     }
   }

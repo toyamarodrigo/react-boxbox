@@ -138,7 +138,7 @@ export function planTrackside(track: TrackModel): Plan {
 type Post = { x: number; z: number; height: number };
 
 /** Adds every barrier of the circuit, one merged mesh, plus the fences and their posts. */
-export function addBarriers(group: Group, track: TrackModel, plan: Plan) {
+export function addBarriers(group: Group, track: TrackModel, plan: Plan, anisotropy = 1) {
   const { lap, pit, street } = track;
   const half = track.width / 2;
   const points = pointsOf(lap);
@@ -241,7 +241,7 @@ export function addBarriers(group: Group, track: TrackModel, plan: Plan) {
     ),
   );
   if (!fence.empty) {
-    const map = fenceTexture();
+    const map = fenceTexture(anisotropy);
     group.add(
       new Mesh(
         fence.geometry(),

@@ -221,6 +221,8 @@ describe('onboardFrame in the pit lane', () => {
     }
     expect(frames[0]!.stationary).toBe(false);
     expect(frames.at(-1)!.stationary).toBe(false);
+    // A box stop the whole way through the lane, so the car can pull into the working lane.
+    expect(frames.every((car) => car.boxStop === car.inPit)).toBe(true);
   });
 
   const lasVegas = load('2023-21.json');
@@ -228,7 +230,8 @@ describe('onboardFrame in the pit lane', () => {
     const race = lasVegas!;
     const shape = circuitForRace(race.circuit).pit;
     for (const stop of replayPitStops(race, shape).slice(0, 6)) {
-      expect(ridingThrough(race, stop).frames.some((car) => car.stationary)).toBe(false);
+      const { frames } = ridingThrough(race, stop);
+      expect(frames.some((car) => car.stationary || car.boxStop)).toBe(false);
     }
   });
 
@@ -236,6 +239,7 @@ describe('onboardFrame in the pit lane', () => {
     for (const ms of [0, 40_000, 99_000, 105_000]) {
       for (const car of onboardFrame(race, circuit, ms, 'alpha', ['bravo']).cars) {
         expect(car.stationary).toBe(false);
+        expect(car.boxStop).toBe(false);
       }
     }
   });

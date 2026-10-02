@@ -9,7 +9,7 @@
 import { Color, DoubleSide, type Group, Mesh, MeshStandardMaterial, PlaneGeometry } from 'three';
 import { GARAGE_STRETCH } from '@/data/pit-garages';
 import { MeshBuilder, samplesAlong } from './mesh-builder';
-import { asphaltTextures } from './textures';
+import { grainTexture, roughnessTexture } from './textures';
 import { type Centreline, type TrackModel, type TrackPoint, pointAt } from './track';
 import type { KerbRange, Side } from './trackside';
 
@@ -54,6 +54,26 @@ export function workingLaneAt(share: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** Metres from the line the cars drive to the middle of the working lane, towards the garages. */
+export const WORKING_LANE_MIDDLE = PIT_LANE.fast + PIT_LANE.working / 2;
+
+/**
+ * How many metres before its box a car on a stop with a stationary time starts to leave the fast
+ * lane, and how many after its box it is back in it.
+ */
+export const BOX_SWING_M = 15;
+
+/**
+ * How far across into the working lane such a car is, `metres` along the pit lane with its box
+ * at `boxMetres`: 0 in the fast lane, easing to 1 in front of its garage over `BOX_SWING_M`, where
+ * it stands for its stationary time, and easing back to 0 after. Times `WORKING_LANE_MIDDLE` for
+ * metres across; the place along the lane and the timing stay as they are.
+ */
+export function boxSwing(metres: number, boxMetres: number): number {
+  const t = Math.min(Math.max(1 - Math.abs(metres - boxMetres) / BOX_SWING_M, 0), 1);
+  return t * t * (3 - 2 * t);
+}
+
 const flatMaterial = (options: ConstructorParameters<typeof MeshStandardMaterial>[0]) =>
   new MeshStandardMaterial({ depthWrite: false, side: DoubleSide, ...options });
 
@@ -74,7 +94,11 @@ export type SurfacePlan = {
   garageSide: Side;
 };
 
-export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan) {
+/**
+ * Adds the surfaces to `group`. Their grain textures filter with `anisotropy` (the renderer's
+ * maximum; see `MAX_ANISOTROPY`).
+ */
+export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan, anisotropy = 1) {
   const { lap, pit, centre, radius, street } = track;
   const half = track.width / 2;
   const lapPoints = pointsOf(lap);
@@ -113,7 +137,8 @@ export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan) 
         closed: true,
       });
     }
-    group.add(flat(runoff, flatMaterial({ vertexColors: true, roughness: 1 }), -8));
+    const map = grainTexture('ground', anisotropy);
+    group.add(flat(runoff, flatMaterial({ vertexColors: true, map, roughness: 1 }), -8));
   }
 
   // The pit lane under the lap, so where they meet the lap's asphalt is on top.
@@ -134,7 +159,8 @@ export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan) 
     colour: () => COLOURS.asphalt,
     closed: true,
   });
-  const { map, roughness } = asphaltTextures(Math.round(lap.length));
+  const map = grainTexture('asphalt', anisotropy);
+  const roughness = roughnessTexture(anisotropy);
   group.add(
     flat(
       asphalt,
@@ -148,7 +174,14 @@ export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan) 
   const kerbs = kerbStrips(lap, half, plan.kerbs);
   if (!kerbs.empty) {
     group.add(
-      new Mesh(kerbs.geometry(), new MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })),
+      new Mesh(
+        kerbs.geometry(),
+        new MeshStandardMaterial({
+          vertexColors: true,
+          map: grainTexture('paint', anisotropy),
+          roughness: 0.6,
+        }),
+      ),
     );
   }
 }

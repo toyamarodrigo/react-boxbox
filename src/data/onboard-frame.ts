@@ -26,6 +26,11 @@ export type OnboardCar = {
   /** Standing still in its team's box, for the stop's stationary time; never on the lap. */
   stationary: boolean;
   /**
+   * In the pit lane on a stop with a stationary time, before, during and after it; false on a
+   * drive-through, which stays in the fast lane.
+   */
+  boxStop: boolean;
+  /**
    * Drawn see-through: a car other than the one the camera rides with that is within
    * `GHOST_OVERLAP_M` of it, so two cars in one place do not hide each other.
    */
@@ -70,6 +75,7 @@ function onboardCar(
     inPit: car.inPit,
     metres: share * (car.inPit ? circuit.pitLengthM : circuit.lengthM),
     stationary: car.stationary,
+    boxStop: car.boxStop,
     ghost: false,
   };
 }
