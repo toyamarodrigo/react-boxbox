@@ -18,18 +18,22 @@ import {
   type Texture,
 } from 'three';
 import { addBarriers, planTrackside, sidesOf } from './barriers';
-import { addDressing } from './dressing';
+import { type Density, addDressing } from './dressing';
 import { PIT_LANE, addSurfaces } from './surfaces';
 import { type TrackModel, type TrackPoint, pointAt, sideways } from './track';
 import { FOOTPRINT_CLEARANCE_M, footprintClear, trackIndex } from './trackside';
 
-/** The static scene; its textures filter with `anisotropy`, the renderer's maximum. */
-export function buildScenery(track: TrackModel, anisotropy = 1): Group {
+/**
+ * The static scene; its textures filter with `anisotropy`, the renderer's maximum, and its
+ * trees, grandstands and buildings stand as densely as `density` says (the full scene's by
+ * default).
+ */
+export function buildScenery(track: TrackModel, anisotropy = 1, density?: Density): Group {
   const group = new Group();
   const plan = planTrackside(track);
   addSurfaces(group, track, plan, anisotropy);
   addBarriers(group, track, plan, anisotropy);
-  addDressing(group, track, plan);
+  addDressing(group, track, plan, density);
   return group;
 }
 

@@ -330,8 +330,14 @@ export function carGeometries(): { near: BufferGeometry; far: BufferGeometry } {
   return geometries;
 }
 
-/** One car in `colour`, as a `LOD`, and its two materials, transparent so it can be a ghost. */
-export function carObject(colour: string): { object: LOD; materials: MeshStandardMaterial[] } {
+/**
+ * One car in `colour`, as a `LOD` that switches to its far level `lodM` metres from the camera,
+ * and its two materials, transparent so it can be a ghost.
+ */
+export function carObject(
+  colour: string,
+  lodM = CAR_LOD_SWITCH_M,
+): { object: LOD; materials: MeshStandardMaterial[] } {
   const { near, far } = carGeometries();
   const materials = [
     new MeshStandardMaterial({ color: colour, roughness: 0.4, metalness: 0.15, transparent: true }),
@@ -344,6 +350,6 @@ export function carObject(colour: string): { object: LOD; materials: MeshStandar
   ];
   const object = new LOD();
   object.addLevel(new Mesh(near, materials), 0);
-  object.addLevel(new Mesh(far, materials), CAR_LOD_SWITCH_M, 0.1);
+  object.addLevel(new Mesh(far, materials), lodM, 0.1);
   return { object, materials };
 }

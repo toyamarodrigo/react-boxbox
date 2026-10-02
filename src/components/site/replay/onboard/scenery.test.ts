@@ -3,6 +3,7 @@ import { ConeGeometry, type Group, InstancedMesh, Mesh } from 'three';
 import { circuitForRace } from '@/data/circuit-for-race';
 import { CIRCUITS } from '@/data/circuits';
 import { buildMarshalPanels } from './marshal-panels';
+import { QUALITY } from './quality';
 import { buildScenery } from './scenery';
 import { trackModel } from './track';
 
@@ -41,5 +42,19 @@ describe('buildScenery', () => {
     expect(hasTrees(buildScenery(trackModel(circuitForRace('Autodromo Nazionale di Monza'))))).toBe(
       true,
     );
+  });
+
+  it('stands fewer trees, grandstands and buildings at a lower quality level', () => {
+    const instances = (group: Group) =>
+      meshes(group)
+        .filter((mesh): mesh is InstancedMesh => mesh instanceof InstancedMesh)
+        .reduce((sum, mesh) => sum + mesh.count, 0);
+    for (const circuit of ['Autodromo Nazionale di Monza', 'Circuit de Monaco']) {
+      const track = trackModel(circuitForRace(circuit));
+      const high = instances(buildScenery(track, 1, QUALITY.high));
+      const low = instances(buildScenery(track, 1, QUALITY.low));
+      expect(low, circuit).toBeLessThan(high);
+      expect(instances(buildScenery(track)), circuit).toBe(high);
+    }
   });
 });

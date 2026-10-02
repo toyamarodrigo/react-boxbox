@@ -18,24 +18,33 @@ import {
 } from 'three';
 import type { Plan } from './barriers';
 import { MeshBuilder } from './mesh-builder';
+import { QUALITY, type QualitySettings } from './quality';
 import { KERB, lapPoint } from './surfaces';
 import { random } from './textures';
 import { type TrackModel, angleDelta, sideways } from './track';
 import { FOOTPRINT_CLEARANCE_M, type Side, footprintClear, lapGap, trackIndex } from './trackside';
 
 const GANTRY_COLOUR = new Color('#2b2d31');
-const STAND = { length: 32, depth: 14, every: 36, from: -320, to: 180 } as const;
+const STAND = { length: 32, depth: 14, from: -320, to: 180 } as const;
+
+/** How much stands round the track: the quality level's counts, the full scene's by default. */
+export type Density = Pick<QualitySettings, 'trees' | 'standEvery' | 'buildingEvery'>;
 /** How far a building is sunk into the ground, in metres. */
 const BUILDING_FOOTING_M = 2;
 const FACADES = ['#c9c1b2', '#a9b0b6', '#d8d3c8', '#8e8a83', '#b7a99a', '#9fa7a0'].map(
   (hex) => new Color(hex),
 );
 
-export function addDressing(group: Group, track: TrackModel, plan: Plan) {
-  const stands = addGrandstands(group, track, plan);
+export function addDressing(
+  group: Group,
+  track: TrackModel,
+  plan: Plan,
+  density: Density = QUALITY.high,
+) {
+  const stands = addGrandstands(group, track, plan, density.standEvery);
   addGantry(group, track);
-  if (track.street) addBuildings(group, track, plan, stands);
-  else addTrees(group, track);
+  if (track.street) addBuildings(group, track, plan, stands, density.buildingEvery);
+  else addTrees(group, track, density.trees);
 }
 
 /**
@@ -122,7 +131,7 @@ type Footprint = { x: number; z: number; radius: number };
  * Grandstands along the main straight, opposite the pit lane, behind the barrier: wherever the
  * straight runs straight and a stand clears the rest of the lap and the pit lane.
  */
-function addGrandstands(group: Group, track: TrackModel, plan: Plan): Footprint[] {
+function addGrandstands(group: Group, track: TrackModel, plan: Plan, every: number): Footprint[] {
   const { lap, pit } = track;
   const side: Side = plan.pitSide === 1 ? -1 : 1;
   const lapIndex = trackIndex([lap]);
@@ -130,7 +139,7 @@ function addGrandstands(group: Group, track: TrackModel, plan: Plan): Footprint[
   const placed: Footprint[] = [];
   const holder = new Object3D();
   const matrices: Matrix4[] = [];
-  for (let metres = STAND.from; metres <= STAND.to; metres += STAND.every) {
+  for (let metres = STAND.from; metres <= STAND.to; metres += every) {
     const before = lapPoint(lap, metres - STAND.length / 2);
     const after = lapPoint(lap, metres + STAND.length / 2);
     if (Math.abs(angleDelta(before.heading, after.heading)) > 0.12) continue;
@@ -168,12 +177,11 @@ function addGrandstands(group: Group, track: TrackModel, plan: Plan): Footprint[
 }
 
 /** Trees well away from the track, seeded by the lap's length so each circuit keeps its own. */
-function addTrees(group: Group, track: TrackModel) {
+function addTrees(group: Group, track: TrackModel, wanted: number) {
   const { lap, pit, centre, radius } = track;
   const footing = footingOf(track);
   const index = trackIndex([lap, pit]);
   const next = random(Math.round(lap.length));
-  const wanted = 1600;
   const trees = new InstancedMesh(
     new ConeGeometry(2.6, 9, 7),
     new MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 }),
@@ -202,7 +210,13 @@ function addTrees(group: Group, track: TrackModel) {
  * Generic blocks behind a street circuit's walls, two rows deep on both sides, wherever one
  * clears the lap, the pit lane and the grandstands.
  */
-function addBuildings(group: Group, track: TrackModel, plan: Plan, stands: readonly Footprint[]) {
+function addBuildings(
+  group: Group,
+  track: TrackModel,
+  plan: Plan,
+  stands: readonly Footprint[],
+  every: number,
+) {
   const { lap, pit } = track;
   const lapIndex = trackIndex([lap]);
   const pitIndex = trackIndex([pit]);
@@ -212,7 +226,7 @@ function addBuildings(group: Group, track: TrackModel, plan: Plan, stands: reado
   const colours: Color[] = [];
   const holder = new Object3D();
   for (const side of [1, -1] as const) {
-    for (let metres = 0; metres < lap.length; metres += 24) {
+    for (let metres = 0; metres < lap.length; metres += every) {
       const point = lapPoint(lap, metres);
       let set = Math.abs(plan.barrier[side][sampleAt(track, metres)]!) + 4;
       for (let row = 0; row < 2; row++) {
