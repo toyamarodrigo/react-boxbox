@@ -7,6 +7,14 @@ import { trackWidthFor } from '../src/data/track-widths.ts';
 import { lapModelFromOutline } from '../src/lib/outline-speed-profile.ts';
 import { type PitLaneOptions, pitLaneOffsetFor, pitLanePoints } from '../src/lib/pit-lane.ts';
 import {
+  CALENDAR_2026,
+  type CircuitId,
+  REVERSED,
+  equirectangular,
+  fetchCircuit,
+  lapCoordinates,
+} from './circuit-sources.ts';
+import {
   TRACK_MAP_STROKE_WIDTH,
   fitPoints,
   pointsToPath,
@@ -30,83 +38,21 @@ import {
  * line's curvature with grip, braking, acceleration and top-speed limits
  * (see `src/lib/outline-speed-profile.ts`).
  */
-const SOURCE = 'https://raw.githubusercontent.com/bacinger/f1-circuits/master/circuits';
-
 /** Where the pit lane leaves and rejoins the lap, as fractions of it, unless overridden. */
 const PIT_LANE_DEFAULTS = { entry: 0.94, exit: 0.03 } as const;
 
 /** Per-venue pit lane adjustments: `side` for the odd circuit with the pits outside the loop. */
-const PIT_LANES: Partial<Record<(typeof CALENDAR_2026)[number], Partial<PitLaneOptions>>> = {};
-
-/** The 2026 calendar, in season order. */
-const CALENDAR_2026 = [
-  'au-1953',
-  'cn-2004',
-  'jp-1962',
-  'bh-2002',
-  'sa-2021',
-  'us-2022',
-  'ca-1978',
-  'mc-1929',
-  'es-1991',
-  'at-1969',
-  'gb-1948',
-  'be-1925',
-  'hu-1986',
-  'nl-1948',
-  'it-1922',
-  'es-2026',
-  'az-2016',
-  'sg-2008',
-  'us-2012',
-  'mx-1962',
-  'br-1940',
-  'us-2023',
-  'qa-2004',
-  'ae-2009',
-] as const;
-
-/** The source lists these in the wrong direction of travel; the point order is reversed. */
-const REVERSED = new Set<string>(['sg-2008']);
+const PIT_LANES: Partial<Record<CircuitId, Partial<PitLaneOptions>>> = {};
 
 const WIDTH = 1000;
 const MIN_HEIGHT = 450;
 const MAX_HEIGHT = 800;
 
-type Feature = {
-  properties: { id: string; Name: string; Location: string; length: number };
-  geometry: { type: 'LineString'; coordinates: [number, number][] };
-};
-type FeatureCollection = { features: Feature[] };
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outFile = path.resolve(__dirname, '..', 'src', 'data', 'circuits.ts');
 
-async function fetchCircuit(id: string): Promise<Feature> {
-  const response = await fetch(`${SOURCE}/${id}.geojson`);
-  if (!response.ok) throw new Error(`${id}: HTTP ${response.status}`);
-  const collection = (await response.json()) as FeatureCollection;
-  const feature = collection.features[0];
-  if (!feature || feature.geometry.type !== 'LineString') {
-    throw new Error(`${id}: expected one LineString feature`);
-  }
-  return feature;
-}
-
 function project(coordinates: [number, number][], reversed: boolean): [number, number][] {
-  let points = coordinates;
-  const [first] = points;
-  const last = points.at(-1);
-  // A closed LineString repeats its first point; `pathFromPoints` closes with `Z` instead.
-  if (first && last && first[0] === last[0] && first[1] === last[1]) points = points.slice(0, -1);
-  if (reversed) {
-    // Keep the same start/finish point, reverse the direction of travel.
-    const [start, ...rest] = points;
-    points = start ? [start, ...rest.reverse()] : points;
-  }
-  const meanLat = points.reduce((sum, [, lat]) => sum + lat, 0) / points.length;
-  const k = Math.cos((meanLat * Math.PI) / 180);
-  return points.map(([lon, lat]) => [lon * k, lat]);
+  return equirectangular(lapCoordinates(coordinates, reversed)).points;
 }
 
 function fit(points: [number, number][]) {
@@ -118,7 +64,7 @@ function fit(points: [number, number][]) {
   return fitPoints(points, { width: WIDTH, height, padding: 40 });
 }
 
-function pitLane(outline: [number, number][], id: (typeof CALENDAR_2026)[number]) {
+function pitLane(outline: [number, number][], id: CircuitId) {
   const options = { ...PIT_LANE_DEFAULTS, ...PIT_LANES[id] };
   const points = pitLanePoints(outline, {
     ...options,

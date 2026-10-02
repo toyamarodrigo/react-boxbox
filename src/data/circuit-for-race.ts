@@ -1,5 +1,7 @@
 import { FICTIONAL_CIRCUIT } from '../content/track-map/circuit';
+import { CIRCUIT_ELEVATION } from './circuit-elevation';
 import { CIRCUITS } from './circuits';
+import type { ElevationSource } from './elevation-sources';
 import { outlinePoints, polylineLength } from '../lib/svg-outline';
 import { CONSTANT_SPEED, type SpeedProfile } from './speed-profile';
 import { isStreetCircuit, trackWidthFor } from './track-widths';
@@ -33,6 +35,13 @@ export type ReplayCircuit = {
    * evenly spaced round the lap. Empty for Aster Park, whose cars keep to the outline.
    */
   racingLine: readonly number[];
+  /**
+   * The lap's height for the Onboard view (`circuit-elevation.ts`): metres above its lowest point,
+   * evenly spaced round the lap. Empty, so flat, where there is none, and for Aster Park.
+   */
+  elevation: readonly number[];
+  /** Where the elevation comes from, for the caption's credit; none without one. */
+  elevationSource?: ElevationSource;
 };
 
 /** The pit lane's length in metres: the outline's scale is the lap length over its drawn length. */
@@ -85,6 +94,7 @@ const FALLBACK: ReplayCircuit = {
   widthM: trackWidthFor(undefined),
   street: false,
   racingLine: [],
+  elevation: [],
 };
 
 /** The outline to draw a race on: the real venue when the dataset has it, Aster Park otherwise. */
@@ -98,6 +108,7 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
       const name = normalise(circuit.name);
       return wanted.includes(location) || wanted.includes(name) || name.includes(wanted);
     });
+  const elevation = match && CIRCUIT_ELEVATION[match.id];
   return match
     ? {
         d: match.d,
@@ -111,6 +122,8 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
         widthM: trackWidthFor(match.id),
         street: isStreetCircuit(match.id),
         racingLine: match.racingLine,
+        elevation: elevation?.heights ?? [],
+        elevationSource: elevation?.source,
       }
     : FALLBACK;
 }
