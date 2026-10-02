@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Color, InstancedMesh } from 'three';
+import { Color, InstancedMesh, type Mesh, MeshLambertMaterial, type PlaneGeometry } from 'three';
 import { circuitForRace } from '@/data/circuit-for-race';
 import type { MarshalLight } from '@/data/onboard-frame';
 import { MARSHAL_PANEL_SPACING_M, buildMarshalPanels, setMarshalLights } from './marshal-panels';
@@ -9,13 +9,44 @@ describe('buildMarshalPanels', () => {
   const track = trackModel(circuitForRace('Autodromo Nazionale di Monza'));
   const panels = buildMarshalPanels(track);
 
-  it('stands a panel about every 275 m round the lap, in order from the line', () => {
-    expect(panels.shares.length).toBe(Math.round(track.lap.length / MARSHAL_PANEL_SPACING_M));
+  it('stands a panel about every 160 m round the lap, in order from the line', () => {
+    expect(MARSHAL_PANEL_SPACING_M).toBe(160);
+    const wanted = Math.round(track.lap.length / MARSHAL_PANEL_SPACING_M);
+    // A panel whose footprint would reach another part of the lap is left out.
+    expect(panels.shares.length).toBeGreaterThanOrEqual(wanted - 2);
+    expect(panels.shares.length).toBeLessThanOrEqual(wanted);
     for (const [index, share] of panels.shares.entries()) {
       expect(share).toBeGreaterThanOrEqual(0);
       expect(share).toBeLessThan(1);
-      if (index > 0) expect(share).toBeGreaterThan(panels.shares[index - 1]!);
+      if (index > 0) {
+        expect(share).toBeGreaterThan(panels.shares[index - 1]!);
+        // No gap so long that no panel is in view down it.
+        expect((share - panels.shares[index - 1]!) * track.lap.length).toBeLessThan(250);
+      }
     }
+  });
+
+  it('stands about as many panels on Monaco and Spa as their laps are long', () => {
+    for (const name of ['Circuit de Monaco', 'Circuit de Spa-Francorchamps']) {
+      const other = trackModel(circuitForRace(name));
+      const wanted = Math.round(other.lap.length / MARSHAL_PANEL_SPACING_M);
+      const { shares } = buildMarshalPanels(other);
+      expect(shares.length).toBeGreaterThanOrEqual(wanted - 3);
+      expect(shares.length).toBeLessThanOrEqual(wanted);
+    }
+  });
+
+  it('makes each lit face 1.6 m wide and 1 m tall', () => {
+    const geometry = panels.faces!.geometry as PlaneGeometry;
+    expect(geometry.parameters.width).toBe(1.6);
+    expect(geometry.parameters.height).toBe(1);
+  });
+
+  it('keeps every panel on the low quality level, lit more cheaply', () => {
+    const lite = buildMarshalPanels(track, undefined, { lite: true });
+    expect(lite.shares).toEqual(panels.shares);
+    const housing = lite.group.children[0] as Mesh;
+    expect(housing.material).toBeInstanceOf(MeshLambertMaterial);
   });
 
   it('draws every lit face in one instanced mesh, dark to begin with', () => {

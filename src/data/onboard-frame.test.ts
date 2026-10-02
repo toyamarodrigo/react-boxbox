@@ -321,7 +321,8 @@ describe('marshalLightAt', () => {
     }
   });
 
-  it('shows green for a moment when its flag goes out, then goes dark', () => {
+  it('shows green for 12 s of race time when its flag goes out, then goes dark', () => {
+    expect(GREEN_ON_CLEAR_MS).toBe(12_000);
     // Sector 2 clears at 150 s.
     expect(light(0.3, 149_999)).toBe('yellow');
     expect(light(0.3, 150_000)).toBe('green');
@@ -341,7 +342,8 @@ describe('marshalLightAt', () => {
   it('turns green everywhere when the green flag puts everything out', () => {
     for (const share of [0.1, 0.6]) {
       expect(light(share, 280_000)).toBe('green');
-      expect(light(share, 290_000)).toBe('off');
+      expect(light(share, 280_000 + GREEN_ON_CLEAR_MS - 1)).toBe('green');
+      expect(light(share, 280_000 + GREEN_ON_CLEAR_MS)).toBe('off');
     }
   });
 

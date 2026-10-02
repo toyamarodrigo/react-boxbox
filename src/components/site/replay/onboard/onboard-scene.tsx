@@ -79,7 +79,7 @@ const UNKNOWN_TEAM_COLOUR = '#888888';
 
 /** The sky light and the sun, and the red they lean towards under a red flag, by `amount`. */
 const LIGHTS = { sky: '#dceaff', sun: '#fff4e2' } as const;
-const RED_FLAG_TINT = { colour: new Color('#ff5a4a'), amount: 0.3, rate: 2 } as const;
+const RED_FLAG_TINT = { colour: new Color('#ff5a4a'), amount: 0.45, rate: 2 } as const;
 
 /**
  * A ghost car's opacity, and how fast a car fades to it and back, per second. The fade keeps a
@@ -322,7 +322,11 @@ function Scene({
     }
   }, [scenery, garages, quality.shadows]);
   const garageSide = useMemo(() => sidesOf(track).garageSide, [track]);
-  const panels = useMemo(() => buildMarshalPanels(track), [track]);
+  const { litePanels } = quality;
+  const panels = useMemo(
+    () => buildMarshalPanels(track, undefined, { lite: litePanels }),
+    [track, litePanels],
+  );
   useEffect(() => () => disposeScenery(panels.group), [panels]);
   // Filled in place every frame, as are the cars' places and the ghosts: nothing is made per frame.
   const lights = useRef<MarshalLight[]>([]);
@@ -423,7 +427,7 @@ function Scene({
       shown[index] = marshalLightAt(race, panels.shares[index]!, ms);
     }
     setMarshalLights(panels, shown);
-    // Under a red flag the light leans a little red, eased in and out; not a filter on the canvas.
+    // Under a red flag the light leans towards red, eased in and out; not a filter on the canvas.
     const red = frame.trackStatus === 'red' ? 1 : 0;
     tint.current = snapped
       ? red

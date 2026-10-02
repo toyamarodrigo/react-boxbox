@@ -156,7 +156,7 @@ export function onboardFrame(
 export type MarshalLight = 'off' | 'yellow' | 'green' | 'red';
 
 /** How long, in race time, a panel shows green after its flag goes out, before it goes dark. */
-export const GREEN_ON_CLEAR_MS = 8_000;
+export const GREEN_ON_CLEAR_MS = 12_000;
 
 /** True when `share` (0 to 1 along the lap) is in the slice; a slice with `start > end` wraps. */
 function inSlice({ start, end }: TrackSector, share: number): boolean {

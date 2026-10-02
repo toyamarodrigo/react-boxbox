@@ -25,6 +25,8 @@ export type QualitySettings = {
   fog: { near: number; far: number };
   /** How far from the camera, in metres, a car switches to its far level of detail. */
   carLodM: number;
+  /** The marshal panels' housings lit the cheap way; every panel still stands. */
+  litePanels: boolean;
 };
 
 export const QUALITY: Record<QualityLevel, QualitySettings> = {
@@ -38,6 +40,7 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
     far: 1500,
     fog: { near: 150, far: 1100 },
     carLodM: 40,
+    litePanels: true,
   },
   medium: {
     pixelRatio: 1.5,
@@ -49,6 +52,7 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
     far: 2000,
     fog: { near: 200, far: 1450 },
     carLodM: 55,
+    litePanels: false,
   },
   high: {
     pixelRatio: 2,
@@ -60,6 +64,7 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
     far: 2600,
     fog: { near: 250, far: 1800 },
     carLodM: 70,
+    litePanels: false,
   },
 };
 
