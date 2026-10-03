@@ -208,17 +208,43 @@ export function pitchAt(line: Centreline, metres: number): number {
 const LINE_HEADING_REACH = 2;
 
 /**
- * The offset `share` of the way round a closed racing line (metres to the left of travel, evenly
- * spaced, entry `j` at the share `j / length`); none on an empty one.
+ * The slope at a node from the steps into and out of it, by Steffen's method (1990): never so
+ * steep that the curve passes either neighbour, and flat at a peak or a dip.
  */
-function offsetAt(racingLine: readonly number[], share: number): number {
+function steffenSlope(into: number, out: number): number {
+  return (
+    (Math.sign(into) + Math.sign(out)) *
+    Math.min(Math.abs(into), Math.abs(out), Math.abs(into + out) / 4)
+  );
+}
+
+/**
+ * The offset `share` of the way round a closed racing line (metres to the left of travel, evenly
+ * spaced, entry `j` at the share `j / length`); none on an empty one. A cubic through the nodes
+ * either side gives the line no kink at a node; it never passes the two nodes it joins, so the
+ * line stays as far inside the track as they do.
+ */
+export function offsetAt(racingLine: readonly number[], share: number): number {
   const n = racingLine.length;
   if (n === 0) return 0;
   const at = (((share * n) % n) + n) % n;
   const index = Math.floor(at);
+  const t = at - index;
+  const before = racingLine[(index - 1 + n) % n]!;
   const a = racingLine[index % n]!;
   const b = racingLine[(index + 1) % n]!;
-  return a + (b - a) * (at - index);
+  const after = racingLine[(index + 2) % n]!;
+  const slopeA = steffenSlope(a - before, b - a);
+  const slopeB = steffenSlope(b - a, after - b);
+  // Cubic Hermite, nodes one apart.
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return (
+    a * (2 * t3 - 3 * t2 + 1) +
+    slopeA * (t3 - 2 * t2 + t) +
+    b * (-2 * t3 + 3 * t2) +
+    slopeB * (t3 - t2)
+  );
 }
 
 /** The lap moved onto the racing line, each sample `sideways` by the line's offset. */
