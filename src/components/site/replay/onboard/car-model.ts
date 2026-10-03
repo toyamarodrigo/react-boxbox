@@ -49,15 +49,18 @@ export const CAR_LOD_SWITCH_M = 70;
  */
 export type CarLook = 'plain' | 'rich';
 
-/** The paint's second tone: the bodywork below `below` metres is darker, blended over `blend`. */
-const LOWER_TONE = { below: 0.24, blend: 0.05, shade: 0.42 } as const;
+/**
+ * The paint's second tone: the bodywork below `below` metres is far darker, blended over
+ * `blend`, so the lower body reads as near-black under the team colour.
+ */
+const LOWER_TONE = { below: 0.3, blend: 0.04, shade: 0.16 } as const;
 /** How much lighter the tyres' sidewalls are than their tread. */
 const SIDEWALL_SHADE = 1.6;
 
 const COLOURS = {
-  carbon: '#34373c',
-  metal: '#b9bdc4',
-  rubber: '#151515',
+  carbon: '#26282c',
+  metal: '#aeb2b8',
+  rubber: '#111111',
   light: '#ff2a1e',
 } as const;
 
@@ -151,42 +154,46 @@ export function carGeometries(): Geometries {
 /** A material of the car: fades to a ghost by its opacity. */
 export type CarMaterial = MeshStandardMaterial | MeshPhysicalMaterial;
 
-/** The car's materials in `CAR_MATERIAL`'s order, for `look`, all transparent so they can fade. */
+/**
+ * The car's materials in `CAR_MATERIAL`'s order, for `look`, all transparent so they can fade.
+ * Their roughness steps apart so each reads on its own under the same light: satin paint under a
+ * thin clearcoat (no candy gloss), matt carbon, and rubber rougher still.
+ */
 export function carMaterials(colour: string, look: CarLook): CarMaterial[] {
   const rich = look === 'rich';
   const paint = rich
     ? new MeshPhysicalMaterial({
         color: colour,
-        roughness: 0.32,
-        metalness: 0.08,
-        clearcoat: 1,
-        clearcoatRoughness: 0.1,
+        roughness: 0.36,
+        metalness: 0,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.2,
         vertexColors: true,
         transparent: true,
       })
     : new MeshStandardMaterial({
         color: colour,
-        roughness: 0.38,
-        metalness: 0.12,
+        roughness: 0.4,
+        metalness: 0.05,
         vertexColors: true,
         transparent: true,
       });
   const carbon = new MeshStandardMaterial({
     color: COLOURS.carbon,
-    roughness: rich ? 0.4 : 0.5,
-    metalness: 0.3,
+    roughness: rich ? 0.58 : 0.62,
+    metalness: 0.15,
     map: rich ? carbonWeaveTexture() : null,
     transparent: true,
   });
   const metal = new MeshStandardMaterial({
     color: COLOURS.metal,
-    roughness: 0.32,
-    metalness: 0.95,
+    roughness: 0.34,
+    metalness: 0.9,
     transparent: true,
   });
   const rubber = new MeshStandardMaterial({
     color: COLOURS.rubber,
-    roughness: 0.92,
+    roughness: 0.96,
     metalness: 0,
     vertexColors: true,
     transparent: true,
