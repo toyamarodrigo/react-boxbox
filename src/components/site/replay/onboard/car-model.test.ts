@@ -12,7 +12,7 @@ import {
   lightCar,
   moveCar,
 } from './car-model';
-import { loft } from './car-shapes';
+import { loft, ring, smoothed } from './car-shapes';
 
 const triangles = (geometry: BufferGeometry) => geometry.getAttribute('position').count / 3;
 
@@ -176,5 +176,47 @@ describe('loft', () => {
       expect(front.getAttribute('normal').getX(0)).toBeCloseTo(1);
       expect(back.getAttribute('normal').getX(0)).toBeCloseTo(-1);
     }
+  });
+});
+
+describe('smoothed', () => {
+  it('keeps the given stations and never overshoots between two', () => {
+    const stations = [
+      { x: 2, halfWidth: 0.05, bottom: 0.2, top: 0.3 },
+      { x: 1, halfWidth: 0.3, bottom: 0.1, top: 0.6 },
+      { x: 0, halfWidth: 0.3, bottom: 0.08, top: 0.62 },
+      { x: -1, halfWidth: 0.1, bottom: 0.08, top: 0.4 },
+    ];
+    const steps = 6;
+    const out = smoothed(stations, steps);
+    expect(out).toHaveLength((stations.length - 1) * steps + 1);
+    for (const [index, station] of stations.entries()) {
+      expect(out[index * steps]!.x).toBeCloseTo(station.x);
+      expect(out[index * steps]!.halfWidth).toBeCloseTo(station.halfWidth);
+    }
+    for (const [index, station] of out.entries()) {
+      const gap = Math.min(Math.floor(index / steps), stations.length - 2);
+      const [a, b] = [stations[gap]!, stations[gap + 1]!];
+      for (const measure of ['x', 'halfWidth', 'bottom', 'top'] as const) {
+        expect(station[measure]).toBeGreaterThanOrEqual(Math.min(a[measure], b[measure]) - 1e-9);
+        expect(station[measure]).toBeLessThanOrEqual(Math.max(a[measure], b[measure]) + 1e-9);
+      }
+    }
+  });
+});
+
+describe('ring', () => {
+  it('is widest at its shoulder and tucks in under it', () => {
+    const points = ring(
+      { x: 0, halfWidth: 0.2, bottom: 0, top: 0.5, bend: 0.4, shoulder: 0.8, tuck: 0.5 },
+      32,
+    );
+    const widest = points.reduce((best, point) => (point.z > best.z ? point : best));
+    expect(widest.y).toBeCloseTo(0.4);
+    expect(widest.z).toBeCloseTo(0.2);
+    const low = points.filter((point) => point.y < 0.05);
+    expect(Math.max(...low.map((point) => Math.abs(point.z)))).toBeLessThan(0.12);
+    expect(Math.min(...points.map((point) => point.y))).toBeCloseTo(0);
+    expect(Math.max(...points.map((point) => point.y))).toBeCloseTo(0.5);
   });
 });

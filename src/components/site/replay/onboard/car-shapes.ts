@@ -16,8 +16,10 @@ import {
 
 /**
  * A cross-section of a loft: at `x` along the car, centred `z` across it, `y` from `bottom` to
- * `top`. `bend` is the roundness of its corners: 0 is a box, 1 an ellipse; between, a
- * superellipse.
+ * `top`. `bend` is the roundness of its upper corners and `bendBelow` of its lower ones: 0 is a
+ * box, 1 an ellipse; between, a superellipse. It is widest, `halfWidth`, at `shoulder` (a share
+ * of its height from the bottom), and its lower half tucks in towards the bottom by `tuck` (a
+ * share of `halfWidth`): a sidepod's undercut.
  */
 export type LoftStation = {
   x: number;
@@ -26,31 +28,114 @@ export type LoftStation = {
   bottom: number;
   top: number;
   bend?: number;
+  bendBelow?: number;
+  shoulder?: number;
+  tuck?: number;
 };
 
+const DEFAULT_BEND = 2 / 3;
+
+/** A station with every optional measure at its default. */
+function filled(station: LoftStation): Required<LoftStation> {
+  const bend = station.bend ?? DEFAULT_BEND;
+  return { z: 0, bendBelow: bend, shoulder: 0.5, tuck: 0, ...station, bend };
+}
+
 /** A ring of `sides` points round a station, in its plane; a box ring with four. */
-export function ring(
-  { x, z = 0, halfWidth, bottom, top, bend = 2 / 3 }: LoftStation,
-  sides: number,
-): Vector3[] {
-  const middle = (top + bottom) / 2;
-  const halfHeight = (top - bottom) / 2;
+export function ring(station: LoftStation, sides: number): Vector3[] {
+  const { x, z, halfWidth, bottom, top, bend, bendBelow, shoulder, tuck } = filled(station);
+  const equator = bottom + (top - bottom) * shoulder;
   const box = sides === 4;
   const points: Vector3[] = [];
   for (let side = 0; side < sides; side++) {
     const angle = (side / sides) * Math.PI * 2 + (box ? Math.PI / 4 : 0);
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    const exponent = box ? 0 : bend;
+    const upper = sin >= 0;
+    const exponent = box ? 0 : upper ? bend : bendBelow;
+    const across = Math.sign(cos) * Math.abs(cos) ** exponent;
+    const up = Math.sign(sin) * Math.abs(sin) ** exponent;
+    // Below the shoulder the side tucks in, level with it at first so the turn has no crease.
+    const width = upper ? halfWidth : halfWidth * (1 - tuck * up * up);
     points.push(
-      new Vector3(
-        x,
-        middle + Math.sign(sin) * Math.abs(sin) ** exponent * halfHeight,
-        z + Math.sign(cos) * Math.abs(cos) ** exponent * halfWidth,
-      ),
+      new Vector3(x, equator + up * (upper ? top - equator : equator - bottom), z + across * width),
     );
   }
   return points;
+}
+
+/** The measures a loft's stations are smoothed over. */
+const MEASURES = [
+  'x',
+  'z',
+  'halfWidth',
+  'bottom',
+  'top',
+  'bend',
+  'bendBelow',
+  'shoulder',
+  'tuck',
+] as const;
+
+/**
+ * The slopes of a monotone cubic through `values`, one a step apart (Fritsch–Carlson): the curve
+ * never overshoots between two values, so a smoothed body never dips through the floor.
+ */
+function monotoneSlopes(values: readonly number[]): number[] {
+  const n = values.length;
+  const secants = values.slice(1).map((value, index) => value - values[index]!);
+  const slopes = values.map((_, index) => {
+    if (index === 0) return secants[0] ?? 0;
+    if (index === n - 1) return secants[n - 2]!;
+    const [before, after] = [secants[index - 1]!, secants[index]!];
+    return before * after <= 0 ? 0 : (before + after) / 2;
+  });
+  for (const [index, secant] of secants.entries()) {
+    if (secant === 0) {
+      slopes[index] = 0;
+      slopes[index + 1] = 0;
+      continue;
+    }
+    const a = slopes[index]! / secant;
+    const b = slopes[index + 1]! / secant;
+    const length = Math.hypot(a, b);
+    if (length > 3) {
+      slopes[index] = (3 / length) * a * secant;
+      slopes[index + 1] = (3 / length) * b * secant;
+    }
+  }
+  return slopes;
+}
+
+/**
+ * `stations` with `steps` smooth stations in each gap between two: every measure follows a
+ * monotone cubic through the given ones, so a loft's outline curves instead of kinking at each
+ * station.
+ */
+export function smoothed(stations: readonly LoftStation[], steps: number): LoftStation[] {
+  const full = stations.map(filled);
+  const slopes = MEASURES.map((measure) => monotoneSlopes(full.map((station) => station[measure])));
+  const out: LoftStation[] = [];
+  for (let index = 0; index + 1 < full.length; index++) {
+    for (let step = 0; step < steps; step++) {
+      const t = step / steps;
+      const h00 = 2 * t ** 3 - 3 * t ** 2 + 1;
+      const h10 = t ** 3 - 2 * t ** 2 + t;
+      const h01 = 3 * t ** 2 - 2 * t ** 3;
+      const h11 = t ** 3 - t ** 2;
+      const station = { ...full[index]! };
+      for (const [m, measure] of MEASURES.entries()) {
+        station[measure] =
+          h00 * full[index]![measure] +
+          h10 * slopes[m]![index]! +
+          h01 * full[index + 1]![measure] +
+          h11 * slopes[m]![index + 1]!;
+      }
+      out.push(station);
+    }
+  }
+  out.push(full.at(-1)!);
+  return out;
 }
 
 /**
@@ -101,14 +186,17 @@ const FORWARD = new Vector3(1, 0, 0);
 const BACKWARD = new Vector3(-1, 0, 0);
 
 /**
- * A smooth tube through `stations`, front (greatest `x`) to back, with its front and back caps
- * apart so they can take another material.
+ * A smooth tube through `stations`, front (greatest `x`) to back, `steps` rings to each gap
+ * between them, with its front and back caps apart so they can take another material.
  */
 export function loft(
   stations: readonly LoftStation[],
   sides: number,
+  steps = 1,
 ): { tube: BufferGeometry; front: BufferGeometry; back: BufferGeometry } {
-  const rings = stations.map((station) => ring(station, sides));
+  const rings = (steps > 1 ? smoothed(stations, steps) : stations).map((station) =>
+    ring(station, sides),
+  );
   return {
     tube: skin(rings),
     front: cap(rings[0]!, FORWARD),
