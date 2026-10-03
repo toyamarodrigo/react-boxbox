@@ -23,6 +23,7 @@ import {
   Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CAR_LENGTH_M } from '@/data/onboard-frame';
 import { cornerRoll, rearLightLevel, suspensionBob, wheelSpin } from './car-motion';
 import {
   AXLE,
@@ -51,9 +52,23 @@ export type CarLook = 'plain' | 'rich';
 
 /**
  * The paint's second tone: the bodywork below `below` metres is far darker, blended over
- * `blend`, so the lower body reads as near-black under the team colour.
+ * `blend`, so the lower body reads as near-black under the team colour. Ahead of `noseFrom`
+ * metres the line drops along the nose to `noseTip` at its tip, so the low nose keeps its colour.
  */
-const LOWER_TONE = { below: 0.3, blend: 0.04, shade: 0.16 } as const;
+const LOWER_TONE = {
+  below: 0.3,
+  blend: 0.04,
+  shade: 0.16,
+  noseFrom: 1.2,
+  noseTip: 0.06,
+} as const;
+
+/** Where the paint's lower tone starts, in metres up, `x` metres along the car. */
+function lowerToneLine(x: number): number {
+  const { below, noseFrom, noseTip } = LOWER_TONE;
+  const along = Math.min(1, Math.max(0, (x - noseFrom) / (CAR_LENGTH_M / 2 - noseFrom)));
+  return below + (noseTip - below) * along;
+}
 /** How much lighter the tyres' sidewalls are than their tread. */
 const SIDEWALL_SHADE = 1.6;
 
@@ -94,10 +109,10 @@ function mergeMaterial(name: CarMaterialName, parts: BufferGeometry[]): BufferGe
     const y = position.getY(index);
     let shade = 1;
     if (name === 'paint') {
+      const line = lowerToneLine(position.getX(index));
       shade =
         LOWER_TONE.shade +
-        (1 - LOWER_TONE.shade) *
-          smoothstep(LOWER_TONE.below - LOWER_TONE.blend, LOWER_TONE.below + LOWER_TONE.blend, y);
+        (1 - LOWER_TONE.shade) * smoothstep(line - LOWER_TONE.blend, line + LOWER_TONE.blend, y);
     } else if (name === 'rubber') {
       // Off the tread (the wheel's own x and y round its axle on z) is sidewall.
       const radius = Math.hypot(position.getX(index), y);

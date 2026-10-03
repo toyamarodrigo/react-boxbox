@@ -62,15 +62,20 @@ describe('carGeometries', () => {
       const group = geometry.groups.find((item) => item.materialIndex === materialIndex)!;
       const colour = geometry.getAttribute('color');
       const position = geometry.getAttribute('position');
-      const out: { y: number; shade: number }[] = [];
+      const out: { x: number; y: number; shade: number }[] = [];
       for (let index = group.start; index < group.start + group.count; index++) {
-        out.push({ y: position.getY(index), shade: colour.getX(index) });
+        out.push({ x: position.getX(index), y: position.getY(index), shade: colour.getX(index) });
       }
       return out;
     };
     const paint = shades(near, CAR_MATERIAL.paint);
     expect(paint.filter(({ y }) => y > 0.4).every(({ shade }) => shade === 1)).toBe(true);
-    expect(paint.filter(({ y }) => y < 0.15).every(({ shade }) => shade < 0.5)).toBe(true);
+    const body = paint.filter(({ x }) => x < 1.2);
+    expect(body.filter(({ y }) => y < 0.2).every(({ shade }) => shade < 0.3)).toBe(true);
+    // The low nose keeps the team colour on top.
+    const tip = paint.filter(({ x, y }) => x > 2.6 && y > 0.14);
+    expect(tip.length).toBeGreaterThan(0);
+    expect(tip.every(({ shade }) => shade === 1)).toBe(true);
     const rubber = shades(wheel, CAR_MATERIAL.rubber);
     expect(new Set(rubber.map(({ shade }) => shade)).size).toBe(2);
   });
