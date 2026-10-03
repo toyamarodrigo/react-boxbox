@@ -17,3 +17,6 @@ todos.json
 .playwright-mcp
 .artifacts
 .cache/elevation/
+
+# Playwright output from local visual checks
+test-results/
