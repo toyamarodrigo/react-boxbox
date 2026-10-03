@@ -53,8 +53,10 @@ import {
   carObject,
   disposeCar,
   fadeCar,
+  fadedOut,
   lightCar,
   moveCar,
+  tcamShare,
 } from './car-model';
 import { buildMarshalPanels, setMarshalLights } from './marshal-panels';
 import {
@@ -438,19 +440,32 @@ function Scene({
       places.set(car.driverId, placeCar(car));
       if (car.ghost) ghostIds.add(car.driverId);
     }
-    const fade = snapped ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
     const ride = frame.riding?.driverId;
+    const car = ride === undefined ? undefined : places.get(ride);
+    // A switch of camera snaps the fades too, so a car never shows round a new T-cam.
+    const fade = snapped || view.current.mode !== mode ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
+    const tcam = mode === 'tcam' ? car : undefined;
     for (const [driverId, rig] of cars.current) {
       const point = places.get(driverId);
       // Every car's materials are transparent, so a ghost needs no shader change: a solid car is
       // at opacity 1 and writes depth, a ghost does not, so it never hides the track behind it.
-      fadeCar(rig, ghostIds.has(driverId) ? GHOST.opacity : 1, fade);
+      let opacity = ghostIds.has(driverId) ? GHOST.opacity : 1;
+      // In T-cam another car overlapping the riding one would be drawn round the camera.
+      if (tcam && point && driverId !== ride) {
+        opacity *= tcamShare(
+          Math.hypot(
+            point.x - (tcam.x + Math.cos(tcam.heading) * TCAM.ahead),
+            point.z - (tcam.z + Math.sin(tcam.heading) * TCAM.ahead),
+          ),
+        );
+      }
+      fadeCar(rig, opacity, fade);
       lightCar(rig, frame.trackStatus);
       // In T-cam the camera is on the riding car, so its own body would fill the view.
-      moveCar(rig, mode === 'tcam' && driverId === ride ? undefined : point, delta, snapped);
+      const hidden = (mode === 'tcam' && driverId === ride) || fadedOut(rig);
+      moveCar(rig, hidden ? undefined : point, delta, snapped);
     }
 
-    const car = ride === undefined ? undefined : places.get(ride);
     if (!car || ride === undefined) return;
     // The shadow's light rides along, so its small square of shadow is always round the car.
     const sun = sunLight.current;

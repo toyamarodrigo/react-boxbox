@@ -8,9 +8,12 @@ import {
   CAR_WIDTH_M,
   carGeometries,
   carObject,
+  TCAM_CLEAR,
   fadeCar,
+  fadedOut,
   lightCar,
   moveCar,
+  tcamShare,
 } from './car-model';
 import { WHEEL_RADIUS } from './car-parts';
 import { loft, ring, smoothed } from './car-shapes';
@@ -110,12 +113,33 @@ describe('carObject', () => {
     expect(rig.materials.every((material) => material.depthWrite === true)).toBe(true);
   });
 
+  it('fades a car out altogether, and says so, so it need not be drawn', () => {
+    const rig = carObject('#ff8000');
+    fadeCar(rig, 0, 0.5);
+    expect(fadedOut(rig)).toBe(false);
+    fadeCar(rig, 0, 1);
+    expect(fadedOut(rig)).toBe(true);
+    expect(rig.shadow.material.opacity).toBe(0);
+  });
+
   it('burns the rear light brighter under a safety car', () => {
     const rig = carObject('#ff8000');
     lightCar(rig, 'green');
     const idle = rig.materials[CAR_MATERIAL.light]!.emissiveIntensity;
     lightCar(rig, 'sc');
     expect(rig.materials[CAR_MATERIAL.light]!.emissiveIntensity).toBeGreaterThan(idle);
+  });
+});
+
+describe('tcamShare', () => {
+  it('hides another car round a T-cam and shows it in full clear of it', () => {
+    expect(tcamShare(0)).toBe(0);
+    expect(tcamShare(TCAM_CLEAR.hidden)).toBe(0);
+    const between = tcamShare((TCAM_CLEAR.hidden + TCAM_CLEAR.shown) / 2);
+    expect(between).toBeGreaterThan(0);
+    expect(between).toBeLessThan(1);
+    expect(tcamShare(TCAM_CLEAR.shown)).toBe(1);
+    expect(tcamShare(100)).toBe(1);
   });
 });
 

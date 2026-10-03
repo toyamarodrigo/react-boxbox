@@ -348,6 +348,21 @@ export function fadeCar(rig: CarRig, target: number, fade: number) {
   rig.shadow.material.opacity = SHADOW_OPACITY * rig.materials[CAR_MATERIAL.paint]!.opacity;
 }
 
+/**
+ * How near a T-cam, in metres along the ground, another car is gone (`hidden`) and back in full
+ * (`shown`): one that overlaps the riding car would be drawn round the camera, a huge body
+ * filling the bottom of the view.
+ */
+export const TCAM_CLEAR = { hidden: 4, shown: 8 } as const;
+
+/** How much of another car a T-cam shows at `distance` metres from it: none close by, all clear of it. */
+export function tcamShare(distance: number): number {
+  return smoothstep(TCAM_CLEAR.hidden, TCAM_CLEAR.shown, distance);
+}
+
+/** Whether the car has faded out altogether, so it need not be drawn. */
+export const fadedOut = (rig: CarRig) => rig.materials[CAR_MATERIAL.paint]!.opacity === 0;
+
 /** Burns the rear light as the track status asks (`rearLightLevel`). */
 export function lightCar(rig: CarRig, trackStatus: string) {
   rig.materials[CAR_MATERIAL.light]!.emissiveIntensity =
