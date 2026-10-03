@@ -12,6 +12,7 @@ import {
   lightCar,
   moveCar,
 } from './car-model';
+import { WHEEL_RADIUS } from './car-parts';
 import { loft, ring, smoothed } from './car-shapes';
 
 const triangles = (geometry: BufferGeometry) => geometry.getAttribute('position').count / 3;
@@ -126,9 +127,9 @@ describe('moveCar', () => {
     moveCar(rig, place(0, 0), 1 / 60, true);
     expect(rig.object.visible).toBe(true);
     expect(rig.motion.spin).toBe(0);
-    moveCar(rig, place(0.36, 0), 1 / 60, false);
+    moveCar(rig, place(WHEEL_RADIUS, 0), 1 / 60, false);
     expect(rig.motion.spin).toBeCloseTo(1);
-    expect(rig.motion.travelled).toBeCloseTo(0.36);
+    expect(rig.motion.travelled).toBeCloseTo(WHEEL_RADIUS);
     moveCar(rig, undefined, 1 / 60, false);
     expect(rig.object.visible).toBe(false);
   });

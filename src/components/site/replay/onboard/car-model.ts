@@ -143,7 +143,7 @@ export function carGeometries(): Geometries {
   geometries ??= {
     near: level(nearParts()),
     far: level(farParts()),
-    wheel: level(wheelParts(36)),
+    wheel: level(wheelParts(48)),
   };
   return geometries;
 }
