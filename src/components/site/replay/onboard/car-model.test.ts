@@ -7,13 +7,14 @@ import {
   CAR_MATERIAL,
   CAR_WIDTH_M,
   carGeometries,
+  CHASE_CLEAR,
+  cameraShare,
   carObject,
   TCAM_CLEAR,
   fadeCar,
   fadedOut,
   lightCar,
   moveCar,
-  tcamShare,
 } from './car-model';
 import { WHEEL_RADIUS } from './car-parts';
 import { loft, ring, smoothed } from './car-shapes';
@@ -136,15 +137,21 @@ describe('carObject', () => {
   });
 });
 
-describe('tcamShare', () => {
+describe('cameraShare', () => {
   it('hides another car round a T-cam and shows it in full clear of it', () => {
-    expect(tcamShare(0)).toBe(0);
-    expect(tcamShare(TCAM_CLEAR.hidden)).toBe(0);
-    const between = tcamShare((TCAM_CLEAR.hidden + TCAM_CLEAR.shown) / 2);
+    expect(cameraShare(0)).toBe(0);
+    expect(cameraShare(TCAM_CLEAR.hidden)).toBe(0);
+    const between = cameraShare((TCAM_CLEAR.hidden + TCAM_CLEAR.shown) / 2);
     expect(between).toBeGreaterThan(0);
     expect(between).toBeLessThan(1);
-    expect(tcamShare(TCAM_CLEAR.shown)).toBe(1);
-    expect(tcamShare(100)).toBe(1);
+    expect(cameraShare(TCAM_CLEAR.shown)).toBe(1);
+    expect(cameraShare(100)).toBe(1);
+  });
+
+  it('hides only a car about where the chase camera stands, not one alongside the followed car', () => {
+    expect(cameraShare(0.5, CHASE_CLEAR)).toBe(0);
+    // Two metres beside a car the chase camera follows, 6.5 m ahead of it.
+    expect(cameraShare(Math.hypot(6.5, 2), CHASE_CLEAR)).toBe(1);
   });
 });
 

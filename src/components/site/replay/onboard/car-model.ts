@@ -370,9 +370,21 @@ export function fadeCar(rig: CarRig, target: number, fade: number) {
  */
 export const TCAM_CLEAR = { hidden: 4, shown: 8 } as const;
 
-/** How much of another car a T-cam shows at `distance` metres from it: none close by, all clear of it. */
-export function tcamShare(distance: number): number {
-  return smoothstep(TCAM_CLEAR.hidden, TCAM_CLEAR.shown, distance);
+/**
+ * The same round the chase camera, which stands behind the car it follows: only a car about where
+ * the camera stands goes, so one alongside the followed car stays.
+ */
+export const CHASE_CLEAR = { hidden: 2, shown: 4.5 } as const;
+
+/**
+ * How much of another car a camera shows at `distance` metres from it, by its `clear` reach: none
+ * close by, all clear of it.
+ */
+export function cameraShare(
+  distance: number,
+  clear: { hidden: number; shown: number } = TCAM_CLEAR,
+): number {
+  return smoothstep(clear.hidden, clear.shown, distance);
 }
 
 /** Whether the car has faded out altogether, so it need not be drawn. */

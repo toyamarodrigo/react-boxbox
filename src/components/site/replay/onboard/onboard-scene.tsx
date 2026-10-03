@@ -47,16 +47,19 @@ import { REPLAY_TICK_MS, type RaceReplay } from '@/data/use-race-replay';
 import { graphicsSupport } from '../graphics-support';
 import type { OnboardCamera } from '../onboard-view';
 import { sidesOf } from './barriers';
+import { chaseFov, chaseLine, chaseView, CHASE } from './car-camera';
 import {
   type CarPlace,
   type CarRig,
+  CHASE_CLEAR,
+  cameraShare,
   carObject,
   disposeCar,
   fadeCar,
   fadedOut,
   lightCar,
   moveCar,
-  tcamShare,
+  TCAM_CLEAR,
 } from './car-model';
 import { buildMarshalPanels, setMarshalLights } from './marshal-panels';
 import {
@@ -111,7 +114,13 @@ const GHOST = { opacity: 0.35, fadeRate: 12 } as const;
  * track, ahead of the centre (just behind the front axle, which is about 1.7 m ahead), and the
  * small downward pitch it looks ahead along the track with, in radians.
  */
-const TCAM = { height: 1.1, ahead: 1.4, pitch: 0.03 } as const;
+const TCAM = { height: 1.1, ahead: 1.4, pitch: 0.03, fov: 75 } as const;
+
+/**
+ * How fast a camera's heading follows its line, per second: the T-cam the car's own heading, the
+ * chase camera the track's chord behind the car.
+ */
+const HEADING_RATE = 10;
 
 /**
  * Shadows on or off. The type is named so R3F does not fall back on PCFSoftShadowMap, which
@@ -413,6 +422,7 @@ function Scene({
     ride: '',
     mode: undefined,
   });
+  const aim = useMemo(() => new Vector3(), []);
 
   useFrame((state, delta) => {
     if (!drawn.current) {
@@ -446,23 +456,78 @@ function Scene({
       places.set(car.driverId, placeCar(car));
       if (car.ghost) ghostIds.add(car.driverId);
     }
-    const ride = frame.riding?.driverId;
+    const riding = frame.riding;
+    const ride = riding?.driverId;
     const car = ride === undefined ? undefined : places.get(ride);
+    const last = view.current;
     // A switch of camera snaps the fades too, so a car never shows round a new T-cam.
-    const fade = snapped || view.current.mode !== mode ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
-    const tcam = mode === 'tcam' ? car : undefined;
+    const fade = snapped || last.mode !== mode ? 1 : 1 - Math.exp(-GHOST.fadeRate * delta);
+    if (riding && car) {
+      // The shadow's light rides along, so its small square of shadow is always round the car.
+      const sun = sunLight.current;
+      if (sun && quality.shadows) {
+        sun.target.position.set(car.x, car.y, car.z);
+        sun.target.updateMatrixWorld();
+        sun.position.copy(sun.target.position).addScaledVector(sunDirection, SUN_SHADOW.distance);
+      }
+      const fov = mode === 'tcam' ? TCAM.fov : chaseFov(camera.aspect);
+      if (camera.fov !== fov) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+      }
+      // The T-cam looks along the car; the chase camera along the track it drove, up its slope.
+      const behind =
+        mode === 'tcam'
+          ? undefined
+          : placeCar({ ...riding, metres: riding.metres - CHASE.distance });
+      const line = behind ? chaseLine(car, behind) : { heading: car.heading, slope: 0 };
+      if (snapped || last.mode !== mode || last.ride !== ride) {
+        last.heading = line.heading;
+        last.ride = riding.driverId;
+        last.mode = mode;
+      } else {
+        // Smoothed so the view does not twitch where the heading changes between samples.
+        last.heading +=
+          angleDelta(last.heading, line.heading) * (1 - Math.exp(-HEADING_RATE * delta));
+      }
+      if (mode === 'tcam') {
+        // Rigid on the car just behind its front axle, looking ahead along the track.
+        const slope = Math.tan(car.pitch);
+        camera.position.set(
+          car.x + Math.cos(car.heading) * TCAM.ahead,
+          car.y + TCAM.height + slope * TCAM.ahead,
+          car.z + Math.sin(car.heading) * TCAM.ahead,
+        );
+        const ahead = 50;
+        camera.lookAt(
+          camera.position.x + Math.cos(last.heading) * ahead,
+          camera.position.y + Math.tan(car.pitch - TCAM.pitch) * ahead,
+          camera.position.z + Math.sin(last.heading) * ahead,
+        );
+      } else {
+        // On the lap, kept inside its edges; in the pit lane, on the lane the car drove.
+        const edge = riding.inPit
+          ? undefined
+          : {
+              centre: pointAt(track.lap, riding.metres - CHASE.distance),
+              half: track.width / 2 - CHASE.edge,
+            };
+        chaseView(car, last.heading, line.slope, camera.position, aim, edge);
+        camera.lookAt(aim);
+      }
+    }
+
+    // Another car close round the camera would be drawn round it, a huge body filling the view.
+    const clear = car ? (mode === 'tcam' ? TCAM_CLEAR : CHASE_CLEAR) : undefined;
     for (const [driverId, rig] of cars.current) {
       const point = places.get(driverId);
       // Every car's materials are transparent, so a ghost needs no shader change: a solid car is
       // at opacity 1 and writes depth, a ghost does not, so it never hides the track behind it.
       let opacity = ghostIds.has(driverId) ? GHOST.opacity : 1;
-      // In T-cam another car overlapping the riding one would be drawn round the camera.
-      if (tcam && point && driverId !== ride) {
-        opacity *= tcamShare(
-          Math.hypot(
-            point.x - (tcam.x + Math.cos(tcam.heading) * TCAM.ahead),
-            point.z - (tcam.z + Math.sin(tcam.heading) * TCAM.ahead),
-          ),
+      if (clear && point && driverId !== ride) {
+        opacity *= cameraShare(
+          Math.hypot(point.x - camera.position.x, point.z - camera.position.z),
+          clear,
         );
       }
       fadeCar(rig, opacity, fade);
@@ -470,50 +535,6 @@ function Scene({
       // In T-cam the camera is on the riding car, so its own body would fill the view.
       const hidden = (mode === 'tcam' && driverId === ride) || fadedOut(rig);
       moveCar(rig, hidden ? undefined : point, delta, snapped);
-    }
-
-    if (!car || ride === undefined) return;
-    // The shadow's light rides along, so its small square of shadow is always round the car.
-    const sun = sunLight.current;
-    if (sun && quality.shadows) {
-      sun.target.position.set(car.x, car.y, car.z);
-      sun.target.updateMatrixWorld();
-      sun.position.copy(sun.target.position).addScaledVector(sunDirection, SUN_SHADOW.distance);
-    }
-    const last = view.current;
-    if (snapped || last.mode !== mode || last.ride !== ride) {
-      if (last.mode !== mode) {
-        camera.fov = mode === 'tcam' ? 75 : 62;
-        camera.updateProjectionMatrix();
-      }
-      last.heading = car.heading;
-      last.ride = ride;
-      last.mode = mode;
-    } else {
-      // Smoothed so the view does not twitch where the heading changes between samples.
-      const rate = mode === 'tcam' ? 10 : 4;
-      last.heading += angleDelta(last.heading, car.heading) * (1 - Math.exp(-rate * delta));
-    }
-    const dx = Math.cos(last.heading);
-    const dz = Math.sin(last.heading);
-    // The slope the car is on, so the camera climbs and dips along with it.
-    const slope = Math.tan(car.pitch);
-    if (mode === 'tcam') {
-      // Rigid on the car just behind its front axle, looking ahead along the track.
-      camera.position.set(
-        car.x + Math.cos(car.heading) * TCAM.ahead,
-        car.y + TCAM.height + slope * TCAM.ahead,
-        car.z + Math.sin(car.heading) * TCAM.ahead,
-      );
-      const ahead = 50;
-      camera.lookAt(
-        camera.position.x + dx * ahead,
-        camera.position.y + Math.tan(car.pitch - TCAM.pitch) * ahead,
-        camera.position.z + dz * ahead,
-      );
-    } else {
-      camera.position.set(car.x - dx * 9.5, car.y + 3.2 - slope * 9.5, car.z - dz * 9.5);
-      camera.lookAt(car.x + dx * 12, car.y + 1 + slope * 12, car.z + dz * 12);
     }
   });
 
