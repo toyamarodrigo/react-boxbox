@@ -19,7 +19,7 @@ import {
 import type { Plan } from './barriers';
 import { MeshBuilder } from './mesh-builder';
 import { QUALITY, type QualitySettings } from './quality';
-import { KERB, lapPoint } from './surfaces';
+import { GROUND, type GroundGrid, KERB, gridHeight, lapPoint } from './surfaces';
 import { random } from './textures';
 import { type TrackModel, angleDelta, sideways } from './track';
 import { FOOTPRINT_CLEARANCE_M, type Side, footprintClear, lapGap, trackIndex } from './trackside';
@@ -40,22 +40,27 @@ export function addDressing(
   track: TrackModel,
   plan: Plan,
   density: Density = QUALITY.high,
+  ground?: GroundGrid,
 ) {
   const stands = addGrandstands(group, track, plan, density.standEvery);
   addGantry(group, track);
-  if (track.street) addBuildings(group, track, plan, stands, density.buildingEvery);
-  else addTrees(group, track, density.trees);
+  if (track.street) addBuildings(group, track, plan, stands, density.buildingEvery, ground);
+  else addTrees(group, track, density.trees, ground);
 }
 
 /**
  * Where something standing at `x`, `z` starts: on rising ground, `sunk` metres into it, so it
  * never floats at its lower side (the ground hides the rest); on a flat circuit, at 0, since its
- * ground hides nothing.
+ * ground hides nothing. On `ground` as drawn where there is one, which `groundGrid` lowers under
+ * the surfaces near the track.
  */
 const footingOf =
-  (track: TrackModel) =>
-  (x: number, z: number, sunk: number): number =>
-    track.elevated ? track.groundAt(x, z) - sunk : 0;
+  (track: TrackModel, ground?: GroundGrid) =>
+  (x: number, z: number, sunk: number): number => {
+    if (!track.elevated) return 0;
+    const height = ground ? gridHeight(ground, x, z) + GROUND.drop : track.groundAt(x, z);
+    return height - sunk;
+  };
 
 /** The lap's sample nearest `metres` along it, in its own metres. */
 const sampleAt = (track: TrackModel, metres: number) => {
@@ -177,9 +182,9 @@ function addGrandstands(group: Group, track: TrackModel, plan: Plan, every: numb
 }
 
 /** Trees well away from the track, seeded by the lap's length so each circuit keeps its own. */
-function addTrees(group: Group, track: TrackModel, wanted: number) {
+function addTrees(group: Group, track: TrackModel, wanted: number, ground?: GroundGrid) {
   const { lap, pit, centre, radius } = track;
-  const footing = footingOf(track);
+  const footing = footingOf(track, ground);
   const index = trackIndex([lap, pit]);
   const next = random(Math.round(lap.length));
   const trees = new InstancedMesh(
@@ -216,11 +221,12 @@ function addBuildings(
   plan: Plan,
   stands: readonly Footprint[],
   every: number,
+  ground?: GroundGrid,
 ) {
   const { lap, pit } = track;
   const lapIndex = trackIndex([lap]);
   const pitIndex = trackIndex([pit]);
-  const footing = footingOf(track);
+  const footing = footingOf(track, ground);
   const next = random(Math.round(lap.length) + 7);
   const matrices: Matrix4[] = [];
   const colours: Color[] = [];

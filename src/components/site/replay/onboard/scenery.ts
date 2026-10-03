@@ -19,7 +19,7 @@ import {
 } from 'three';
 import { addBarriers, planTrackside, sidesOf } from './barriers';
 import { type Density, addDressing } from './dressing';
-import { PIT_LANE, addSurfaces } from './surfaces';
+import { PIT_LANE, addSurfaces, groundGrid } from './surfaces';
 import { type TrackModel, type TrackPoint, pointAt, sideways } from './track';
 import { FOOTPRINT_CLEARANCE_M, footprintClear, trackIndex } from './trackside';
 
@@ -31,9 +31,10 @@ import { FOOTPRINT_CLEARANCE_M, footprintClear, trackIndex } from './trackside';
 export function buildScenery(track: TrackModel, anisotropy = 1, density?: Density): Group {
   const group = new Group();
   const plan = planTrackside(track);
-  addSurfaces(group, track, plan, anisotropy);
+  const ground = track.elevated ? groundGrid(track, plan) : undefined;
+  addSurfaces(group, track, plan, anisotropy, ground);
   addBarriers(group, track, plan, anisotropy);
-  addDressing(group, track, plan, density);
+  addDressing(group, track, plan, density, ground);
   return group;
 }
 
