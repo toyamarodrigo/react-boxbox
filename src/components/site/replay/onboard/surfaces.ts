@@ -19,7 +19,14 @@ import {
 import { GARAGE_STRETCH } from '@/data/pit-garages';
 import { MeshBuilder, samplesAlong } from './mesh-builder';
 import { grainTexture, roughnessTexture } from './textures';
-import { type Centreline, type TrackModel, type TrackPoint, pointAt } from './track';
+import {
+  type Centreline,
+  type TrackModel,
+  type TrackPoint,
+  angleDelta,
+  pointAt,
+  sideways,
+} from './track';
 import type { KerbRange, Side } from './trackside';
 
 export const COLOURS = {
@@ -127,25 +134,152 @@ export function groundAxis(low: number, high: number, reach: number): number[] {
   return [...before, ...inner, ...after];
 }
 
+/** The ground's heightfield: its grid lines and a height at each crossing, row by row along `zs`. */
+export type GroundGrid = { xs: number[]; zs: number[]; heights: Float32Array };
+
+/** The cell of `axis` that `value` falls in, clamped to the grid. */
+function cellOf(axis: readonly number[], value: number): number {
+  let low = 0;
+  let high = axis.length - 1;
+  if (value >= axis[high]!) return high - 1;
+  while (high - low > 1) {
+    const middle = (low + high) >> 1;
+    if (axis[middle]! <= value) low = middle;
+    else high = middle;
+  }
+  return low;
+}
+
 /**
- * The ground of a circuit with elevation: a heightfield at `groundAt`, a little below it, fine
- * over the circuit and coarser out to the horizon. It writes depth, pushed back a little, so a
- * hill hides the track behind it while the surfaces on it, which do not, still draw over it.
+ * The triangle of the grid under `x`, `z`: its three crossings and their weights there. Each cell
+ * is cut from its corner at the next column to its corner at the next row, as `groundField`
+ * draws it.
  */
-function groundField(track: TrackModel, colour: Color): Mesh {
+function triangleAt(
+  { xs, zs }: GroundGrid,
+  x: number,
+  z: number,
+): { corners: [number, number, number]; weights: [number, number, number] } {
+  const column = cellOf(xs, x);
+  const row = cellOf(zs, z);
+  const clamp = (t: number) => Math.min(Math.max(t, 0), 1);
+  const u = clamp((x - xs[column]!) / (xs[column + 1]! - xs[column]!));
+  const v = clamp((z - zs[row]!) / (zs[row + 1]! - zs[row]!));
+  const a = row * xs.length + column;
+  const c = a + xs.length;
+  return u + v <= 1
+    ? { corners: [a, a + 1, c], weights: [1 - u - v, u, v] }
+    : { corners: [c + 1, c, a + 1], weights: [u + v - 1, 1 - u, 1 - v] };
+}
+
+/** The ground's height at `x`, `z`, as its triangles draw it. */
+export function gridHeight(grid: GroundGrid, x: number, z: number): number {
+  const { corners, weights } = triangleAt(grid, x, z);
+  return corners.reduce((sum, corner, index) => sum + grid.heights[corner]! * weights[index]!, 0);
+}
+
+/**
+ * Points of the flat surfaces to check the ground under, with their height: across the lap's
+ * asphalt and run-off out to the barriers (a street circuit's asphalt out to its walls) and across
+ * the pit lane, at each share `along` of the way between their samples, `across` metres apart.
+ */
+export function forEachSurfacePoint(
+  track: TrackModel,
+  plan: SurfacePlan,
+  visit: (x: number, z: number, y: number) => void,
+  { along = [0, 0.5], across: spacing = 1.5 }: { along?: readonly number[]; across?: number } = {},
+) {
+  const half = track.width / 2;
+  const edge = half + KERB.width + 0.1;
+  const g = plan.garageSide;
+  const lines = [
+    {
+      line: track.lap,
+      closed: true,
+      across: (index: number): [number, number] =>
+        track.street ? [-edge, edge] : [plan.barrier[-1][index]!, plan.barrier[1][index]!],
+    },
+    {
+      line: track.pit,
+      closed: false,
+      across: (): [number, number] => {
+        const ends = [-g * PIT_LANE.fast, g * (PIT_LANE.fast + PIT_LANE.working)];
+        return [Math.min(...ends), Math.max(...ends)];
+      },
+    },
+  ];
+  for (const { line, closed, across } of lines) {
+    const points = pointsOf(line);
+    const n = points.length;
+    for (let index = 0; index < (closed ? n : n - 1); index++) {
+      const a = points[index]!;
+      const b = points[(index + 1) % n]!;
+      const [aFrom, aTo] = across(index);
+      const [bFrom, bTo] = across((index + 1) % n);
+      for (const t of along) {
+        const heading = a.heading + angleDelta(a.heading, b.heading) * t;
+        const from = aFrom + (bFrom - aFrom) * t;
+        const to = aTo + (bTo - aTo) * t;
+        const steps = Math.max(1, Math.ceil((to - from) / spacing));
+        for (let step = 0; step <= steps; step++) {
+          const [x, z] = sideways(
+            a.x + (b.x - a.x) * t,
+            a.z + (b.z - a.z) * t,
+            heading,
+            from + ((to - from) * step) / steps,
+          );
+          visit(x, z, a.y + (b.y - a.y) * t);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The ground of a circuit with elevation, as a heightfield: at `groundAt`, `GROUND.drop` below it,
+ * fine over the circuit and coarser out to the horizon. Then lowered wherever it would still rise
+ * through a flat surface: a cell's straight sides cut across a dip in the track, and the lap's
+ * heights nearby blend in a higher stretch, so on its own it would show through the asphalt as
+ * grass, or as pavement on a street circuit.
+ */
+export function groundGrid(track: TrackModel, plan: SurfacePlan): GroundGrid {
   const { centre, radius } = track;
   const span = radius + GROUND.margin;
   const reach = radius + GROUND.reach - span;
   const xs = groundAxis(centre.x - span, centre.x + span, reach);
   const zs = groundAxis(centre.z - span, centre.z + span, reach);
+  const heights = new Float32Array(xs.length * zs.length);
+  for (const [row, z] of zs.entries()) {
+    for (const [column, x] of xs.entries()) {
+      heights[row * xs.length + column] = track.groundAt(x, z) - GROUND.drop;
+    }
+  }
+  const grid = { xs, zs, heights };
+  // Lowering a triangle's three crossings by the same amount lowers it that much everywhere, and
+  // lowering never lifts the ground anywhere else, so one pass leaves every point under its surface.
+  forEachSurfacePoint(track, plan, (x, z, y) => {
+    const { corners, weights } = triangleAt(grid, x, z);
+    let above = GROUND.drop - y;
+    for (const [index, corner] of corners.entries()) above += heights[corner]! * weights[index]!;
+    if (above > 0) for (const corner of corners) heights[corner]! -= above;
+  });
+  return grid;
+}
+
+/**
+ * The ground of a circuit with elevation, from `groundGrid`. It writes depth, pushed back a
+ * little, so a hill hides the track behind it while the surfaces on it, which do not, still draw
+ * over it.
+ */
+function groundField({ xs, zs, heights }: GroundGrid, colour: Color): Mesh {
   const columns = xs.length;
   const positions = new Float32Array(columns * zs.length * 3);
   for (const [row, z] of zs.entries()) {
     for (const [column, x] of xs.entries()) {
-      const at = (row * columns + column) * 3;
-      positions[at] = x;
-      positions[at + 1] = track.groundAt(x, z) - GROUND.drop;
-      positions[at + 2] = z;
+      const at = row * columns + column;
+      positions[at * 3] = x;
+      positions[at * 3 + 1] = heights[at]!;
+      positions[at * 3 + 2] = z;
     }
   }
   const indices = new Uint32Array((columns - 1) * (zs.length - 1) * 6);
@@ -193,16 +327,22 @@ export type SurfacePlan = {
 
 /**
  * Adds the surfaces to `group`. Their grain textures filter with `anisotropy` (the renderer's
- * maximum; see `MAX_ANISOTROPY`).
+ * maximum; see `MAX_ANISOTROPY`); a circuit with elevation lies on `ground`.
  */
-export function addSurfaces(group: Group, track: TrackModel, plan: SurfacePlan, anisotropy = 1) {
+export function addSurfaces(
+  group: Group,
+  track: TrackModel,
+  plan: SurfacePlan,
+  anisotropy = 1,
+  ground: GroundGrid | undefined = track.elevated ? groundGrid(track, plan) : undefined,
+) {
   const { lap, pit, centre, radius, street } = track;
   const half = track.width / 2;
   const lapPoints = pointsOf(lap);
 
   const colour = street ? COLOURS.pavement : COLOURS.grass;
-  if (track.elevated) {
-    group.add(groundField(track, colour));
+  if (ground) {
+    group.add(groundField(ground, colour));
   } else {
     const ground = new Mesh(new PlaneGeometry(1, 1), flatMaterial({ color: colour, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2;
