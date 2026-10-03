@@ -84,6 +84,7 @@ export function testReplayRace(): ReplayRace {
         inPit: false,
         pitDurationMs: null,
         pitStop: null,
+        stationaryMs: null,
         overtake: intervalMs !== null && intervalMs < 1500 && position > 1,
         lapsBehind,
         ...fixtureTiming(lapTimeMs, timing),

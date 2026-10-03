@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Point, pitLanePoints, signedArea } from './pit-lane';
+import { type Point, pitLaneConflicts, pitLanePoints, signedArea } from './pit-lane';
 
 /** A 100-unit square, start/finish at the origin, running anticlockwise in y-up axes. */
 const SQUARE: Point[] = [
@@ -52,5 +52,30 @@ describe('pitLanePoints', () => {
 
   it('is empty for a degenerate outline', () => {
     expect(pitLanePoints([[0, 0]], options)).toEqual([]);
+  });
+});
+
+describe('pitLaneConflicts', () => {
+  /** A lap folded back on itself: 400 long and 20 across, start/finish halfway along the bottom. */
+  const FOLDED: Point[] = [
+    [200, 0],
+    [400, 0],
+    [400, 20],
+    [0, 20],
+    [0, 0],
+  ];
+  const lane = { entry: 0.94, exit: 0.06, offset: 10 };
+  const clearance = { metres: 1, clearance: 15 };
+
+  it('finds where an inside lane comes too close to the other side of the fold', () => {
+    const conflicts = pitLaneConflicts(FOLDED, lane, clearance);
+    expect(conflicts.length).toBeGreaterThan(0);
+    // All on the top straight, the far side of the fold: from 0.26 to 0.74 of the lap.
+    expect(conflicts.every((share) => share > 0.26 && share < 0.74)).toBe(true);
+  });
+
+  it('finds none outside the fold, nor beside the stretch the lane runs along', () => {
+    expect(pitLaneConflicts(FOLDED, { ...lane, side: 'outside' }, clearance)).toEqual([]);
+    expect(pitLaneConflicts(SQUARE, options, clearance)).toEqual([]);
   });
 });

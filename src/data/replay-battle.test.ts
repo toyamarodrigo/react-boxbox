@@ -51,6 +51,7 @@ function raceOf(
           inPit: stops.includes(lap),
           pitDurationMs: stops.includes(lap) ? 20_000 : null,
           pitStop: stops.includes(lap) ? stops.indexOf(lap) + 1 : null,
+          stationaryMs: null,
           overtake: false,
           lapsBehind: 0,
           sectorMs: [null, null, null] as [null, null, null],

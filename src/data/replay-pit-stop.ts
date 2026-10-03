@@ -1,5 +1,6 @@
 import type { TyreCompound } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
+import type { SpeedProfile } from './speed-profile';
 import { type PitLaneShape, type ReplayPitStop, carLapsAt, stintAt } from './replay-timing';
 
 /** How long the card stays up after the car leaves the lane, in ms of race time. */
@@ -26,8 +27,11 @@ function positionAt(
   driverId: string,
   atMs: number,
   pit: PitLaneShape,
+  profile: SpeedProfile | undefined,
 ): number | undefined {
-  const order = [...carLapsAt(race, atMs, pit)].sort((a, b) => b[1].distance - a[1].distance);
+  const order = [...carLapsAt(race, atMs, pit, profile)].sort(
+    (a, b) => b[1].distance - a[1].distance,
+  );
   const index = order.findIndex(([id]) => id === driverId);
   return index === -1 ? undefined : index + 1;
 }
@@ -37,11 +41,13 @@ function positionAt(
  * `PIT_STOP_CARD_HOLD_MS` of race time after the exit, otherwise `null`.
  *
  * The windows are the drawable stops of `replayPitStops`, so the card and the tower's `IN PIT`
- * agree on when the car is in the lane. The position in is the car's place as it enters, the
+ * agree on when the car is in the lane; a red-flag wait is not among them, so it has `IN PIT` and
+ * no card. The position in is the car's place as it enters, the
  * position out its place at the exit, held from then on rather than followed. A stop is on the
  * last lap of one stint, so the compound off is that stint's and the compound on the next one's;
- * either unknown leaves both out. A stop the dataset does not number is counted among the car's
- * drawable stops.
+ * either unknown leaves both out. The stop number is the stop's among the car's drawable stops,
+ * so a hidden red-flag wait is not counted. Places are read with the circuit's speed `profile`,
+ * as the tower reads them.
  */
 export function pitStopCardAt(
   race: ReplayRace,
@@ -49,17 +55,17 @@ export function pitStopCardAt(
   elapsedMs: number,
   stops: readonly ReplayPitStop[],
   pit: PitLaneShape,
+  profile?: SpeedProfile,
 ): ReplayPitStopCard | null {
   // The stops are in time order, so the car's latest one begun is the last that has.
   const own = stops.filter((stop) => stop.driverId === driverId);
   const begun = own.filter((stop) => elapsedMs >= stop.atMs).length;
-  const index = begun - 1;
-  const stop = own[index];
+  const stop = own[begun - 1];
   if (!stop) return null;
   const outAt = stop.atMs + stop.durationMs;
   if (elapsedMs >= outAt + PIT_STOP_CARD_HOLD_MS) return null;
 
-  const positionIn = positionAt(race, driverId, stop.atMs, pit);
+  const positionIn = positionAt(race, driverId, stop.atMs, pit, profile);
   if (positionIn === undefined) return null;
   const out = elapsedMs >= outAt;
 
@@ -71,11 +77,11 @@ export function pitStopCardAt(
   return {
     key: `${driverId}-${stop.lap}`,
     driverId,
-    stop: stop.stop ?? index + 1,
+    stop: stop.stop,
     laneTime: (out ? stop.durationMs : elapsedMs - stop.atMs) / 1000,
     compoundOff: tyres ? off : undefined,
     compoundOn: tyres ? on : undefined,
     positionIn,
-    positionOut: out ? positionAt(race, driverId, outAt, pit) : undefined,
+    positionOut: out ? positionAt(race, driverId, outAt, pit, profile) : undefined,
   };
 }

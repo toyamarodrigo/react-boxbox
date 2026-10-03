@@ -92,3 +92,63 @@ export function pitLanePoints(outline: readonly Point[], options: PitLaneOptions
   }
   return points;
 }
+
+/** How far a pit lane keeps from the rest of the lap, for `pitLaneConflicts`. */
+export type PitLaneClearance = {
+  /** Metres per point unit. */
+  metres: number;
+  /**
+   * The least distance, in metres, from the lane's centre line to the centre line of any other
+   * part of the lap: half the track, the pit lane, its wall and the garages behind it, and a margin.
+   */
+  clearance: number;
+};
+
+/** The distance from `p` to the segment `a`–`b`, and how far along it the nearest point is. */
+function toSegment(p: Point, a: Point, b: Point): { distance: number; t: number } {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length2 = dx * dx + dy * dy;
+  const t =
+    length2 === 0
+      ? 0
+      : Math.min(1, Math.max(0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2));
+  return { distance: Math.hypot(a[0] + dx * t - p[0], a[1] + dy * t - p[1]), t };
+}
+
+/**
+ * The lap fractions where the lane `pitLanePoints` draws comes within `clearance` of another part
+ * of the lap than the stretch it runs beside: round each lane point, the lap up to three lane
+ * offsets plus the clearance either way is its own. Empty when the lane stays clear.
+ */
+export function pitLaneConflicts(
+  outline: readonly Point[],
+  options: PitLaneOptions,
+  { metres, clearance }: PitLaneClearance,
+): number[] {
+  const lane = pitLanePoints(outline, options);
+  if (lane.length === 0) return [];
+  const { entry, exit, offset } = options;
+  const count = outline.length;
+  const lengths = [0];
+  for (let i = 0; i < count; i++) {
+    const [ax, ay] = outline[i]!;
+    const [bx, by] = outline[(i + 1) % count]!;
+    lengths.push(lengths[i]! + Math.hypot(bx - ax, by - ay));
+  }
+  const total = lengths[count]!;
+  const span = 1 - entry + exit;
+  const own = (offset * 3 + clearance / metres) / total;
+  const conflicts: number[] = [];
+  for (const [index, point] of lane.entries()) {
+    const base = entry + (index / (lane.length - 1)) * span;
+    for (let i = 0; i < count; i++) {
+      const { distance, t } = toSegment(point, outline[i]!, outline[(i + 1) % count]!);
+      if (distance * metres >= clearance) continue;
+      const fraction = (lengths[i]! + (lengths[i + 1]! - lengths[i]!) * t) / total;
+      const gap = Math.abs(((((fraction - base) % 1) + 1.5) % 1) - 0.5);
+      if (gap > own) conflicts.push(fraction);
+    }
+  }
+  return conflicts;
+}

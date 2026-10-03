@@ -10,7 +10,7 @@ import {
   useState,
 } from 'react';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Check,
   ChevronDown,
@@ -31,15 +31,13 @@ import type {
   ReplayStint,
 } from '../data/replay-schema';
 import type { RaceReplay, ReplaySpeed } from '../data/use-race-replay';
-import { REPLAY_MARKER_TRANSITION_MS, REPLAY_SPEEDS, useRaceReplay } from '../data/use-race-replay';
+import { REPLAY_SPEEDS, useRaceReplay } from '../data/use-race-replay';
 import {
   type NeutralisationPeriod,
   type NeutralisationStatus,
   type PitLaneShape,
   type ReplayPitStop,
   carLapsAt,
-  emphasiseMarker,
-  flaggedSectorsAt,
   followedDriverId,
   formatRaceTime,
   hasTimingData,
@@ -54,8 +52,8 @@ import {
   speedTrapAt,
   speedTrapBestAt,
   stintAt,
-  trackStatusAt,
 } from '../data/replay-timing';
+import type { SpeedProfile } from '../data/speed-profile';
 import {
   byDateDescending,
   formatRaceDate,
@@ -64,19 +62,14 @@ import {
   raceName,
 } from '../data/replay-index';
 import type { LapGridMeasure } from '../data/replay-lap-grid';
-import { battleCardAt } from '../data/replay-battle';
 import { comparedDriverIds, comparedSearch } from '../data/replay-compare';
-import { pitStopCardAt } from '../data/replay-pit-stop';
 import { type StandingsTable, pointScorers } from '../data/replay-standings';
 import { useReplayIndex, useReplayRace } from '../data/use-replay-data';
-import { type ReplayCircuit, circuitForRace } from '../data/circuit-for-race';
+import { circuitForRace } from '../data/circuit-for-race';
 import { DURATION, EASE_OUT } from '@/registry/boxbox/lib/motion';
-import type { SectorStatus, SectorTime, TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
-import { FlagBanner } from '@/registry/boxbox/ui/flag-banner';
+import type { SectorStatus, SectorTime, TimingRow } from '@/registry/boxbox/lib/types';
 import type { GapChartSeries } from '@/registry/boxbox/ui/gap-chart';
 import { LapCounter } from '@/registry/boxbox/ui/lap-counter';
-import { BattleCard } from '@/registry/boxbox/ui/battle-card';
-import { PitStopCard } from '@/registry/boxbox/ui/pit-stop-card';
 import { Podium } from '@/registry/boxbox/ui/podium';
 import { RaceClock } from '@/registry/boxbox/ui/race-clock';
 import { SectorTimes } from '@/registry/boxbox/ui/sector-times';
@@ -91,7 +84,9 @@ import {
   formatGap,
   formatLapTime,
 } from '@/registry/boxbox/ui/timing-tower';
-import { TrackMap } from '@/registry/boxbox/ui/track-map';
+import { CircuitPanel, type TrackView } from '../components/site/replay/circuit-panel';
+import { useOnboardBlocker } from '../components/site/replay/onboard-support';
+import type { OnboardCamera } from '../components/site/replay/onboard-view';
 import { Compare } from '../components/site/replay/compare';
 import { LapGrid } from '../components/site/replay/lap-grid';
 import { StandingsPanel } from '../components/site/replay/standings';
@@ -114,6 +109,10 @@ import { seo } from '../lib/seo';
 /** The two things the tower's value column can measure here; `lapTime` is a docs-only mode. */
 const VALUE_MODES = ['leader', 'interval'] as const;
 type TowerValueMode = (typeof VALUE_MODES)[number];
+
+/** What the Track Map panel shows, and the camera the Onboard view rides with; the defaults first. */
+const TRACK_VIEWS = ['map', 'onboard'] as const satisfies readonly TrackView[];
+const ONBOARD_CAMERAS = ['tcam', 'chase'] as const satisfies readonly OnboardCamera[];
 
 /**
  * A race is addressed by season and round, the way the source API addresses it, so a link to
@@ -143,6 +142,12 @@ const searchSchema = z.object({
    * a followed driver it is ignored. `.catch()` for the same reason as `value`.
    */
   vs: z.string().optional().catch(undefined),
+  /**
+   * The Track Map panel's view and the Onboard view's camera, so a moment link opens the same
+   * onboard moment. Absent is the default (`map`, `tcam`); `.catch()` for the same reason as `value`.
+   */
+  view: z.enum(TRACK_VIEWS).optional().catch(undefined),
+  camera: z.enum(ONBOARD_CAMERAS).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/replay')({
@@ -158,6 +163,27 @@ export const Route = createFileRoute('/replay')({
   }),
   component: ReplayPage,
 });
+
+/**
+ * A choice the URL holds, shown on the click that makes it rather than a render later, when the
+ * router's navigation lands: a switch should answer at once. Whatever the URL says next wins.
+ */
+function useSearchChoice<T>(fromUrl: T, write: (value: T) => void): [T, (value: T) => void] {
+  const [shown, setShown] = useState(fromUrl);
+  const [seen, setSeen] = useState(fromUrl);
+  if (fromUrl !== seen) {
+    setSeen(fromUrl);
+    setShown(fromUrl);
+  }
+  const choose = useCallback(
+    (value: T) => {
+      setShown(value);
+      write(value);
+    },
+    [write],
+  );
+  return [shown, choose];
+}
 
 const JOLPICA_URL = 'https://github.com/jolpica/jolpica-f1';
 
@@ -330,7 +356,7 @@ const PitStopMarks = memo(function PitStopMarks({
   return (
     <TooltipProvider delayDuration={150}>
       {stops.map((stop) => {
-        const label = `${stop.code} pit stop${stop.stop === null ? '' : ` ${stop.stop}`}, lap ${stop.lap}, ${(stop.durationMs / 1000).toFixed(1)}s`;
+        const label = `${stop.code} pit stop ${stop.stop}, lap ${stop.lap}, ${(stop.durationMs / 1000).toFixed(1)}s`;
         return (
           <Tooltip key={`${stop.driverId}:${stop.lap}`}>
             <TooltipTrigger asChild>
@@ -766,6 +792,7 @@ function Stage({
   replay,
   stints,
   pit,
+  profile,
   followedId,
   onFollow,
   valueMode,
@@ -775,6 +802,7 @@ function Stage({
   replay: RaceReplay;
   stints: StintsByDriver;
   pit: PitLaneShape | undefined;
+  profile: SpeedProfile | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
   valueMode: TowerValueMode;
@@ -800,9 +828,9 @@ function Stage({
    */
   const followedLap = useMemo(() => {
     if (followedId === undefined) return 0;
-    const running = carLapsAt(race, replay.elapsedMs, pit).get(followedId)?.lap;
+    const running = carLapsAt(race, replay.elapsedMs, pit, profile).get(followedId)?.lap;
     return running ?? stints.get(followedId)?.at(-1)?.toLap ?? 0;
-  }, [followedId, race, replay.elapsedMs, pit, stints]);
+  }, [followedId, race, replay.elapsedMs, pit, profile, stints]);
 
   /**
    * Whether this race has any OpenF1 timing. 2021-22 Abu Dhabi has none, and neither the sector
@@ -900,183 +928,6 @@ function Stage({
         </p>
       )}
     </div>
-  );
-}
-
-/**
- * The tallest each card gets: an overtake tag, both tyres, a position out. Drawn invisible under
- * the real card, so a slot holds its height from the start and never measures anything.
- */
-const BATTLE_CARD_SIZER = (
-  <BattleCard
-    position={20}
-    ahead={{ code: 'WWW' }}
-    behind={{ code: 'WWW' }}
-    interval={88.888}
-    trend={-8.8}
-    overtake
-    size="sm"
-  />
-);
-const PIT_STOP_CARD_SIZER = (
-  <PitStopCard
-    code="WWW"
-    stop={8}
-    laneTime={88.8}
-    compoundOff="M"
-    compoundOn="H"
-    positionIn={20}
-    positionOut={20}
-    size="sm"
-  />
-);
-
-/** One place in the strip under the map: the sizer and the card share one grid cell. */
-function CardSlot({
-  sizer,
-  className,
-  children,
-}: {
-  sizer: React.ReactNode;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={cn('grid', className)}>
-      {/* Still: a sizer that animated would join the page's layout animations for nothing. */}
-      <div aria-hidden inert className="invisible [grid-area:1/1]">
-        <MotionConfig reducedMotion="always">{sizer}</MotionConfig>
-      </div>
-      <div data-card="live" className="[grid-area:1/1]">
-        <AnimatePresence>{children}</AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-function Circuit({
-  race,
-  replay,
-  circuit,
-  followedId,
-  comparedIds,
-  onFollow,
-}: {
-  race: ReplayRace;
-  replay: RaceReplay;
-  circuit: ReplayCircuit;
-  followedId: string | undefined;
-  comparedIds: readonly string[];
-  onFollow: (driverId: string) => void;
-}) {
-  // Following a driver overrides the emphasis the timing gives the car furthest along; the
-  // compared drivers take the lesser one, so they stay in view while the rest of the field fades.
-  const markers = useMemo(
-    () =>
-      followedId === undefined
-        ? replay.markers
-        : emphasiseMarker(replay.markers, followedId, comparedIds),
-    [replay.markers, followedId, comparedIds],
-  );
-  const handleMarkerClick = useCallback((marker: TrackMarker) => onFollow(marker.id), [onFollow]);
-
-  /**
-   * The flag flying over the track, over the map it belongs to. At the finish it is the chequered
-   * one, which is the only flag this page showed before race control was in the dataset.
-   */
-  const status = replay.finished ? 'chequered' : trackStatusAt(race, replay.elapsedMs);
-  const flagged = useMemo(() => flaggedSectorsAt(race, replay.elapsedMs), [race, replay.elapsedMs]);
-
-  // The followed car's stop, from the lane entry to a moment after the exit; nobody else's.
-  const stopCard =
-    followedId === undefined
-      ? null
-      : pitStopCardAt(race, followedId, replay.elapsedMs, replay.pitStops, circuit.pit);
-  const stopDriver = stopCard
-    ? race.drivers.find((driver) => driver.id === stopCard.driverId)
-    : undefined;
-
-  // The followed driver's battle, or the one highest up the order; none once the flag is out.
-  const battle = replay.finished
-    ? null
-    : battleCardAt(race, replay.elapsedMs, followedId, { rows: replay.rows, pit: circuit.pit });
-  const battleCar = (driverId: string) => {
-    const driver = race.drivers.find((entry) => entry.id === driverId);
-    return driver
-      ? { code: driver.code, color: race.teams.find((team) => team.id === driver.teamId)?.color }
-      : undefined;
-  };
-  const battleAhead = battle ? battleCar(battle.aheadId) : undefined;
-  const battleBehind = battle ? battleCar(battle.behindId) : undefined;
-
-  return (
-    <figure className="flex flex-col gap-3 border border-border bg-card p-5">
-      {/*
-       * A green track is no news, and a green bar sitting there for two hours would be noise the
-       * viewer learns to ignore — so the banner is only on screen when something is flying. Its
-       * text changes when the flag does and not on the clock's ticks, so the live region announces
-       * a change of flag rather than ten times a second.
-       */}
-      <FlagBanner status={status} visible={status !== 'green'} />
-      <TrackMap
-        // A new outline restarts the markers, so their lap counters do not carry over.
-        key={circuit.name}
-        path={circuit.d}
-        pitLane={circuit.pit.d}
-        viewBox={circuit.viewBox}
-        markers={markers}
-        sectors={flagged}
-        // After a seek the cars snap to the new time; sliding there would cross the circuit.
-        transitionMs={replay.jumped ? 0 : REPLAY_MARKER_TRANSITION_MS}
-        onMarkerClick={handleMarkerClick}
-        dimOthers={followedId !== undefined}
-      />
-      {/*
-       * Under the map rather than over it, so no graphic covers a stretch of track. Both places
-       * keep the height of their tallest card, so the page never moves as a card comes and goes.
-       */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <CardSlot sizer={BATTLE_CARD_SIZER}>
-          {battle && battleAhead && battleBehind && (
-            <BattleCard
-              key={battle.key}
-              position={battle.position}
-              ahead={battleAhead}
-              behind={battleBehind}
-              interval={battle.interval}
-              trend={battle.trend}
-              overtake={battle.overtake}
-              size="sm"
-            />
-          )}
-        </CardSlot>
-        <CardSlot sizer={PIT_STOP_CARD_SIZER} className="sm:justify-items-end">
-          {stopCard && stopDriver && (
-            <PitStopCard
-              key={stopCard.key}
-              code={stopDriver.code}
-              color={race.teams.find((team) => team.id === stopDriver.teamId)?.color}
-              stop={stopCard.stop}
-              laneTime={stopCard.laneTime}
-              compoundOff={stopCard.compoundOff}
-              compoundOn={stopCard.compoundOn}
-              positionIn={stopCard.positionIn}
-              positionOut={stopCard.positionOut}
-              size="sm"
-            />
-          )}
-        </CardSlot>
-      </div>
-      <figcaption className="text-xs text-muted-foreground">
-        {circuit.real
-          ? `${circuit.name}, unofficial layout from public GeoJSON, approximate pit lane. `
-          : `${circuit.name}, an invented circuit. `}
-        Positions are interpolated from lap times; they are not real telemetry. A flagged stretch of
-        track is drawn in the right place only roughly: race control counts marshalling posts, and
-        that count need not begin at the start line or run the way the cars do, so a zone can sit
-        turned from where the flags really were.
-      </figcaption>
-    </figure>
   );
 }
 
@@ -1218,6 +1069,7 @@ function StrategyPanel({
   replay,
   stints,
   pit,
+  profile,
   followedId,
   onFollow,
   comparedIds,
@@ -1227,6 +1079,7 @@ function StrategyPanel({
   replay: RaceReplay;
   stints: StintsByDriver;
   pit: PitLaneShape | undefined;
+  profile: SpeedProfile | undefined;
   followedId: string | undefined;
   onFollow: (driverId: string) => void;
   comparedIds: readonly string[];
@@ -1242,8 +1095,9 @@ function StrategyPanel({
   const teams = useMemo(() => new Map(race.teams.map((team) => [team.id, team])), [race]);
   // Nothing is measured while the panel is closed: this runs on every tick when it is open.
   const cars = useMemo(
-    () => (open && tab === 'strategy' ? carLapsAt(race, replay.elapsedMs, pit) : undefined),
-    [open, tab, race, replay.elapsedMs, pit],
+    () =>
+      open && tab === 'strategy' ? carLapsAt(race, replay.elapsedMs, pit, profile) : undefined,
+    [open, tab, race, replay.elapsedMs, pit, profile],
   );
 
   /**
@@ -1412,6 +1266,7 @@ function StrategyPanel({
                     elapsedMs={replay.elapsedMs}
                     finished={replay.finished}
                     pit={pit}
+                    profile={profile}
                     stints={stints}
                     followedId={followedId}
                     comparedIds={comparedIds}
@@ -1452,14 +1307,21 @@ function ReplayPage() {
   const entry = races.find((race) => race.id === requested) ?? races[0];
 
   // A whole new search, so another race starts with no followed driver: that driver belongs to
-  // the race it was picked in. The column mode is a preference about the tower and means the
-  // same thing in every race, so it rides along. Stable, so the memoised picker skips the ticks.
+  // the race it was picked in. The column mode, the track view and the camera are preferences
+  // that mean the same thing in every race, so they ride along. Stable, so the memoised picker
+  // skips the ticks.
   const selectRace = useCallback(
     (next: ReplayIndexEntry) =>
       void navigate({
-        search: { season: next.season, round: next.round, value: search.value },
+        search: {
+          season: next.season,
+          round: next.round,
+          value: search.value,
+          view: search.view,
+          camera: search.camera,
+        },
       }),
-    [navigate, search.value],
+    [navigate, search.value, search.view, search.camera],
   );
 
   const race = useReplayRace(entry?.id);
@@ -1467,7 +1329,10 @@ function ReplayPage() {
     () => (race.data ? circuitForRace(race.data.circuit) : undefined),
     [race.data],
   );
-  const replay = useRaceReplay(race.data, { pit: circuit?.pit });
+  const replay = useRaceReplay(race.data, {
+    pit: circuit?.pit,
+    profile: circuit?.profile,
+  });
 
   const stints = useMemo(
     () => (race.data ? stintsByDriver(race.data) : new Map<string, ReplayStint[]>()),
@@ -1491,9 +1356,40 @@ function ReplayPage() {
   }, [race.data]);
 
   /**
+   * The track view and the camera replace the URL like the column does, with the defaults
+   * stripped. Neither changes on the clock's ticks, so playing never rewrites the URL.
+   */
+  const writeView = useCallback(
+    (next: TrackView) => {
+      void navigate({
+        search: ({ view: _view, ...rest }) => (next === 'map' ? rest : { ...rest, view: next }),
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate],
+  );
+  const writeCamera = useCallback(
+    (next: OnboardCamera) => {
+      void navigate({
+        search: ({ camera: _camera, ...rest }) =>
+          next === 'tcam' ? rest : { ...rest, camera: next },
+        replace: true,
+        resetScroll: false,
+      });
+    },
+    [navigate],
+  );
+  const [view, setView] = useSearchChoice<TrackView>(search.view ?? 'map', writeView);
+  const [camera, setCamera] = useSearchChoice<OnboardCamera>(search.camera ?? 'tcam', writeCamera);
+  // Without WebGPU or WebGL2, or under reduced motion, a link to the Onboard view opens the map.
+  // The URL keeps the choice; the moment link carries the view the viewer has.
+  const onboardBlocked = useOnboardBlocker();
+
+  /**
    * The link to the race time on the clock, whole seconds, with the view the viewer has: the
-   * followed driver, the compared drivers and a column other than the default. Built through the
-   * router so the search is written the way the page reads it back.
+   * followed driver, the compared drivers, and a column, track view and camera other than the
+   * defaults. Built through the router so the search is written the way the page reads it back.
    */
   const router = useRouter();
   const momentLink = () => {
@@ -1506,6 +1402,8 @@ function ReplayPage() {
         driver: code,
         vs: race.data ? comparedSearch(race.data, comparedIds) : undefined,
         value: valueMode === 'leader' ? undefined : valueMode,
+        view: view === 'map' || onboardBlocked ? undefined : view,
+        camera: camera === 'tcam' ? undefined : camera,
         t: Math.floor(replay.elapsedMs / 1000),
       },
     });
@@ -1663,25 +1561,32 @@ function ReplayPage() {
             replay={replay}
             stints={stints}
             pit={circuit.pit}
+            profile={circuit.profile}
             followedId={followedId}
             onFollow={follow}
             valueMode={valueMode}
             onValueMode={setValueMode}
           />
           <div className="flex min-w-0 flex-col gap-6">
-            <Circuit
+            <CircuitPanel
               race={race.data}
               replay={replay}
               circuit={circuit}
               followedId={followedId}
               comparedIds={comparedIds}
               onFollow={follow}
+              view={view}
+              onView={setView}
+              camera={camera}
+              onCamera={setCamera}
+              onboardBlocked={onboardBlocked}
             />
             <StrategyPanel
               race={race.data}
               replay={replay}
               stints={stints}
               pit={circuit.pit}
+              profile={circuit.profile}
               followedId={followedId}
               onFollow={follow}
               comparedIds={comparedIds}

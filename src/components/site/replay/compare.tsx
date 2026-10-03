@@ -10,6 +10,7 @@ import {
 } from '@/data/replay-compare';
 import type { ReplayRace, ReplayStint } from '@/data/replay-schema';
 import { type PitLaneShape, carLapsAt } from '@/data/replay-timing';
+import type { SpeedProfile } from '@/data/speed-profile';
 import { cn } from '@/lib/utils';
 import type { TimingRow } from '@/registry/boxbox/lib/types';
 import { formatLapTime } from '@/registry/boxbox/ui/sector-times';
@@ -166,6 +167,7 @@ export function Compare({
   elapsedMs,
   finished,
   pit,
+  profile,
   stints,
   followedId,
   comparedIds,
@@ -178,6 +180,8 @@ export function Compare({
   /** At the flag every lap is shown, including a lapped car's, which ends after the leader's. */
   finished: boolean;
   pit: PitLaneShape | undefined;
+  /** The circuit's speed profile, so the cars are where the tower and the Track Map put them. */
+  profile: SpeedProfile | undefined;
   stints: ReadonlyMap<string, readonly ReplayStint[]>;
   followedId: string | undefined;
   comparedIds: readonly string[];
@@ -218,7 +222,10 @@ export function Compare({
     }));
   }, [whole, shown]);
 
-  const cars = useMemo(() => carLapsAt(race, elapsedMs, pit), [race, elapsedMs, pit]);
+  const cars = useMemo(
+    () => carLapsAt(race, elapsedMs, pit, profile),
+    [race, elapsedMs, pit, profile],
+  );
 
   if (followedId === undefined) {
     return (

@@ -16,3 +16,4 @@ todos.json
 .env*
 .playwright-mcp
 .artifacts
+.cache/elevation/

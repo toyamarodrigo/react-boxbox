@@ -29,8 +29,20 @@ The elapsed time of the race the Replay clock is at. All positions, gaps and sti
 _Avoid_: Playhead, cursor
 
 **Followed driver**:
-The one driver the viewer has chosen on the Replay page. The Timing Tower expands that driver's row and the Track Map emphasises that car; at most one at a time.
+The one driver the viewer has chosen on the Replay page. The Timing Tower expands that driver's row, the Track Map emphasises that car and the Onboard view rides with it; at most one at a time.
 _Avoid_: Selected driver, focus driver, tracked driver
+
+**Onboard view**:
+The circuit drawn in 3D as seen from the followed driver's car, at race time. It shows a pair at most: the followed driver's car and, when there is one, the first compared driver's car; the other cars only appear on its minimap. Without a followed driver it rides with the leader, alone. It is an alternative to the Track Map on the Replay page, not a recording: the circuit, its surroundings and the cars are generated.
+_Avoid_: Street view, 3D map, cockpit view, POV
+
+**Speed profile**:
+How fast a car is taken to be at each point of a lap: slower in tight corners, faster on straights, stretched so the lap still takes its real time. It is worked out along the racing line. It decides where a car is between two line crossings, for the Track Map, the Timing Tower and the Onboard view alike. It is an approximation, never telemetry.
+_Avoid_: Telemetry, speed trace
+
+**Racing line**:
+The path a car is taken to follow across the width of the track: wide into a corner, tight at its apex, wide out of it, kept a little inside the track edges. It is generated from the shape and width of the track, never measured, and every car follows the same one. It only moves a car sideways: how far along the lap a car is stays measured on the outline.
+_Avoid_: Trajectory, line, driving line
 
 **Compared driver**:
 A driver the viewer puts next to the followed driver, up to three at a time. Every comparison is measured against the followed driver, never between compared drivers. There is no compared driver without a followed driver.
@@ -55,6 +67,10 @@ _Avoid_: Run, tyre phase
 **Pit window**:
 The stretch of race time a car spends in the pit lane during one stop.
 _Avoid_: Pit period
+
+**Stationary time**:
+The part of a pit window a car stands still in its box. Known only for races from the 2024 United States Grand Prix on; earlier curated races have the pit window alone.
+_Avoid_: Stop time, pit duration, pit stop time
 
 **Gap**:
 How far a car is behind the leader, in time. Only ever measured against the leader.
@@ -85,7 +101,7 @@ The card that shows one battle: both cars, the interval and its trend over the l
 _Avoid_: Head-to-head card, fight graphic
 
 **Pit stop card**:
-The card that shows one stop of the followed driver during its pit window and a moment after: stop number, compound off and on, pit lane time, position in and out.
+The card that shows one stop of the followed driver during its pit window and a moment after: stop number, compound off and on, pit lane time, position in and out. The stop number counts only the stops shown: a red-flag wait is not a stop, and neither is leaving the pit lane after the red, so the first real stop after one is stop 1.
 _Avoid_: Pit timer, stop graphic
 
 **Lap grid**:

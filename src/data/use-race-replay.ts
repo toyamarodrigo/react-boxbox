@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TimingRow, TrackMarker } from '@/registry/boxbox/lib/types';
 import type { ReplayRace } from './replay-schema';
+import type { SpeedProfile } from './speed-profile';
 import {
   type NeutralisationPeriod,
   type PitLaneShape,
@@ -93,11 +94,14 @@ export function useRaceReplay(
     speed: initialSpeed = 1,
     autoPlay = false,
     pit,
+    profile,
   }: {
     speed?: ReplaySpeed;
     autoPlay?: boolean;
     /** The circuit's pit lane, so stops are drawn on it and `IN PIT` covers the stop itself. */
     pit?: PitLaneShape;
+    /** The circuit's speed profile, so the tower and the Track Map place cars the same way. */
+    profile?: SpeedProfile;
   } = {},
 ): RaceReplay {
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -154,13 +158,14 @@ export function useRaceReplay(
       gapAtMs: Math.floor(elapsedMs / GAP_REFRESH_MS) * GAP_REFRESH_MS,
       referenceMs,
       pit,
+      profile,
     });
-  }, [race, finished, elapsedMs, referenceMs, pit]);
+  }, [race, finished, elapsedMs, referenceMs, pit, profile]);
 
   const markers = useMemo(() => {
     if (!race || finished) return [];
-    return replayProgress(race, elapsedMs, pit);
-  }, [race, finished, elapsedMs, pit]);
+    return replayProgress(race, elapsedMs, pit, profile);
+  }, [race, finished, elapsedMs, pit, profile]);
 
   const pitStops = useMemo(() => (race && pit ? replayPitStops(race, pit) : []), [race, pit]);
 

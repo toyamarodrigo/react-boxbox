@@ -139,7 +139,9 @@ The components ship no data. You pass in your own.
   lap times, pit stops, and championship standings come from [jolpica-f1](https://github.com/jolpica/jolpica-f1). Tyre stints, sector
   times, speed trap readings, and race control come from [OpenF1](https://openf1.org), for
   races from 2023 on. Circuit outlines come from
-  [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT). Team colours are
+  [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT). Their elevation, for
+  the Onboard view, comes from the Copernicus GLO-30 DEM and, for Baku, NASA SRTM (see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). Team colours are
   approximations chosen by this project. The data is fetched at build time into static JSON.
 
 ## Local development

@@ -1,5 +1,10 @@
 import { FICTIONAL_CIRCUIT } from '../content/track-map/circuit';
+import { CIRCUIT_ELEVATION } from './circuit-elevation';
 import { CIRCUITS } from './circuits';
+import type { ElevationSource } from './elevation-sources';
+import { outlinePoints, polylineLength } from '../lib/svg-outline';
+import { CONSTANT_SPEED, type SpeedProfile } from './speed-profile';
+import { isStreetCircuit, trackWidthFor } from './track-widths';
 
 export type ReplayCircuit = {
   d: string;
@@ -7,9 +12,43 @@ export type ReplayCircuit = {
   name: string;
   /** The approximate pit lane: an open `d`, and where it leaves and rejoins the lap. */
   pit: { entry: number; exit: number; d: string };
+  /**
+   * How a lap's time is shared out along it (ADR 0005), for every view that places a car. Aster
+   * Park is drawn with curves the profile builder does not read, so it runs at constant speed.
+   */
+  profile: SpeedProfile;
   /** True when the outline is a real venue from the generated dataset, false for Aster Park. */
   real: boolean;
+  /** The lap's length in metres: official for a real venue, invented for Aster Park. */
+  lengthM: number;
+  /** The pit lane's length in metres, measured on the outline at the lap's scale. */
+  pitLengthM: number;
+  /** How wide the Onboard view draws the track, in metres (`track-widths.ts`). */
+  widthM: number;
+  /**
+   * True when the Onboard view dresses the circuit as a street circuit, with walls and buildings
+   * instead of run-off and grass (`track-widths.ts`). False for Aster Park.
+   */
+  street: boolean;
+  /**
+   * The racing line the Onboard view drives (`circuits.ts`): metres to the left of travel,
+   * evenly spaced round the lap. Empty for Aster Park, whose cars keep to the outline.
+   */
+  racingLine: readonly number[];
+  /**
+   * The lap's height for the Onboard view (`circuit-elevation.ts`): metres above its lowest point,
+   * evenly spaced round the lap. Empty, so flat, where there is none, and for Aster Park.
+   */
+  elevation: readonly number[];
+  /** Where the elevation comes from, for the caption's credit; none without one. */
+  elevationSource?: ElevationSource;
 };
+
+/** The pit lane's length in metres: the outline's scale is the lap length over its drawn length. */
+function pitLengthM(d: string, pitD: string, lengthM: number): number {
+  const lap = polylineLength(outlinePoints(d), true);
+  return lap === 0 ? 0 : (lengthM * polylineLength(outlinePoints(pitD), false)) / lap;
+}
 
 /**
  * The names the replay data uses for the curated races, keyed to the outline ids in
@@ -40,12 +79,22 @@ const BY_RACE_CIRCUIT_NAME: Record<string, string> = {
 /** Lower-case and strip accents, so "Autódromo" and "Autodromo" compare equal. */
 const normalise = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
+/** Aster Park is invented, and so is its length: about a modern permanent circuit's. */
+const ASTER_PARK_LENGTH_M = 4800;
+
 const FALLBACK: ReplayCircuit = {
   d: FICTIONAL_CIRCUIT.d,
   viewBox: FICTIONAL_CIRCUIT.viewBox,
   name: FICTIONAL_CIRCUIT.name,
   pit: FICTIONAL_CIRCUIT.pit,
+  profile: CONSTANT_SPEED,
   real: false,
+  lengthM: ASTER_PARK_LENGTH_M,
+  pitLengthM: pitLengthM(FICTIONAL_CIRCUIT.d, FICTIONAL_CIRCUIT.pit.d, ASTER_PARK_LENGTH_M),
+  widthM: trackWidthFor(undefined),
+  street: false,
+  racingLine: [],
+  elevation: [],
 };
 
 /** The outline to draw a race on: the real venue when the dataset has it, Aster Park otherwise. */
@@ -59,7 +108,22 @@ export function circuitForRace(circuitName: string): ReplayCircuit {
       const name = normalise(circuit.name);
       return wanted.includes(location) || wanted.includes(name) || name.includes(wanted);
     });
+  const elevation = match && CIRCUIT_ELEVATION[match.id];
   return match
-    ? { d: match.d, viewBox: match.viewBox, name: match.name, pit: match.pit, real: true }
+    ? {
+        d: match.d,
+        viewBox: match.viewBox,
+        name: match.name,
+        pit: match.pit,
+        profile: match.profile,
+        real: true,
+        lengthM: match.lengthM,
+        pitLengthM: pitLengthM(match.d, match.pit.d, match.lengthM),
+        widthM: trackWidthFor(match.id),
+        street: isStreetCircuit(match.id),
+        racingLine: match.racingLine,
+        elevation: elevation?.heights ?? [],
+        elevationSource: elevation?.source,
+      }
     : FALLBACK;
 }

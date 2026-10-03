@@ -9,15 +9,18 @@ import {
   deriveResults,
   deriveStandings,
   deriveStints,
+  withStationary,
   withTiming,
 } from '../src/data/replay-derive.ts';
 import type {
   OpenF1Compounds,
+  OpenF1PitStops,
   OpenF1RaceControl,
   OpenF1Timing,
   RawLap,
   RawOpenF1Driver,
   RawOpenF1Lap,
+  RawOpenF1Pit,
   RawOpenF1RaceControl,
   RawOpenF1Stint,
   RawConstructorStanding,
@@ -59,12 +62,17 @@ const THROTTLE_MS = 1100;
 const PAGE_SIZE = 100;
 
 // OpenF1 supplies the tyre compound per stint. No key, and the published budget is 3 requests a
-// second and 30 a minute, so its own throttle sits just above the tighter of the two. It is a
+// second and 30 a minute, so its own throttle sits well above the tighter of the two. It is a
 // second source for one field: a race whose compounds cannot be fetched is still written.
 const OPENF1_BASE_URL = 'https://api.openf1.org/v1';
-const OPENF1_THROTTLE_MS = 2100;
+const OPENF1_THROTTLE_MS = 2500;
 /** OpenF1's coverage starts in 2023; earlier seasons are written with no compounds at all. */
 const OPENF1_FROM_SEASON = 2023;
+/**
+ * OpenF1's `pit` has the stationary time (`stop_duration`) from the 2024 United States Grand Prix
+ * on. An earlier race is not asked for it and keeps `null`.
+ */
+const STATIONARY_FROM_DATE = '2024-10-20';
 /** How far a meeting may start from the race date and still be that race's weekend. */
 const MEETING_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -391,6 +399,8 @@ type OpenF1ForRace = {
   timingSource?: ReplayOpenF1Source;
   raceControl?: OpenF1RaceControl;
   raceControlSource?: ReplayOpenF1Source;
+  pitStops?: OpenF1PitStops;
+  pitStopsSource?: ReplayOpenF1Source;
   meeting: string;
 };
 
@@ -473,7 +483,31 @@ async function openF1For(
     warn('race control', error);
   }
 
+  if (hasStationaryTimes(info.date)) {
+    try {
+      found.pitStops = await fetchPitStops(session, codes);
+      found.pitStopsSource = { provider: 'openf1', fetchedAt, url: pitUrl(session.sessionKey) };
+    } catch (error) {
+      warn('stationary times', error);
+    }
+  }
+
   return found;
+}
+
+const hasStationaryTimes = (date: string) => date >= STATIONARY_FROM_DATE;
+const pitUrl = (sessionKey: number) => `${OPENF1_BASE_URL}/pit?session_key=${sessionKey}`;
+
+/** One request covers the whole race: `pit` is a row per stop. */
+async function fetchPitStops(
+  session: Awaited<ReturnType<typeof fetchOpenF1Session>>,
+  codes: OpenF1PitStops['codes'],
+): Promise<OpenF1PitStops> {
+  const stops = await openF1Request<RawOpenF1Pit>(`/pit?session_key=${session.sessionKey}`);
+  if (stops.length === 0) {
+    throw new OpenF1Unavailable(`no pit stops published for session ${session.sessionKey}`);
+  }
+  return { drivers: session.drivers, stops, codes };
 }
 
 /** How much of a race's stint data carries a compound. */
@@ -545,7 +579,9 @@ async function buildRace(
   const standings = await fetchStandings(selection);
 
   const openF1 = await openF1For(selection, info, drivers, fetchedAt);
-  const laps = openF1.timing ? withTiming(derived, openF1.timing) : derived;
+  const timed = openF1.timing ? withTiming(derived, openF1.timing) : derived;
+  const stationary = openF1.pitStops ? withStationary(timed, openF1.pitStops) : null;
+  const laps = stationary?.laps ?? timed;
 
   const control = openF1.raceControl
     ? deriveRaceControl(openF1.raceControl)
@@ -573,6 +609,7 @@ async function buildRace(
       compounds: openF1.compoundSource,
       timing: openF1.timingSource,
       raceControl: control.messages.length > 0 ? openF1.raceControlSource : undefined,
+      stationary: stationary && stationary.matched > 0 ? openF1.pitStopsSource : undefined,
       standings: standings === null ? undefined : standingsSource(selection, fetchedAt),
     },
     drivers,
@@ -767,9 +804,111 @@ async function backfillStandings(dryRun: boolean) {
   }
 }
 
+type RawRow = Record<string, unknown>;
+type RawRace = Record<string, unknown> & { laps: { lap: number; rows: RawRow[] }[] };
+
+/** The row with `stationaryMs` set, placed after `pitStop` so the file reads in schema order. */
+function withStationaryKey(row: RawRow, stationaryMs: number | null): RawRow {
+  const entries = Object.entries(row).filter(([key]) => key !== 'stationaryMs');
+  const at = entries.findIndex(([key]) => key === 'pitStop');
+  entries.splice(at === -1 ? entries.length : at + 1, 0, ['stationaryMs', stationaryMs]);
+  return Object.fromEntries(entries);
+}
+
+/**
+ * `--stationary`: writes each pit stop's stationary time into the race files already on disk,
+ * with no laps refetched. A race from the 2024 United States Grand Prix on costs four OpenF1
+ * requests at most (the season's meetings are shared), the session, its drivers and its `pit`
+ * rows; an earlier race costs none and gets `null` on every row. A file already done is skipped,
+ * so a rerun after a 429 carries on where it stopped; a race OpenF1 had no figure for (most of
+ * 2026 so far) is asked again, in case it has published them since. Patched as raw JSON, like
+ * `--standings`; run `bun run format` afterwards.
+ */
+async function backfillStationary(dryRun: boolean) {
+  const names = await raceFilesOnDisk();
+  const todo: { name: string; raw: RawRace; race: ReplayRace }[] = [];
+  for (const name of names) {
+    const raw = JSON.parse(await readFile(path.join(outDir, name), 'utf8')) as RawRace;
+    const race = replayRaceSchema.parse(raw);
+    const keyed = raw.laps.every((lap) => lap.rows.every((row) => 'stationaryMs' in row));
+    const fetched = race.source.stationary !== undefined || !hasStationaryTimes(race.date);
+    if (!keyed || !fetched) todo.push({ name, raw, race });
+  }
+  const asking = todo.filter(({ race }) => hasStationaryTimes(race.date));
+  console.log(
+    `${names.length} race file(s) on disk, ${todo.length} to patch, ${asking.length} asking OpenF1.`,
+  );
+  if (dryRun) return;
+
+  const fetchedAt = new Date().toISOString();
+  const lines: string[] = [];
+  try {
+    for (const { name, raw, race } of todo) {
+      let laps: readonly ReplayLap[] = race.laps;
+      let source: ReplayOpenF1Source | undefined;
+      let line = `${race.id.padEnd(8)} before ${STATIONARY_FROM_DATE}: null`;
+      if (hasStationaryTimes(race.date)) {
+        try {
+          const info = {
+            raceName: race.name,
+            date: race.date,
+            Circuit: { circuitName: race.circuit },
+          };
+          const session = await fetchOpenF1Session(race.season, info);
+          const codes = race.drivers.map((driver) => ({ id: driver.id, code: driver.code }));
+          const pitStops = await fetchPitStops(session, codes);
+          const merged = withStationary(race.laps, pitStops);
+          laps = merged.laps;
+          if (merged.matched > 0)
+            source = { provider: 'openf1', fetchedAt, url: pitUrl(session.sessionKey) };
+          const times = laps
+            .flatMap((lap) => lap.rows.map((row) => row.stationaryMs))
+            .filter((ms): ms is number => ms !== null)
+            .sort((a, b) => a - b);
+          const median = times[Math.floor(times.length / 2)];
+          line = `${race.id.padEnd(8)} ${merged.matched} matched, ${merged.blank} blank, ${merged.unjoined} unjoined, ${pitStops.stops.length} OpenF1 rows, median ${median ?? '—'} ms, range ${times[0] ?? '—'}–${times.at(-1) ?? '—'} ms`;
+        } catch (error) {
+          if (!(error instanceof OpenF1Unavailable)) throw error;
+          console.warn(`  ! ${race.id}: no stationary times (${error.message})`);
+          continue;
+        }
+      }
+
+      const byRow = new Map(
+        laps.flatMap((lap) =>
+          lap.rows.map((row) => [`${lap.lap}:${row.driverId}`, row.stationaryMs]),
+        ),
+      );
+      const patched = {
+        ...raw,
+        source: source ? { ...(raw.source as object), stationary: source } : raw.source,
+        laps: raw.laps.map((lap) => ({
+          ...lap,
+          rows: lap.rows.map((row) =>
+            withStationaryKey(row, byRow.get(`${lap.lap}:${String(row.driverId)}`) ?? null),
+          ),
+        })),
+      };
+      // Parsed before it is written, so a bad payload fails here rather than on the page.
+      replayRaceSchema.parse(patched);
+      await writeFile(path.join(outDir, name), `${JSON.stringify(patched, null, 2)}\n`);
+      lines.push(line);
+      console.log(`  wrote ${line}`);
+    }
+  } finally {
+    console.log(`\n${lines.length} race(s) patched, ${openF1RequestCount} OpenF1 requests.`);
+    if (openF1Stopped !== null) console.warn(`\n${openF1Stopped}`);
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+
+  if (args.includes('--stationary')) {
+    await backfillStationary(dryRun);
+    return;
+  }
 
   if (args.includes('--standings')) {
     await backfillStandings(dryRun);

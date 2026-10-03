@@ -27,6 +27,13 @@ describe('replayLapRowSchema', () => {
     expect(parsed.speedTrapKph).toBe(null);
   });
 
+  it('defaults the stationary time to none, so a race built before it still parses', () => {
+    expect(replayLapRowSchema.parse(row).stationaryMs).toBe(null);
+    expect(
+      replayLapRowSchema.parse({ ...row, inPit: true, stationaryMs: 2_400 }).stationaryMs,
+    ).toBe(2_400);
+  });
+
   it('keeps the timing fields it is given', () => {
     const parsed = replayLapRowSchema.parse({
       ...row,

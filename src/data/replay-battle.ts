@@ -1,5 +1,6 @@
 import type { TimingRow } from '@/registry/boxbox/lib/types';
 import type { ReplayLapRow, ReplayRace } from './replay-schema';
+import type { SpeedProfile } from './speed-profile';
 import {
   type PitLaneShape,
   neutralisationPeriods,
@@ -288,7 +289,11 @@ export function battleCardAt(
   race: ReplayRace,
   elapsedMs: number,
   followedId: string | undefined,
-  { rows, pit }: { rows?: readonly TimingRow[]; pit?: PitLaneShape } = {},
+  {
+    rows,
+    pit,
+    profile,
+  }: { rows?: readonly TimingRow[]; pit?: PitLaneShape; profile?: SpeedProfile } = {},
 ): ReplayBattleCard | null {
   const on = replayBattles(race, pit).filter(
     (battle) => battle.fromMs <= elapsedMs && elapsedMs < battle.toMs,
@@ -296,7 +301,7 @@ export function battleCardAt(
   if (on.length === 0) return null;
 
   const live = new Map(
-    (rows ?? replayLiveRows(race, elapsedMs, { pit })).map((row) => [row.driverId, row]),
+    (rows ?? replayLiveRows(race, elapsedMs, { pit, profile })).map((row) => [row.driverId, row]),
   );
   const cards = on.map((battle) => cardOf(battle, elapsedMs, live)).filter((card) => card !== null);
 

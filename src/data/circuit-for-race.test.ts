@@ -21,6 +21,16 @@ describe('circuitForRace', () => {
     expect(circuitForRace('Something at Silverstone').name).toBe('Silverstone Circuit');
   });
 
+  it('gives the Onboard view the lap and pit lane lengths and the track width', () => {
+    const monza = circuitForRace('Autodromo Nazionale di Monza');
+    expect(monza.lengthM).toBeGreaterThan(5000);
+    expect(monza.pitLengthM).toBeGreaterThan(0);
+    expect(monza.pitLengthM).toBeLessThan(monza.lengthM / 4);
+    expect(monza.widthM).toBe(12);
+    expect(circuitForRace('Circuit de Monaco').widthM).toBeLessThan(12);
+    expect(circuitForRace('Nowhere Raceway').pitLengthM).toBeGreaterThan(0);
+  });
+
   it('falls back to the invented circuit when nothing matches', () => {
     const circuit = circuitForRace('Nowhere Raceway');
     expect(circuit.real).toBe(false);

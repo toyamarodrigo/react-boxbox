@@ -1,8 +1,10 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { testReplayRace } from './replay-fixtures';
+import { circuitById } from './circuits';
+import { generatedReplayFiles, readJson, testReplayRace } from './replay-fixtures';
 import { PIT_STOP_CARD_HOLD_MS, pitStopCardAt } from './replay-pit-stop';
-import type { ReplayRace } from './replay-schema';
-import { type PitLaneShape, replayPitStops } from './replay-timing';
+import { type ReplayRace, replayRaceSchema } from './replay-schema';
+import { type PitLaneShape, leaderCumulative, replayPitStops } from './replay-timing';
 
 /** The invented circuit's pit lane: in at 96% of the lap, out at 6% of the next. */
 const pit: PitLaneShape = { entry: 0.96, exit: 0.06 };
@@ -104,5 +106,30 @@ describe('pitStopCardAt', () => {
 
   it('counts a stop the dataset does not number', () => {
     expect(cardAt(pittedRace({ pitStop: null }), 155_000)?.stop).toBe(1);
+  });
+});
+
+describe('pitStopCardAt at the Monza red flag', () => {
+  const file = generatedReplayFiles().find((name) => path.basename(name) === '2026-13.json');
+  if (!file) {
+    it.skip('is not generated yet, so the Monza check is skipped', () => {});
+    return;
+  }
+  const monza = replayRaceSchema.parse(readJson(file));
+  const circuit = circuitById('it-1922')!;
+  const shape = { entry: circuit.pit.entry, exit: circuit.pit.exit };
+  const stops = replayPitStops(monza, shape);
+
+  it('shows no card for the red-flag wait, and the next real stop as stop 1', () => {
+    const waitAt = leaderCumulative(monza, 3) + 60_000;
+    const waited = monza.laps.find((lap) => lap.lap === 3)!.rows.filter((row) => row.inPit);
+    for (const row of waited) {
+      expect(pitStopCardAt(monza, row.driverId, waitAt, stops, shape)).toBeNull();
+    }
+    const ids = new Set(waited.map((row) => row.driverId));
+    const next = stops.find((stop) => ids.has(stop.driverId))!;
+    const card = pitStopCardAt(monza, next.driverId, next.atMs + 1_000, stops, shape);
+    // The source counts the wait as stop 1; only the stops shown are counted, so this is stop 1.
+    expect(card?.stop).toBe(1);
   });
 });
