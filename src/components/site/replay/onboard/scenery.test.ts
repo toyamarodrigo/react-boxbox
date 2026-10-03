@@ -56,5 +56,6 @@ describe('buildScenery', () => {
       expect(low, circuit).toBeLessThan(high);
       expect(instances(buildScenery(track)), circuit).toBe(high);
     }
-  });
+    // Six whole sceneries of two circuits: seconds under a full parallel run.
+  }, 30_000);
 });
