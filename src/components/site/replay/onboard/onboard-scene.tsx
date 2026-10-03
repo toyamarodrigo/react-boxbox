@@ -81,17 +81,23 @@ const GROUND_BELOW = { permanent: '#47663a', street: '#77756f' } as const;
  * it: `radius` metres on a dome of 50, far brighter than the sky (`glow`, in linear units), so
  * the paint's clearcoat catches a sun highlight.
  */
-const ENVIRONMENT = { intensity: 0.8, sun: { distance: 40, radius: 1.2, glow: 12 } } as const;
+const ENVIRONMENT = { intensity: 0.72, sun: { distance: 40, radius: 1.2, glow: 12 } } as const;
 
 /**
  * The output's tone mapping: ACES filmic, as broadcast cameras roll off the highlights, at an
- * exposure a little over one so the paint and the asphalt do not sit in the curve's dull middle.
+ * exposure of one, so the pale sky keeps its blue instead of bleaching in the curve's shoulder.
+ * The sky dome, the fog and the background all go through it alike, so they still meet.
  */
-const TONE_MAPPING = { type: ACESFilmicToneMapping, exposure: 1.1 } as const;
+const TONE_MAPPING = { type: ACESFilmicToneMapping, exposure: 1 } as const;
 const UNKNOWN_TEAM_COLOUR = '#888888';
 
 /** The sky light and the sun, and the red they lean towards under a red flag, by `amount`. */
 const LIGHTS = { sky: '#dceaff', sun: '#fff4e2' } as const;
+/**
+ * Their intensities: a strong sun over a softer sky fill, so the sunlit side of the car and the
+ * asphalt stand apart from the shade instead of flattening into one mid-tone.
+ */
+const LIGHT_INTENSITY = { sky: 0.55, sun: 2.7 } as const;
 const RED_FLAG_TINT = { colour: new Color('#ff5a4a'), amount: 0.45, rate: 2 } as const;
 
 /**
@@ -207,7 +213,7 @@ function disposeMesh(mesh: Mesh) {
 
 /**
  * The scene's environment, for its reflections and soft fill light: the sky dome, dimmed to
- * `ENVIRONMENT_INTENSITY`, rendered once into a small prefiltered cube map. Works on WebGPU and
+ * `ENVIRONMENT.intensity`, rendered once into a small prefiltered cube map. Works on WebGPU and
  * on its WebGL2 backend alike. Made and freed in one effect, so a remount makes it again.
  */
 function useSkyEnvironment(below: Color) {
@@ -515,12 +521,12 @@ function Scene({
     <>
       <color attach="background" args={[SKY.horizon]} />
       <fog attach="fog" args={[SKY.horizon, quality.fog.near, quality.fog.far]} />
-      <hemisphereLight ref={skyLight} args={[LIGHTS.sky, below, 0.7]} />
+      <hemisphereLight ref={skyLight} args={[LIGHTS.sky, below, LIGHT_INTENSITY.sky]} />
       <directionalLight
         ref={sunLight}
         position={sunFrom}
         color={LIGHTS.sun}
-        intensity={2.4}
+        intensity={LIGHT_INTENSITY.sun}
         castShadow={quality.shadows}
         shadow-mapSize={[SUN_SHADOW.mapSize, SUN_SHADOW.mapSize]}
         shadow-bias={SUN_SHADOW.bias}
