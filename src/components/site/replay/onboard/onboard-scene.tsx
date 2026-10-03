@@ -108,7 +108,7 @@ const GHOST = { opacity: 0.35, fadeRate: 12 } as const;
 
 /**
  * Where a T-cam sits on the car it rides with, in metres from the car's centre: up off the
- * track, ahead of the centre (just behind the front axle, which is about 1.8 m ahead), and the
+ * track, ahead of the centre (just behind the front axle, which is about 1.7 m ahead), and the
  * small downward pitch it looks ahead along the track with, in radians.
  */
 const TCAM = { height: 1.1, ahead: 1.4, pitch: 0.03 } as const;
