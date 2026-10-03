@@ -37,7 +37,7 @@ import {
   nearParts,
   wheelParts,
 } from './car-parts';
-import { CONTACT_SHADOW, carbonWeaveTexture, contactShadowTexture } from './textures';
+import { CONTACT_SHADOW, carbonWeaveTextures, contactShadowTexture } from './textures';
 
 export { CAR_HEIGHT_M, CAR_MATERIAL, CAR_WIDTH_M } from './car-parts';
 
@@ -52,13 +52,14 @@ export type CarLook = 'plain' | 'rich';
 
 /**
  * The paint's second tone: the bodywork below `below` metres is far darker, blended over
- * `blend`, so the lower body reads as near-black under the team colour. Ahead of `noseFrom`
- * metres the line drops along the nose to `noseTip` at its tip, so the low nose keeps its colour.
+ * `blend`, so the lower body reads as a dark shade of the team colour, not black. Ahead of
+ * `noseFrom` metres the line drops along the nose to `noseTip` at its tip, so the low nose keeps
+ * its colour.
  */
 const LOWER_TONE = {
   below: 0.3,
   blend: 0.04,
-  shade: 0.16,
+  shade: 0.28,
   noseFrom: 1.2,
   noseTip: 0.06,
 } as const;
@@ -72,10 +73,12 @@ function lowerToneLine(x: number): number {
 /** How much lighter the tyres' sidewalls are than their tread. */
 const SIDEWALL_SHADE = 1.6;
 
+/** The materials' colours; `plainCarbon` is the woven carbon's average, for the plain look. */
 const COLOURS = {
-  carbon: '#26282c',
+  carbon: '#4b4d51',
+  plainCarbon: '#3b3d40',
   metal: '#aeb2b8',
-  rubber: '#111111',
+  rubber: '#161616',
   light: '#ff2a1e',
 } as const;
 
@@ -172,17 +175,18 @@ export type CarMaterial = MeshStandardMaterial | MeshPhysicalMaterial;
 /**
  * The car's materials in `CAR_MATERIAL`'s order, for `look`, all transparent so they can fade.
  * Their roughness steps apart so each reads on its own under the same light: satin paint under a
- * thin clearcoat (no candy gloss), matt carbon, and rubber rougher still.
+ * thin clearcoat (no candy gloss), dark grey carbon from matt in the weave's gaps to satin on its
+ * tows' crowns, and matt rubber.
  */
 export function carMaterials(colour: string, look: CarLook): CarMaterial[] {
   const rich = look === 'rich';
   const paint = rich
     ? new MeshPhysicalMaterial({
         color: colour,
-        roughness: 0.36,
+        roughness: 0.34,
         metalness: 0,
-        clearcoat: 0.55,
-        clearcoatRoughness: 0.2,
+        clearcoat: 0.5,
+        clearcoatRoughness: 0.16,
         vertexColors: true,
         transparent: true,
       })
@@ -193,11 +197,13 @@ export function carMaterials(colour: string, look: CarLook): CarMaterial[] {
         vertexColors: true,
         transparent: true,
       });
+  const weave = rich ? carbonWeaveTextures() : undefined;
   const carbon = new MeshStandardMaterial({
-    color: COLOURS.carbon,
-    roughness: rich ? 0.58 : 0.62,
-    metalness: 0.15,
-    map: rich ? carbonWeaveTexture() : null,
+    color: rich ? COLOURS.carbon : COLOURS.plainCarbon,
+    roughness: 0.62,
+    metalness: 0.1,
+    map: weave?.map ?? null,
+    roughnessMap: weave?.roughness ?? null,
     transparent: true,
   });
   const metal = new MeshStandardMaterial({
@@ -208,7 +214,7 @@ export function carMaterials(colour: string, look: CarLook): CarMaterial[] {
   });
   const rubber = new MeshStandardMaterial({
     color: COLOURS.rubber,
-    roughness: 0.96,
+    roughness: 0.95,
     metalness: 0,
     vertexColors: true,
     transparent: true,

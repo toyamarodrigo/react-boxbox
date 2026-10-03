@@ -162,21 +162,28 @@ export function fenceTexture(anisotropy: number): Texture {
   return texture(data, size, true, anisotropy);
 }
 
-/** Texels per side of the carbon weave, and the metres one repeat of it covers on a car. */
+/**
+ * Texels per side of the carbon weave, and the metres one repeat of it covers on a car: tows a
+ * little broader than a real weave's, so it still reads from the chase camera.
+ */
 const WEAVE_SIZE = 64;
-export const WEAVE_TILE_M = 0.02;
+export const WEAVE_TILE_M = 0.05;
 
-let weave: Texture | undefined;
+let weave: { map: Texture; roughness: Texture } | undefined;
 
 /**
  * Carbon fibre's twill weave: tows of fibres crossing over and under in diagonal steps, each
- * tow shaded across its width as a round bundle catches the light. A small grey texture to
- * multiply the carbon's colour by. Made once and shared by every car; never freed.
+ * tow round across its width as a bundle is. `map` is a grey to multiply the carbon's colour by,
+ * light on each tow's crown and dark in the gaps; `roughness` (in the green channel, as three
+ * reads it) is smoother on the crowns, so they catch the light as a sheen. The tows one way are
+ * lighter and smoother than those across them, the checker that still shows where single tows
+ * blur together. Made once and shared by every car; never freed.
  */
-export function carbonWeaveTexture(): Texture {
+export function carbonWeaveTextures(): { map: Texture; roughness: Texture } {
   if (weave) return weave;
   const tow = 8;
-  const data = new Uint8Array(WEAVE_SIZE * WEAVE_SIZE * 4);
+  const colour = new Uint8Array(WEAVE_SIZE * WEAVE_SIZE * 4);
+  const rough = new Uint8Array(WEAVE_SIZE * WEAVE_SIZE * 4);
   for (let y = 0; y < WEAVE_SIZE; y++) {
     for (let x = 0; x < WEAVE_SIZE; x++) {
       const column = Math.floor(x / tow);
@@ -184,14 +191,19 @@ export function carbonWeaveTexture(): Texture {
       // A 2×2 twill: the tow on top steps one cell diagonally each row.
       const vertical = (column + row) % 2 === 0;
       const across = ((vertical ? x : y) % tow) / tow;
-      const bundle = Math.sin(across * Math.PI);
-      const shade = 0.55 + 0.4 * bundle ** 0.7 + (vertical ? 0.05 : 0);
-      const value = Math.round(Math.min(1, shade) * 255);
-      data.set([value, value, value, 255], (y * WEAVE_SIZE + x) * 4);
+      const bundle = Math.sin(across * Math.PI) ** 0.7;
+      const shade = Math.round((0.42 + 0.45 * bundle + (vertical ? 0.12 : 0)) * 255);
+      const smooth = Math.round((1 - 0.35 * bundle - (vertical ? 0.1 : 0)) * 255);
+      const at = (y * WEAVE_SIZE + x) * 4;
+      colour.set([shade, shade, shade, 255], at);
+      rough.set([smooth, smooth, smooth, 255], at);
     }
   }
-  weave = texture(data, WEAVE_SIZE, true, MAX_ANISOTROPY);
-  weave.repeat.setScalar(1 / WEAVE_TILE_M);
+  weave = {
+    map: texture(colour, WEAVE_SIZE, true, MAX_ANISOTROPY),
+    roughness: texture(rough, WEAVE_SIZE, false, MAX_ANISOTROPY),
+  };
+  for (const map of Object.values(weave)) map.repeat.setScalar(1 / WEAVE_TILE_M);
   return weave;
 }
 

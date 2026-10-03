@@ -72,7 +72,8 @@ describe('carGeometries', () => {
     const paint = shades(near, CAR_MATERIAL.paint);
     expect(paint.filter(({ y }) => y > 0.4).every(({ shade }) => shade === 1)).toBe(true);
     const body = paint.filter(({ x }) => x < 1.2);
-    expect(body.filter(({ y }) => y < 0.2).every(({ shade }) => shade < 0.3)).toBe(true);
+    const lower = body.filter(({ y }) => y < 0.2);
+    expect(lower.every(({ shade }) => shade < 0.3 && shade > 0.2)).toBe(true);
     // The low nose keeps the team colour on top.
     const tip = paint.filter(({ x, y }) => x > 2.6 && y > 0.14);
     expect(tip.length).toBeGreaterThan(0);
@@ -107,6 +108,18 @@ describe('carObject', () => {
       MeshPhysicalMaterial,
     );
     expect(carObject('#ff8000', 'plain').materials[CAR_MATERIAL.carbon]!.map).toBeNull();
+  });
+
+  it('steps the roughness from satin paint through woven dark grey carbon to matt rubber', () => {
+    const [paint, carbon, , rubber] = carObject('#ff8000', 'rich').materials;
+    expect(paint!.roughness).toBeLessThan(carbon!.roughness);
+    expect(carbon!.roughness).toBeLessThan(rubber!.roughness);
+    expect(carbon!.map).not.toBeNull();
+    expect(carbon!.roughnessMap).not.toBeNull();
+    // Dark grey, not near-black, so the floor, the diffuser and the beam wing still read.
+    const { r, g, b } = carbon!.color;
+    expect(Math.min(r, g, b)).toBeGreaterThan(0.05);
+    expect(Math.max(r, g, b)).toBeLessThan(0.15);
   });
 
   it('fades every material and the shadow to a ghost, writing depth only when solid', () => {
