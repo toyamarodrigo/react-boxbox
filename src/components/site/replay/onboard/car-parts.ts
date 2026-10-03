@@ -264,19 +264,20 @@ function halo(): BufferGeometry[] {
 /** The suspension's wishbones and the push or pull rod at each corner. */
 function suspension(): BufferGeometry[] {
   const arm = 0.012;
+  // The inner ends on the chassis and the gearbox, which are low and narrow at their ends.
   const front = (s: 1 | -1): BufferGeometry[] => [
-    rod([1.95, 0.46, s * 0.16], [AXLE.front, 0.48, s * 0.68], arm),
-    rod([1.5, 0.44, s * 0.2], [AXLE.front, 0.48, s * 0.68], arm),
-    rod([1.95, 0.2, s * 0.15], [AXLE.front, 0.2, s * 0.68], arm),
-    rod([1.5, 0.18, s * 0.2], [AXLE.front, 0.2, s * 0.68], arm),
-    rod([1.69, 0.22, s * 0.64], [1.55, 0.5, s * 0.22], 0.01),
+    rod([1.98, 0.35, s * 0.1], [AXLE.front, 0.46, s * 0.68], arm),
+    rod([1.45, 0.46, s * 0.18], [AXLE.front, 0.46, s * 0.68], arm),
+    rod([1.98, 0.19, s * 0.1], [AXLE.front, 0.2, s * 0.68], arm),
+    rod([1.45, 0.19, s * 0.16], [AXLE.front, 0.2, s * 0.68], arm),
+    rod([1.69, 0.22, s * 0.64], [1.5, 0.42, s * 0.16], 0.01),
   ];
   const rear = (s: 1 | -1): BufferGeometry[] => [
-    rod([-1.6, 0.46, s * 0.17], [AXLE.rear, 0.48, s * 0.57], arm),
-    rod([-2.15, 0.44, s * 0.12], [AXLE.rear, 0.48, s * 0.57], arm),
-    rod([-1.6, 0.16, s * 0.28], [AXLE.rear, 0.2, s * 0.57], arm),
-    rod([-2.2, 0.18, s * 0.22], [AXLE.rear, 0.2, s * 0.57], arm),
-    rod([AXLE.rear, 0.48, s * 0.55], [-1.78, 0.22, s * 0.2], 0.01),
+    rod([-1.6, 0.46, s * 0.16], [AXLE.rear, 0.46, s * 0.57], arm),
+    rod([-2.15, 0.36, s * 0.08], [AXLE.rear, 0.46, s * 0.57], arm),
+    rod([-1.6, 0.16, s * 0.26], [AXLE.rear, 0.2, s * 0.57], arm),
+    rod([-2.2, 0.22, s * 0.08], [AXLE.rear, 0.2, s * 0.57], arm),
+    rod([AXLE.rear, 0.46, s * 0.55], [-1.78, 0.22, s * 0.18], 0.01),
   ];
   return [...bothSides(front).flat(), ...bothSides(rear).flat()];
 }
@@ -365,7 +366,7 @@ function carbonPlates(): BufferGeometry[] {
       ),
     ),
     ...bothSides((s) =>
-      [0.15, 0.3, 0.42].map((z) => box([0.75, 0.09, 0.008], [-2.17, 0.19, s * z], -0.34)),
+      [0.15, 0.3, 0.42].map((z) => box([0.75, 0.09, 0.008], [-2.17, 0.21, s * z], -0.34)),
     ).flat(),
     ...bothSides((s) => box([1.85, 0.05, 0.008], [-0.125, 0.095, s * 0.795])),
   ];
