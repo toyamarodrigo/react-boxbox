@@ -30,9 +30,9 @@ export function raceGroups(races: readonly ReplayIndexEntry[]): {
   };
 }
 
-/** A race's name without "Grand Prix": `Abu Dhabi`. */
+/** A race's name without "Grand Prix": `Abu Dhabi`, `Bahrain in Malaysia`. */
 export function raceName(race: Pick<ReplayIndexEntry, 'name'>): string {
-  return race.name.replace(/\s*Grand Prix$/, '');
+  return race.name.replace(/\s*Grand Prix\b/, '');
 }
 
 /** How a race reads in a list of them: `2025 Abu Dhabi`. */
