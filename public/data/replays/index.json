@@ -1,6 +1,28 @@
 {
-  "generatedAt": "2026-09-29T21:26:14.313Z",
+  "generatedAt": "2026-10-21T16:30:33.095Z",
   "races": [
+    {
+      "id": "2026-17",
+      "season": 2026,
+      "round": 17,
+      "name": "Singapore Grand Prix",
+      "circuit": "Marina Bay Street Circuit",
+      "date": "2026-10-11",
+      "totalLaps": 62,
+      "driverCount": 22,
+      "winnerCode": "VER"
+    },
+    {
+      "id": "2026-16",
+      "season": 2026,
+      "round": 16,
+      "name": "Bahrain Grand Prix in Malaysia",
+      "circuit": "Sepang International Circuit",
+      "date": "2026-10-04",
+      "totalLaps": 55,
+      "driverCount": 22,
+      "winnerCode": "VER"
+    },
     {
       "id": "2026-15",
       "season": 2026,

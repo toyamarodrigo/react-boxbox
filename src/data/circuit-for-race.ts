@@ -70,6 +70,7 @@ const BY_RACE_CIRCUIT_NAME: Record<string, string> = {
   Madring: 'es-2026',
   'Miami International Autodrome': 'us-2022',
   'Red Bull Ring': 'at-1969',
+  'Sepang International Circuit': 'my-1999',
   'Shanghai International Circuit': 'cn-2004',
   'Silverstone Circuit': 'gb-1948',
   'Suzuka Circuit': 'jp-1962',
