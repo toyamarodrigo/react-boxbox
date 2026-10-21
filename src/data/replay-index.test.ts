@@ -41,6 +41,8 @@ describe('raceGroups', () => {
 
 describe('raceName', () => {
   it('drops "Grand Prix"', () => expect(raceName({ name: 'Spanish Grand Prix' })).toBe('Spanish'));
+  it('drops "Grand Prix" from a relocated race', () =>
+    expect(raceName({ name: 'Bahrain Grand Prix in Malaysia' })).toBe('Bahrain in Malaysia'));
 });
 
 describe('raceLabel', () => {
